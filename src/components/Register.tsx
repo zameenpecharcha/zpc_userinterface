@@ -62,10 +62,18 @@ const Register = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      // Remove any non-numeric characters and convert to integer
+      const phoneNumber = parseInt(formData.phone.replace(/\D/g, ''), 10);
+      
+      if (isNaN(phoneNumber)) {
+        setError('Please enter a valid phone number');
+        return;
+      }
+
       await createUser({
         variables: {
           ...formData,
-          phone: parseInt(formData.phone, 10),
+          phone: phoneNumber,
         },
       });
     } catch (err) {
@@ -161,10 +169,10 @@ const Register = () => {
               required
               fullWidth
               name="phone"
-              type="number"
-              placeholder="Enter your phone number"
+              placeholder="Enter your phone number (numbers only)"
               value={formData.phone}
               onChange={handleChange}
+              helperText="Only numbers will be saved"
               sx={{ mb: 3 }}
               InputProps={{
                 sx: {
