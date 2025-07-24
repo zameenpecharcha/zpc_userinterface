@@ -47,16 +47,8 @@ const VERIFY_OTP_MUTATION = gql`
 `;
 
 const RESET_PASSWORD_MUTATION = gql`
-  mutation ResetPassword(
-    $emailOrPhone: String!
-    $otpCode: String!
-    $newPassword: String!
-  ) {
-    resetPassword(
-      emailOrPhone: $emailOrPhone
-      otpCode: $otpCode
-      newPassword: $newPassword
-    ) {
+  mutation ResetPassword($email: String!, $otpCode: String!, $newPassword: String!) {
+    resetPassword(email: $email, otpCode: $otpCode, newPassword: $newPassword) {
       success
       message
     }
@@ -179,7 +171,7 @@ const Landing = () => {
       } else if (resetStep === 'newPassword') {
         await resetPassword({
           variables: {
-            emailOrPhone: resetData.email,
+            email: resetData.email,
             otpCode: resetData.otp,
             newPassword: resetData.newPassword,
           },
