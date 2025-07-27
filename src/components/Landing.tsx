@@ -23,34 +23,59 @@ const LOGIN_MUTATION = gql`
       token
       refreshToken
       message
+      userInfo {
+        id
+        firstName
+        lastName
+        email
+        phone
+        profilePhoto
+        role
+        address
+        latitude
+        longitude
+        bio
+        isactive
+        emailVerified
+        phoneVerified
+        createdAt
+      }
     }
   }
 `;
 
 const SEND_OTP_MUTATION = gql`
-  mutation SendOtp($email: String!) {
-    sendOtp(email: $email) {
+  mutation SendVerificationOTP($email: String!, $type: OTPType!) {
+    sendOtp(email: $email, type: $type) {
       success
       message
+      channels
     }
   }
 `;
 
 const VERIFY_OTP_MUTATION = gql`
-  mutation VerifyOtp($email: String!, $otpCode: String!) {
-    verifyOtp(email: $email, otpCode: $otpCode) {
+  mutation VerifyPasswordResetOTP($email: String!, $otpCode: String!, $type: OTPType!) {
+    verifyOtp(email: $email, otpCode: $otpCode, type: $type) {
       success
-      token
       message
+      userInfo {
+        email
+        emailVerified
+      }
     }
   }
 `;
 
 const RESET_PASSWORD_MUTATION = gql`
-  mutation ResetPassword($email: String!, $otpCode: String!, $newPassword: String!) {
-    resetPassword(email: $email, otpCode: $otpCode, newPassword: $newPassword) {
+  mutation ResetPassword($email: String!, $otpCode: String!, $newPassword: String!, $confirmPassword: String!) {
+    resetPassword(email: $email, otpCode: $otpCode, newPassword: $newPassword, confirmPassword: $confirmPassword) {
       success
       message
+      userInfo {
+        email
+        emailVerified
+      }
     }
   }
 `;
@@ -72,15 +97,16 @@ const Landing = () => {
   });
 
   const [login] = useMutation(LOGIN_MUTATION, {
-    client: authClient,
     onCompleted: (data) => {
-      if (data.login.success) {
+      if (data && data.login && data.login.success) {
         localStorage.setItem('token', data.login.token);
         localStorage.setItem('refreshToken', data.login.refreshToken);
+        // Optionally store userInfo if needed
+        localStorage.setItem('userInfo', JSON.stringify(data.login.userInfo));
         setSuccessMessage(data.login.message);
         navigate('/home');
       } else {
-        setError(data.login.message);
+        setError(data?.login?.message || 'Login failed. Please try again.');
       }
     },
     onError: (error) => {
@@ -89,13 +115,17 @@ const Landing = () => {
   });
 
   const [sendOtp] = useMutation(SEND_OTP_MUTATION, {
-    client: authClient,
     onCompleted: (data) => {
-      if (data.sendOtp.success) {
-        setSuccessMessage(data.sendOtp.message);
-        setResetStep('otp');
+      if (data && data.sendOtp && data.sendOtp.success) {
+        setSuccessMessage(data.sendOtp.message + ' Channels: ' + (data.sendOtp.channels ? data.sendOtp.channels.join(', ') : ''));
+        // Delay showing OTP input so user sees the success message, then show OTP input
+        setTimeout(() => {
+          setSuccessMessage('');
+          setResetStep('otp');
+        }, 1200);
+        setForgotPasswordOpen(true); // Ensure dialog stays open
       } else {
-        setError(data.sendOtp.message);
+        setError(data?.sendOtp?.message || 'OTP request failed.');
       }
     },
     onError: (error) => {
@@ -104,13 +134,13 @@ const Landing = () => {
   });
 
   const [verifyOtp] = useMutation(VERIFY_OTP_MUTATION, {
-    client: authClient,
     onCompleted: (data) => {
-      if (data.verifyOtp.success) {
-        setSuccessMessage(data.verifyOtp.message);
-        setResetStep('newPassword');
+      if (data && data.verifyOtp && data.verifyOtp.success) {
+        setSuccessMessage(data.verifyOtp.message + (data.verifyOtp.userInfo ? ` (Email: ${data.verifyOtp.userInfo.email}, Verified: ${data.verifyOtp.userInfo.emailVerified})` : ''));
+        // Navigate to reset password page with email and otp in query params
+        navigate(`/forgot-password?step=reset&email=${encodeURIComponent(resetData.email)}&otp=${encodeURIComponent(resetData.otp)}`);
       } else {
-        setError(data.verifyOtp.message);
+        setError(data?.verifyOtp?.message || 'OTP verification failed.');
       }
     },
     onError: (error) => {
@@ -119,17 +149,18 @@ const Landing = () => {
   });
 
   const [resetPassword] = useMutation(RESET_PASSWORD_MUTATION, {
-    client: authClient,
     onCompleted: (data) => {
-      if (data.resetPassword.success) {
-        setSuccessMessage(data.resetPassword.message);
+      if (data && data.resetPassword && data.resetPassword.success) {
+        setSuccessMessage(data.resetPassword.message + (data.resetPassword.userInfo ? ` (Email: ${data.resetPassword.userInfo.email}, Verified: ${data.resetPassword.userInfo.emailVerified})` : ''));
+        // Navigate to home page after successful password reset
         setTimeout(() => {
+          navigate('/home');
           setForgotPasswordOpen(false);
           setResetStep('email');
           setResetData({ email: '', otp: '', newPassword: '' });
         }, 2000);
       } else {
-        setError(data.resetPassword.message);
+        setError(data?.resetPassword?.message || 'Password reset failed.');
       }
     },
     onError: (error) => {
@@ -159,24 +190,12 @@ const Landing = () => {
     try {
       if (resetStep === 'email') {
         await sendOtp({
-          variables: { email: resetData.email },
+          variables: { email: resetData.email, type: 'PASSWORD_RESET' },
         });
-      } else if (resetStep === 'otp') {
-        await verifyOtp({
-          variables: {
-            email: resetData.email,
-            otpCode: resetData.otp,
-          },
-        });
-      } else if (resetStep === 'newPassword') {
-        await resetPassword({
-          variables: {
-            email: resetData.email,
-            otpCode: resetData.otp,
-            newPassword: resetData.newPassword,
-          },
-        });
+        // After sending OTP, show OTP input (handled by sendOtp onCompleted)
       }
+      // For OTP step, verifyOtp is triggered only when user clicks VERIFY OTP
+      // For newPassword step, resetPassword is triggered only when user clicks RESET PASSWORD (if implemented)
     } catch (err: any) {
       console.error('Error:', err);
       setError(err.message);
@@ -281,7 +300,7 @@ const Landing = () => {
               <Link
                 component="button"
                 type="button"
-                onClick={() => setForgotPasswordOpen(true)}
+                onClick={() => navigate('/forgot-password')}
                 sx={{ color: '#6366F1', textDecoration: 'none' }}
               >
                 Forgot password?
@@ -319,9 +338,9 @@ const Landing = () => {
         </Box>
       </Box>
 
-      {/* Forgot Password Dialog */}
-      <Dialog 
-        open={forgotPasswordOpen} 
+      {/* Forgot Password Dialog - Styled to match your screenshot */}
+      <Dialog
+        open={forgotPasswordOpen}
         onClose={() => {
           setForgotPasswordOpen(false);
           setResetStep('email');
@@ -329,23 +348,20 @@ const Landing = () => {
           setError('');
           setSuccessMessage('');
         }}
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            minWidth: 320,
+            boxShadow: 8,
+            p: 2,
+            textAlign: 'center',
+          },
+        }}
       >
-        <DialogTitle>
-          {resetStep === 'email' ? 'Reset Password' : 
-           resetStep === 'otp' ? 'Enter OTP' : 
-           'Set New Password'}
+        <DialogTitle sx={{ fontWeight: 600, fontSize: 22, color: '#4F46E5', textAlign: 'center', pb: 1 }}>
+          Reset Password
         </DialogTitle>
-        <DialogContent>
-          {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {error}
-            </Alert>
-          )}
-          {successMessage && (
-            <Alert severity="success" sx={{ mb: 2 }}>
-              {successMessage}
-            </Alert>
-          )}
+        <DialogContent sx={{ pt: 0 }}>
           {resetStep === 'email' && (
             <TextField
               autoFocus
@@ -357,37 +373,58 @@ const Landing = () => {
               variant="outlined"
               value={resetData.email}
               onChange={handleResetDataChange}
+              sx={{ mb: 2, bgcolor: '#F9FAFB' }}
+              InputProps={{ sx: { borderRadius: 2 } }}
             />
           )}
           {resetStep === 'otp' && (
-            <TextField
-              autoFocus
-              margin="dense"
-              name="otp"
-              label="Enter OTP"
-              fullWidth
-              variant="outlined"
-              value={resetData.otp}
-              onChange={handleResetDataChange}
-              helperText="Please check your email for the OTP"
-            />
+            <>
+              <TextField
+                autoFocus
+                margin="dense"
+                name="otp"
+                label="Enter OTP"
+                type="text"
+                fullWidth
+                variant="outlined"
+                value={resetData.otp}
+                onChange={handleResetDataChange}
+                sx={{ mb: 2, bgcolor: '#F9FAFB' }}
+                InputProps={{ sx: { borderRadius: 2 } }}
+              />
+              <Button
+                fullWidth
+                variant="contained"
+                sx={{ bgcolor: '#7C3AED', color: '#fff', fontWeight: 500, mb: 2, mt: 1, '&:hover': { bgcolor: '#6D28D9' } }}
+                onClick={async () => {
+                  setError('');
+                  setSuccessMessage('');
+                  try {
+                    await verifyOtp({
+                      variables: {
+                        email: resetData.email,
+                        otpCode: resetData.otp,
+                        type: 'PASSWORD_RESET',
+                      },
+                    });
+                  } catch (err: any) {
+                    setError(err.message);
+                  }
+                }}
+              >
+                VERIFY OTP
+              </Button>
+            </>
           )}
-          {resetStep === 'newPassword' && (
-            <TextField
-              autoFocus
-              margin="dense"
-              name="newPassword"
-              label="New Password"
-              type="password"
-              fullWidth
-              variant="outlined"
-              value={resetData.newPassword}
-              onChange={handleResetDataChange}
-            />
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
+          )}
+          {successMessage && (
+            <Alert severity="success" sx={{ mb: 2 }}>{successMessage}</Alert>
           )}
         </DialogContent>
-        <DialogActions>
-          <Button 
+        <DialogActions sx={{ justifyContent: 'center', pb: 2 }}>
+          <Button
             onClick={() => {
               setForgotPasswordOpen(false);
               setResetStep('email');
@@ -395,14 +432,19 @@ const Landing = () => {
               setError('');
               setSuccessMessage('');
             }}
+            sx={{ color: '#7C3AED', fontWeight: 500 }}
           >
-            Cancel
+            CANCEL
           </Button>
-          <Button onClick={handleForgotPassword}>
-            {resetStep === 'email' ? 'Send OTP' : 
-             resetStep === 'otp' ? 'Verify OTP' : 
-             'Reset Password'}
-          </Button>
+          {resetStep === 'email' && (
+            <Button
+              onClick={handleForgotPassword}
+              sx={{ color: '#7C3AED', fontWeight: 500 }}
+            >
+              SEND OTP
+            </Button>
+          )}
+          {/* VERIFY OTP button is now inside the OTP input above */}
         </DialogActions>
       </Dialog>
     </Container>

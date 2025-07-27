@@ -13,27 +13,44 @@ import {
 
 const CREATE_USER = gql`
   mutation CreateUser(
-    $name: String!
+    $firstName: String!
+    $lastName: String!
     $email: String!
-    $phone: Int!
+    $phone: String!
     $password: String!
     $role: String!
-    $location: String!
+    $address: String!
+    $latitude: Float!
+    $longitude: Float!
+    $bio: String!
   ) {
     createUser(
-      name: $name
+      firstName: $firstName
+      lastName: $lastName
       email: $email
       phone: $phone
       password: $password
       role: $role
-      location: $location
+      address: $address
+      latitude: $latitude
+      longitude: $longitude
+      bio: $bio
     ) {
-      userId
-      name
+      id
+      firstName
+      lastName
       email
       phone
+      profilePhoto
       role
-      location
+      address
+      latitude
+      longitude
+      bio
+      isactive
+      emailVerified
+      phoneVerified
+      createdAt
     }
   }
 `;
@@ -41,18 +58,28 @@ const CREATE_USER = gql`
 const Register = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
-    name: '',
+    firstName: '',
+    lastName: '',
     email: '',
     phone: '',
     password: '',
     role: '',
-    location: '',
+    address: '',
+    latitude: '',
+    longitude: '',
+    bio: '',
   });
   const [error, setError] = useState('');
 
   const [createUser] = useMutation(CREATE_USER, {
-    onCompleted: () => {
-      navigate('/home');
+    onCompleted: (data) => {
+      if (data && data.createUser) {
+        // Optionally store user info in localStorage
+        localStorage.setItem('userInfo', JSON.stringify(data.createUser));
+        navigate('/home');
+      } else {
+        setError('Registration failed. Please try again.');
+      }
     },
     onError: (error) => {
       setError(error.message);
@@ -62,21 +89,29 @@ const Register = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      // Remove any non-numeric characters and convert to integer
-      const phoneNumber = parseInt(formData.phone.replace(/\D/g, ''), 10);
-      
-      if (isNaN(phoneNumber)) {
-        setError('Please enter a valid phone number');
+      // Validate latitude and longitude
+      const latitude = parseFloat(formData.latitude);
+      const longitude = parseFloat(formData.longitude);
+      if (isNaN(latitude) || isNaN(longitude)) {
+        setError('Please enter valid latitude and longitude');
         return;
       }
-
       await createUser({
         variables: {
-          ...formData,
-          phone: phoneNumber,
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          email: formData.email,
+          phone: formData.phone,
+          password: formData.password,
+          role: formData.role,
+          address: formData.address,
+          latitude,
+          longitude,
+          bio: formData.bio,
         },
       });
-    } catch (err) {
+    } catch (err: any) {
+      setError('Registration error: ' + (err && err.message ? err.message : 'Unknown error'));
       console.error('Registration error:', err);
     }
   };
@@ -122,14 +157,34 @@ const Register = () => {
           )}
           <Box component="form" onSubmit={handleSubmit} sx={{ width: '100%' }}>
             <Typography variant="subtitle1" sx={{ mb: 2 }}>
-              Full Name
+              First Name
             </Typography>
             <TextField
               required
               fullWidth
-              name="name"
-              placeholder="Enter your full name"
-              value={formData.name}
+              name="firstName"
+              placeholder="Enter your first name"
+              value={formData.firstName}
+              onChange={handleChange}
+              sx={{ mb: 3 }}
+              InputProps={{
+                sx: {
+                  bgcolor: '#F9FAFB',
+                  '&:hover': {
+                    bgcolor: '#F3F4F6',
+                  },
+                },
+              }}
+            />
+            <Typography variant="subtitle1" sx={{ mb: 2 }}>
+              Last Name
+            </Typography>
+            <TextField
+              required
+              fullWidth
+              name="lastName"
+              placeholder="Enter your last name"
+              value={formData.lastName}
               onChange={handleChange}
               sx={{ mb: 3 }}
               InputProps={{
@@ -225,14 +280,74 @@ const Register = () => {
               }}
             />
             <Typography variant="subtitle1" sx={{ mb: 2 }}>
-              Location
+              Address
             </Typography>
             <TextField
               required
               fullWidth
-              name="location"
-              placeholder="Enter your location"
-              value={formData.location}
+              name="address"
+              placeholder="Enter your address"
+              value={formData.address}
+              onChange={handleChange}
+              sx={{ mb: 3 }}
+              InputProps={{
+                sx: {
+                  bgcolor: '#F9FAFB',
+                  '&:hover': {
+                    bgcolor: '#F3F4F6',
+                  },
+                },
+              }}
+            />
+            <Typography variant="subtitle1" sx={{ mb: 2 }}>
+              Latitude
+            </Typography>
+            <TextField
+              required
+              fullWidth
+              name="latitude"
+              placeholder="Enter latitude"
+              value={formData.latitude}
+              onChange={handleChange}
+              sx={{ mb: 3 }}
+              InputProps={{
+                sx: {
+                  bgcolor: '#F9FAFB',
+                  '&:hover': {
+                    bgcolor: '#F3F4F6',
+                  },
+                },
+              }}
+            />
+            <Typography variant="subtitle1" sx={{ mb: 2 }}>
+              Longitude
+            </Typography>
+            <TextField
+              required
+              fullWidth
+              name="longitude"
+              placeholder="Enter longitude"
+              value={formData.longitude}
+              onChange={handleChange}
+              sx={{ mb: 3 }}
+              InputProps={{
+                sx: {
+                  bgcolor: '#F9FAFB',
+                  '&:hover': {
+                    bgcolor: '#F3F4F6',
+                  },
+                },
+              }}
+            />
+            <Typography variant="subtitle1" sx={{ mb: 2 }}>
+              Bio
+            </Typography>
+            <TextField
+              required
+              fullWidth
+              name="bio"
+              placeholder="Enter your bio"
+              value={formData.bio}
               onChange={handleChange}
               sx={{ mb: 3 }}
               InputProps={{
