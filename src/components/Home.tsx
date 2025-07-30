@@ -73,8 +73,8 @@ const leftNav: { icon: React.ReactNode; label: string }[] = [
 ];
 
 const friendSuggestions = [
-  { name: 'Mike Wilson', info: '3 mutual friends', avatar: '' },
-  { name: 'Emma Davis', info: '1 mutual friend', avatar: '' },
+  { name: 'Mike Wilson', info: '3 mutual friends', avatar: 'https://randomuser.me/api/portraits/men/32.jpg' },
+  { name: 'Emma Davis', info: '1 mutual friend', avatar: 'https://randomuser.me/api/portraits/women/44.jpg' },
 ];
 
 const trendingTopics = [
@@ -148,7 +148,7 @@ const Home = () => {
       <Box sx={{ display: 'flex', pt: 9, px: isMobile ? 0 : 3 }}>
         {/* Left Sidebar */}
         {!isMobile && (
-          <Box sx={{ width: 240, mr: 3 }}>
+          <Box sx={{ width: 240, mr: 3, position: 'sticky', top: 88, alignSelf: 'flex-start', height: 'fit-content', zIndex: 2 }}>
             <Box sx={{
               borderRadius: 4,
               p: 2,
@@ -193,7 +193,7 @@ const Home = () => {
         )}
 
         {/* Main Feed */}
-        <Box sx={{ flex: 1, maxWidth: 600, mx: 'auto', mt: isMobile ? 0 : 2 }}>
+        <Box sx={{ flex: 1, minWidth: 0, mx: 0, mt: isMobile ? 0 : 2, maxWidth: 'none' }}>
           {/* Create Post Card */}
           <Box sx={{ mb: 4, p: 3, bgcolor: '#fff', borderRadius: 4, boxShadow: '0 2px 12px rgba(37,99,235,0.08)', display: 'flex', flexDirection: 'column', gap: 2, position: 'relative' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -248,13 +248,13 @@ const Home = () => {
                   gap: 1.5,
                 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                    <Avatar sx={{ mr: 2, width: 44, height: 44, boxShadow: 1 }} />
+                    <Avatar src={post.profilePhoto || `https://randomuser.me/api/portraits/lego/${post.userId % 10}.jpg`} sx={{ mr: 2, width: 44, height: 44, boxShadow: 1 }} />
                     <Box>
                       <Typography sx={{ fontWeight: 700, fontSize: 18, color: '#2563EB', ...interFont }}>
                         {post.userFirstName} {post.userLastName}
                       </Typography>
                       <Typography sx={{ fontSize: 13, color: '#6B7280', fontWeight: 500 }}>
-                        Role: {post.userRole}
+                        {post.userRole}
                       </Typography>
                       <Typography sx={{ fontSize: 13, color: '#6B7280' }}>
                         {new Date(post.createdAt).toLocaleString()}
@@ -278,8 +278,10 @@ const Home = () => {
                     </Box>
                   )}
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 2 }}>
-                    <Button startIcon={<FavoriteBorderIcon />} sx={{ color: '#374151', textTransform: 'none', fontWeight: 600, fontSize: 15, transition: 'color 0.2s', '&:hover': { color: '#2563EB' } }}>Like</Button>
-                    <Button startIcon={<ChatBubbleOutlineIcon />} sx={{ color: '#374151', textTransform: 'none', fontWeight: 600, fontSize: 15, transition: 'color 0.2s', '&:hover': { color: '#2563EB' } }}>Comment</Button>
+                    <Box sx={{ display: 'flex', gap: 2 }}>
+                      <Button startIcon={<FavoriteBorderIcon />} sx={{ color: '#374151', textTransform: 'none', fontWeight: 600, fontSize: 15, transition: 'color 0.2s', '&:hover': { color: '#2563EB' } }}>{post.likeCount || 0}</Button>
+                      <Button startIcon={<ChatBubbleOutlineIcon />} sx={{ color: '#374151', textTransform: 'none', fontWeight: 600, fontSize: 15, transition: 'color 0.2s', '&:hover': { color: '#2563EB' } }}>{post.commentCount || 0}</Button>
+                    </Box>
                     <Button startIcon={<ShareIcon />} sx={{ color: '#374151', textTransform: 'none', fontWeight: 600, fontSize: 15, transition: 'color 0.2s', '&:hover': { color: '#2563EB' } }}>Share</Button>
                   </Box>
                 </Box>
@@ -290,7 +292,7 @@ const Home = () => {
 
         {/* Right Sidebar */}
         {!isMobile && (
-          <Box sx={{ width: 280, ml: 3, display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <Box sx={{ width: 280, ml: 3, display: 'flex', flexDirection: 'column', gap: 3, position: 'sticky', top: 88, alignSelf: 'flex-start', height: 'fit-content', zIndex: 2 }}>
             {/* People You May Know */}
             <Box sx={{ bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 4, boxShadow: '0 2px 12px rgba(37,99,235,0.08)', p: 2.5 }}>
               <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2, color: '#2563EB', ...interFont }}>People You May Know</Typography>
