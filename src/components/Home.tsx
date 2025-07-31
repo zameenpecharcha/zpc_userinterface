@@ -1,6 +1,7 @@
+// ...existing code...
 import React, { useState } from 'react';
 import { styled } from '@mui/material/styles';
-import { gql, useQuery } from '@apollo/client';
+import { gql, useQuery, useMutation } from '@apollo/client';
 import {
   AppBar,
   Toolbar,
@@ -14,13 +15,14 @@ import {
   useMediaQuery,
   Menu,
   MenuItem,
+  CircularProgress,
 } from '@mui/material';
+import { useApolloClient } from '@apollo/client';
 import HomeIcon from '@mui/icons-material/Home';
 import PeopleIcon from '@mui/icons-material/People';
 import GroupIcon from '@mui/icons-material/Group';
 import StorefrontIcon from '@mui/icons-material/Storefront';
 import EventIcon from '@mui/icons-material/Event';
-// Modern font style for the whole page
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import MessageIcon from '@mui/icons-material/Message';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
@@ -28,6 +30,22 @@ import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import ShareIcon from '@mui/icons-material/Share';
 import AddIcon from '@mui/icons-material/Add';
+
+// GraphQL mutation for liking a post
+const LIKE_POST_MUTATION = gql`
+  mutation LikePost($postId: Int!, $userId: Int!) {
+    likePost(postId: $postId, userId: $userId) {
+      success
+      message
+      post {
+        id
+        likeCount
+      }
+    }
+  }
+`;
+
+// ...existing code...
 
 const SEARCH_POSTS_QUERY = gql`
 query SearchPosts($page: Int, $limit: Int) {
@@ -84,6 +102,77 @@ const trendingTopics = [
 ];
 
 const Home = () => {
+  // Example: Replace with actual logged-in user ID
+  const userId = 3;
+
+  // Local state for like counts
+  const [likeCounts, setLikeCounts] = useState<{ [key: number]: number }>({});
+
+  const [likePostMutation, { loading: likingPost }] = useMutation(LIKE_POST_MUTATION);
+
+  // Handle like post
+  const handleLikePost = async (postId: number) => {
+    try {
+      const result = await likePostMutation({ variables: { postId, userId } });
+      if (result.data?.likePost?.success) {
+        const newCount = result.data.likePost.post.likeCount;
+        setLikeCounts(prev => ({ ...prev, [postId]: newCount }));
+      }
+    } catch (err) {
+      // Optionally show error
+    }
+  };
+  const [commentsModalOpen, setCommentsModalOpen] = useState<{ open: boolean; postId: number | null }>({ open: false, postId: null });
+  const apolloClient = useApolloClient();
+  // Placeholder: comments state per post
+  const [commentsByPost, setCommentsByPost] = useState<{ [key: number]: any[] }>({});
+  const [loadingComments, setLoadingComments] = useState<{ [key: number]: boolean }>({});
+
+  // GraphQL query for fetching comments by post
+  const POST_COMMENTS_QUERY = gql`
+    query PostComments($postId: Int!) {
+      postComments(postId: $postId) {
+        id
+        userId
+        userFirstName
+        userLastName
+        userRole
+        comment
+        status
+        addedAt
+        commentedAt
+        replies {
+          id
+          userId
+          userFirstName
+          userLastName
+          userRole
+          comment
+          status
+          addedAt
+          commentedAt
+          likeCount
+        }
+        likeCount
+      }
+    }
+  `;
+
+  // Fetch comments for a post using Apollo Client
+  const fetchComments = async (postId: number) => {
+    setLoadingComments(prev => ({ ...prev, [postId]: true }));
+    try {
+      const result = await apolloClient.query({
+        query: POST_COMMENTS_QUERY,
+        variables: { postId },
+        fetchPolicy: 'network-only',
+      });
+      setCommentsByPost(prev => ({ ...prev, [postId]: result.data.postComments || [] }));
+    } catch (err) {
+      setCommentsByPost(prev => ({ ...prev, [postId]: [] }));
+    }
+    setLoadingComments(prev => ({ ...prev, [postId]: false }));
+  };
   const { data, loading, error } = useQuery(SEARCH_POSTS_QUERY, {
     variables: { page: 1, limit: 10 },
     fetchPolicy: 'network-only',
@@ -263,6 +352,96 @@ const Home = () => {
                   </Box>
                   <Typography sx={{ color: '#2563EB', fontWeight: 700, fontSize: 17, mb: 1 }}>{post.title}</Typography>
                   <Typography sx={{ color: '#374151', fontSize: 16, mb: 2 }}>{post.content}</Typography>
+                  {/* Comments Button triggers modal */}
+                  {/* Removed upper comment button */}
+      {/* Comments Modal Layover */}
+      {commentsModalOpen.open && (
+        (() => {
+          const post = data?.searchPosts?.find((p: any) => p.id === commentsModalOpen.postId);
+          return (
+            <Box
+              sx={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                width: '100vw',
+                height: '100vh',
+                bgcolor: 'rgba(37,99,235,0.10)',
+                zIndex: 9999,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              onClick={() => setCommentsModalOpen({ open: false, postId: null })}
+            >
+              <Box
+                sx={{
+                  bgcolor: '#fff',
+                  borderRadius: 4,
+                  p: 5,
+                  minWidth: 420,
+                  maxWidth: 600,
+                  maxHeight: '80vh',
+                  overflowY: 'auto',
+                  boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.18)',
+                  textAlign: 'left',
+                }}
+                onClick={e => e.stopPropagation()}
+              >
+                {/* Post Details */}
+                {post && (
+                  <Box sx={{ mb: 3 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                      <Avatar src={post.profilePhoto || `https://randomuser.me/api/portraits/lego/${post.userId % 10}.jpg`} sx={{ mr: 2, width: 44, height: 44, boxShadow: 1 }} />
+                      <Box>
+                        <Typography sx={{ fontWeight: 700, fontSize: 18, color: '#2563EB', ...interFont }}>
+                          {post.userFirstName} {post.userLastName}
+                        </Typography>
+                        <Typography sx={{ fontSize: 13, color: '#6B7280', fontWeight: 500 }}>
+                          {post.userRole}
+                        </Typography>
+                        <Typography sx={{ fontSize: 13, color: '#6B7280' }}>
+                          {new Date(post.createdAt).toLocaleString()}
+                        </Typography>
+                      </Box>
+                    </Box>
+                    <Typography sx={{ color: '#2563EB', fontWeight: 700, fontSize: 17, mb: 1 }}>{post.title}</Typography>
+                    <Typography sx={{ color: '#374151', fontSize: 16, mb: 2 }}>{post.content}</Typography>
+                    <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', mb: 1 }}>
+                      <Typography sx={{ fontSize: 14, color: '#6B7280', bgcolor: 'rgba(37,99,235,0.06)', px: 1.5, py: 0.5, borderRadius: 2 }}>Location: {post.location}</Typography>
+                      <Typography sx={{ fontSize: 14, color: '#6B7280', bgcolor: 'rgba(99,102,241,0.06)', px: 1.5, py: 0.5, borderRadius: 2 }}>Type: {post.propertyType}</Typography>
+                      <Typography sx={{ fontSize: 14, color: '#6B7280', bgcolor: 'rgba(239,68,68,0.06)', px: 1.5, py: 0.5, borderRadius: 2 }}>Price: ₹{post.price}</Typography>
+                    </Box>
+                  </Box>
+                )}
+                <Typography variant="h6" sx={{ mb: 2, fontWeight: 700, color: '#2563EB' }}>Comments</Typography>
+                {loadingComments[commentsModalOpen.postId!] ? (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
+                ) : commentsByPost[commentsModalOpen.postId!] && commentsByPost[commentsModalOpen.postId!].length > 0 ? (
+                  <Stack spacing={2}>
+                    {commentsByPost[commentsModalOpen.postId!].map((comment: any) => (
+                      <Box key={comment.id} sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, bgcolor: '#F6F8FB', borderRadius: 3, p: 1.2, boxShadow: 1 }}>
+                        <Avatar src={comment.profilePhoto || `https://randomuser.me/api/portraits/lego/${comment.userId % 10}.jpg`} sx={{ width: 32, height: 32, mr: 1 }} />
+                        <Box>
+                          <Typography sx={{ fontWeight: 600, fontSize: 15, color: '#2563EB' }}>{comment.userFirstName} {comment.userLastName}</Typography>
+                          <Typography sx={{ fontSize: 12, color: '#6366F1', fontWeight: 500 }}>{comment.userRole}</Typography>
+                          <Typography sx={{ fontSize: 14, color: '#374151', mt: 0.5 }}>{comment.comment}</Typography>
+                          <Typography sx={{ fontSize: 12, color: '#6B7280', mt: 0.5 }}>{new Date(comment.commentedAt).toLocaleString()}</Typography>
+                        </Box>
+                      </Box>
+                    ))}
+                  </Stack>
+                ) : (
+                  <Typography sx={{ fontSize: 13, color: '#6B7280', mb: 1 }}>No comments yet.</Typography>
+                )}
+                <Button variant="contained" sx={{ mt: 3, bgcolor: '#2563EB', fontWeight: 600, '&:hover': { bgcolor: '#1D4ED8' } }} onClick={() => setCommentsModalOpen({ open: false, postId: null })}>
+                  Close
+                </Button>
+              </Box>
+            </Box>
+          );
+        })()
+      )}
                   <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', mb: 1 }}>
                     <Typography sx={{ fontSize: 14, color: '#6B7280', bgcolor: 'rgba(37,99,235,0.06)', px: 1.5, py: 0.5, borderRadius: 2 }}>Location: {post.location}</Typography>
                     <Typography sx={{ fontSize: 14, color: '#6B7280', bgcolor: 'rgba(99,102,241,0.06)', px: 1.5, py: 0.5, borderRadius: 2 }}>Type: {post.propertyType}</Typography>
@@ -279,8 +458,26 @@ const Home = () => {
                   )}
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 2 }}>
                     <Box sx={{ display: 'flex', gap: 2 }}>
-                      <Button startIcon={<FavoriteBorderIcon />} sx={{ color: '#374151', textTransform: 'none', fontWeight: 600, fontSize: 15, transition: 'color 0.2s', '&:hover': { color: '#2563EB' } }}>{post.likeCount || 0}</Button>
-                      <Button startIcon={<ChatBubbleOutlineIcon />} sx={{ color: '#374151', textTransform: 'none', fontWeight: 600, fontSize: 15, transition: 'color 0.2s', '&:hover': { color: '#2563EB' } }}>{post.commentCount || 0}</Button>
+                      <Button
+                        startIcon={<FavoriteBorderIcon />}
+                        sx={{ color: '#374151', textTransform: 'none', fontWeight: 600, fontSize: 15, transition: 'color 0.2s', '&:hover': { color: '#2563EB' } }}
+                        onClick={() => handleLikePost(post.id)}
+                        disabled={likingPost}
+                      >
+                        {likeCounts[post.id] !== undefined ? likeCounts[post.id] : post.likeCount || 0}
+                      </Button>
+                      <Button
+                        startIcon={<ChatBubbleOutlineIcon />}
+                        sx={{ color: '#374151', textTransform: 'none', fontWeight: 600, fontSize: 15, transition: 'color 0.2s', '&:hover': { color: '#2563EB' } }}
+                        onClick={async () => {
+                          if (commentsByPost[post.id] === undefined) {
+                            await fetchComments(post.id);
+                          }
+                          setCommentsModalOpen({ open: true, postId: post.id });
+                        }}
+                      >
+                        {post.commentCount || 0}
+                      </Button>
                     </Box>
                     <Button startIcon={<ShareIcon />} sx={{ color: '#374151', textTransform: 'none', fontWeight: 600, fontSize: 15, transition: 'color 0.2s', '&:hover': { color: '#2563EB' } }}>Share</Button>
                   </Box>
