@@ -6,6 +6,7 @@ import Register from './components/Register';
 import Home from './components/Home';
 import Landing from './components/Landing';
 import ForgotPasswordPage from './components/ForgotPasswordPage';
+import Profile from './components/Profile';
 import client from './apollo-client';
 
 const theme = createTheme({
@@ -41,6 +42,7 @@ function App() {
             <Route path="/register" element={<Register />} />
             <Route path="/home" element={<Home />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/profile" element={<Profile />} />
           </Routes>
         </Router>
       </ThemeProvider>

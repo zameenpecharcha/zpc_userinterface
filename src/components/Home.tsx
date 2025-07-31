@@ -18,6 +18,7 @@ import {
   CircularProgress,
 } from '@mui/material';
 import { useApolloClient } from '@apollo/client';
+import { useNavigate } from 'react-router-dom';
 import HomeIcon from '@mui/icons-material/Home';
 import PeopleIcon from '@mui/icons-material/People';
 import GroupIcon from '@mui/icons-material/Group';
@@ -102,6 +103,7 @@ const trendingTopics = [
 ];
 
 const Home = () => {
+  const navigate = useNavigate();
   // Example: Replace with actual logged-in user ID
   const userId = 3;
 
@@ -190,6 +192,11 @@ const Home = () => {
     setAnchorEl(null);
   };
 
+  const handleProfileClick = () => {
+    setAnchorEl(null);
+    navigate('/profile');
+  };
+
   return (
     <Box sx={{ bgcolor: '#F6F8FB', minHeight: '100vh', ...interFont }}>
       {/* Header */}
@@ -225,7 +232,7 @@ const Home = () => {
               <Avatar src="" sx={{ width: 36, height: 36, boxShadow: 1 }} />
             </IconButton>
             <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleClose}>
-              <MenuItem>Profile</MenuItem>
+              <MenuItem onClick={handleProfileClick}>Profile</MenuItem>
               <MenuItem>Settings</MenuItem>
               <MenuItem>Logout</MenuItem>
             </Menu>
