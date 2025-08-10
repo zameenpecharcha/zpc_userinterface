@@ -9,7 +9,31 @@ import {
   Button,
   Link,
   Alert,
+  IconButton,
 } from '@mui/material';
+// import {
+//   ArrowBack,
+//   LocationOn,
+//   Build,
+//   Person,
+//   Home,
+//   Gavel,
+//   BarChart,
+//   AccountCircle,
+// } from '@mui/icons-material';
+import {
+  ArrowBack,
+  LocationOn,
+  Engineering,         // instead of Build
+  BusinessCenter,      // instead of Person
+  Home,
+  Gavel,
+  MapOutlined,         // instead of BarChart
+  AccountCircle,
+} from '@mui/icons-material';
+import ApartmentIcon from '@mui/icons-material/Apartment';
+import BalanceIcon from '@mui/icons-material/Balance';
+
 
 const CREATE_USER = gql`
   mutation CreateUser(
@@ -55,8 +79,18 @@ const CREATE_USER = gql`
   }
 `;
 
+const professionOptions = [
+  { id: 'builder', label: 'Builder', icon: ApartmentIcon, color: '#6366F1' },
+  { id: 'agent', label: 'Agent', icon: BusinessCenter, color: '#8B5CF6' },
+  { id: 'buyer_renter', label: 'Looking for buy/rent', icon: Home, color: '#EC4899' },
+  { id: 'litigation_lawyer', label: 'Litigation Lawyer', icon: BalanceIcon, color: '#8B5CF6' },
+  { id: 'land_surveyor', label: 'Land Surveyor', icon: MapOutlined, color: '#8B5CF6' },
+  { id: 'general_user', label: 'General User', icon: AccountCircle, color: '#8B5CF6' },
+];
+
 const Register = () => {
   const navigate = useNavigate();
+  const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -69,12 +103,12 @@ const Register = () => {
     longitude: '',
     bio: '',
   });
+  const [selectedProfession, setSelectedProfession] = useState<string>('');
   const [error, setError] = useState('');
 
   const [createUser] = useMutation(CREATE_USER, {
     onCompleted: (data) => {
       if (data && data.createUser) {
-        // Optionally store user info in localStorage
         localStorage.setItem('userInfo', JSON.stringify(data.createUser));
         navigate('/home');
       } else {
@@ -85,6 +119,27 @@ const Register = () => {
       setError(error.message);
     },
   });
+
+  const handleProfessionSelect = (professionId: string) => {
+    setSelectedProfession(professionId);
+  };
+
+  const handleContinueFromStep1 = () => {
+    if (!selectedProfession) {
+      setError('Please select a profession');
+      return;
+    }
+    if (!formData.address.trim()) {
+      setError('Please enter your location');
+      return;
+    }
+    setError('');
+    setFormData(prev => ({
+      ...prev,
+      role: selectedProfession
+    }));
+    setCurrentStep(2);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -123,16 +178,156 @@ const Register = () => {
     });
   };
 
+  // Step 1: Profession and Location Selection
+  if (currentStep === 1) {
+    return (
+      <Container component="main" maxWidth="sm" disableGutters>
+        <Box
+          sx={{
+            minHeight: '100vh',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            px: 2,
+            pt: 2,
+            pb: 8,
+          }}
+        >
+          <IconButton
+            onClick={() => navigate('/')}
+            sx={{ alignSelf: 'flex-start' }}
+          >
+            <ArrowBack />
+          </IconButton>
+
+          <Typography
+            variant="h5"
+            sx={{ fontWeight: 600, mt: 4, mb: 1, textAlign: 'center' }}
+          >
+            Select your profession
+          </Typography>
+          <Typography
+            variant="subtitle2"
+            sx={{ color: '#6B7280', mb: 4, textAlign: 'center' }}
+          >
+            Choose one or more options that describe your role
+          </Typography>
+
+          {error && (
+            <Alert severity="error" sx={{ width: '100%', mb: 2 }}>
+              {error}
+            </Alert>
+          )}
+
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+              gap: 2,
+              width: '100%',
+              maxWidth: 500,
+              mb: 4,
+            }}
+          >
+            {professionOptions.map((profession) => {
+              const IconComponent = profession.icon;
+              const isSelected = selectedProfession === profession.id;
+
+              return (
+                <Box
+                  key={profession.id}
+                  onClick={() => handleProfessionSelect(profession.id)}
+                  sx={{
+                    border: isSelected ? `2px solid ${profession.color}` : '1px solid #E5E7EB',
+                    borderRadius: 2,
+                    px: 2,
+                    py: 1.5,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 1.5,
+                    backgroundColor: isSelected ? '#F5F3FF' : '#fff',
+                    transition: '0.2s',
+                    '&:hover': {
+                      backgroundColor: '#F9FAFB',
+                    },
+                  }}
+                >
+                  <IconComponent sx={{ fontSize: 20, color: profession.color }} />
+                  <Typography
+                    variant="body1"
+                    sx={{ color: isSelected ? profession.color : '#374151', fontWeight: 500 }}
+                  >
+                    {profession.label}
+                  </Typography>
+                </Box>
+              );
+            })}
+          </Box>
+
+          <TextField
+            fullWidth
+            placeholder="Enter your location"
+            name="address"
+            value={formData.address}
+            onChange={handleChange}
+            InputProps={{
+              startAdornment: <LocationOn sx={{ color: '#9CA3AF', mr: 1 }} />,
+              sx: {
+                bgcolor: '#F9FAFB',
+                '&:hover': { bgcolor: '#F3F4F6' },
+                borderRadius: 2,
+                px: 1,
+                height: 56,
+              },
+            }}
+            sx={{ width: '100%', maxWidth: 500, mb: 6 }}
+          />
+
+          <Box sx={{ position: 'fixed', bottom: 16, left: 0, right: 0, px: 2 }}>
+            <Button
+              fullWidth
+              variant="contained"
+              onClick={handleContinueFromStep1}
+              sx={{
+                bgcolor: '#8B5CF6',
+                fontSize: '1rem',
+                fontWeight: 600,
+                borderRadius: 2,
+                py: 1.5,
+                '&:hover': {
+                  bgcolor: '#7C3AED',
+                },
+              }}
+            >
+              Continue
+            </Button>
+          </Box>
+        </Box>
+      </Container>
+    );
+  }
+
+
+  // Step 2: Personal Details Form
   return (
     <Container component="main" maxWidth="sm">
       <Box
         sx={{
-          marginTop: 8,
+          marginTop: 4,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
         }}
       >
+        <IconButton
+          onClick={() => setCurrentStep(1)}
+          sx={{ alignSelf: 'flex-start', mb: 2 }}
+        >
+          <ArrowBack />
+        </IconButton>
+
         <Typography
           component="h1"
           variant="h3"
@@ -146,15 +341,18 @@ const Register = () => {
         >
           A single platform for all your real needs
         </Typography>
+
         <Box sx={{ width: '100%', maxWidth: 400 }}>
           <Typography variant="h4" component="h2" sx={{ mb: 4 }}>
-            Create your account
+            Complete your profile
           </Typography>
+
           {error && (
             <Alert severity="error" sx={{ width: '100%', mb: 2 }}>
               {error}
             </Alert>
           )}
+
           <Box component="form" onSubmit={handleSubmit} sx={{ width: '100%' }}>
             <Typography variant="subtitle1" sx={{ mb: 2 }}>
               First Name
@@ -176,6 +374,7 @@ const Register = () => {
                 },
               }}
             />
+
             <Typography variant="subtitle1" sx={{ mb: 2 }}>
               Last Name
             </Typography>
@@ -196,6 +395,7 @@ const Register = () => {
                 },
               }}
             />
+
             <Typography variant="subtitle1" sx={{ mb: 2 }}>
               Email Address
             </Typography>
@@ -217,6 +417,7 @@ const Register = () => {
                 },
               }}
             />
+
             <Typography variant="subtitle1" sx={{ mb: 2 }}>
               Phone Number
             </Typography>
@@ -238,6 +439,7 @@ const Register = () => {
                 },
               }}
             />
+
             <Typography variant="subtitle1" sx={{ mb: 2 }}>
               Password
             </Typography>
@@ -259,46 +461,7 @@ const Register = () => {
                 },
               }}
             />
-            <Typography variant="subtitle1" sx={{ mb: 2 }}>
-              Role
-            </Typography>
-            <TextField
-              required
-              fullWidth
-              name="role"
-              placeholder="Enter your role"
-              value={formData.role}
-              onChange={handleChange}
-              sx={{ mb: 3 }}
-              InputProps={{
-                sx: {
-                  bgcolor: '#F9FAFB',
-                  '&:hover': {
-                    bgcolor: '#F3F4F6',
-                  },
-                },
-              }}
-            />
-            <Typography variant="subtitle1" sx={{ mb: 2 }}>
-              Address
-            </Typography>
-            <TextField
-              required
-              fullWidth
-              name="address"
-              placeholder="Enter your address"
-              value={formData.address}
-              onChange={handleChange}
-              sx={{ mb: 3 }}
-              InputProps={{
-                sx: {
-                  bgcolor: '#F9FAFB',
-                  '&:hover': {
-                    bgcolor: '#F3F4F6',
-                  },
-                },
-              }}
-            />
+
             <Typography variant="subtitle1" sx={{ mb: 2 }}>
               Latitude
             </Typography>
@@ -319,6 +482,7 @@ const Register = () => {
                 },
               }}
             />
+
             <Typography variant="subtitle1" sx={{ mb: 2 }}>
               Longitude
             </Typography>
@@ -339,6 +503,7 @@ const Register = () => {
                 },
               }}
             />
+
             <Typography variant="subtitle1" sx={{ mb: 2 }}>
               Bio
             </Typography>
@@ -349,6 +514,8 @@ const Register = () => {
               placeholder="Enter your bio"
               value={formData.bio}
               onChange={handleChange}
+              multiline
+              rows={3}
               sx={{ mb: 3 }}
               InputProps={{
                 sx: {
@@ -359,6 +526,7 @@ const Register = () => {
                 },
               }}
             />
+
             <Button
               type="submit"
               fullWidth
@@ -374,6 +542,7 @@ const Register = () => {
             >
               Register
             </Button>
+
             <Box sx={{ textAlign: 'center' }}>
               <Typography variant="body1" display="inline">
                 Already have an account?{' '}
@@ -394,4 +563,4 @@ const Register = () => {
   );
 };
 
-export default Register; 
+export default Register;
