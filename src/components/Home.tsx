@@ -322,7 +322,7 @@ const CommentsModal = memo(({
     }
   }, [newComment, post, onAddComment]);
 
-git config--global user.name "Your Name"  if (!open || !post) {
+  if (!open || !post) {
     console.log('CommentsModal not rendering:', { open, post: !!post });
     return null;
   }
