@@ -1,13 +1,15 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ApolloProvider } from '@apollo/client';
 import { CssBaseline, ThemeProvider, createTheme } from '@mui/material';
 import Register from './components/Register';
 import Home from './components/Home';
 import Landing from './components/Landing';
-import ForgotPasswordPage from './components/ForgotPasswordPage';
+import ForgotPassword from './components/ForgotPassword';
+import ResetPassword from './components/ResetPassword';
 import Profile from './components/Profile';
 import client from './apollo-client';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 
 const theme = createTheme({
   palette: {
@@ -31,20 +33,107 @@ const theme = createTheme({
   },
 });
 
+interface ProtectedRouteProps {
+  children: React.ReactNode;
+}
+
+const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
+  const { isAuthenticated } = useAuth();
+  const location = useLocation();
+
+  if (!isAuthenticated) {
+    return <Navigate to="/" state={{ from: location }} replace />;
+  }
+
+  return <>{children}</>;
+};
+
+interface PublicRouteProps {
+  children: React.ReactNode;
+}
+
+const PublicRoute: React.FC<PublicRouteProps> = ({ children }) => {
+  const { isAuthenticated } = useAuth();
+  const location = useLocation();
+
+  if (isAuthenticated) {
+    return <Navigate to="/home" state={{ from: location }} replace />;
+  }
+
+  return <>{children}</>;
+};
+
+function AppRoutes() {
+  return (
+    <Routes>
+      {/* Public Routes */}
+      <Route
+        path="/"
+        element={
+          <PublicRoute>
+            <Landing />
+          </PublicRoute>
+        }
+      />
+      <Route
+        path="/register"
+        element={
+          <PublicRoute>
+            <Register />
+          </PublicRoute>
+        }
+      />
+      <Route
+        path="/forgot-password"
+        element={
+          <PublicRoute>
+            <ForgotPassword />
+          </PublicRoute>
+        }
+      />
+      <Route
+        path="/reset-password"
+        element={
+          <PublicRoute>
+            <ResetPassword />
+          </PublicRoute>
+        }
+      />
+
+      {/* Protected Routes */}
+      <Route
+        path="/home"
+        element={
+          <ProtectedRoute>
+            <Home />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute>
+            <Profile />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Catch all route */}
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}
+
 function App() {
   return (
     <ApolloProvider client={client}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <Router>
-          <Routes>
-            <Route path="/" element={<Landing />} />
-            <Route path="/register" element={<Register />} />
-            <Route path="/home" element={<Home />} />
-            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-            <Route path="/profile" element={<Profile />} />
-          </Routes>
-        </Router>
+        <AuthProvider>
+          <Router>
+            <AppRoutes />
+          </Router>
+        </AuthProvider>
       </ThemeProvider>
     </ApolloProvider>
   );

@@ -1,0 +1,1070 @@
+{
+	"info": {
+		"_postman_id": "981b93d4-bbf9-45c8-85d9-b15bd274b4b1",
+		"name": "zpc_collection",
+		"description": "training",
+		"schema": "https://schema.getpostman.com/json/collection/v2.0.0/collection.json",
+		"_exporter_id": "11069795"
+	},
+	"item": [
+		{
+			"name": "user",
+			"item": [
+				{
+					"name": "getuser",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiI3ZDcyY2JlYy1mZjBiLTRlMjUtODcwMC02YTkyMjRiYmMwMzkiLCJpYXQiOjE3NTUwOTg2MTksIm5iZiI6MTc1NTA5ODYxOSwiZXhwIjoxNzU1MTA5NDE5LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.X_NGzKDPIi6aSIjoG6oi371vsfMc86cX5NCblHC_w40JNBn4tQ7CSmOK0Ynn5ptzX5zhq4BOjYn1BHJrQpIb7fl4pX_zPTg8jT4ehG3lH2MYOtH_5WWQRay2c9kXJDGT_xbPmfw_hIVRZgXZKcNetRql--z2RjBQZCFOTzXvQ1m24zTpX2euGeiIcoDNTZhiToRfy5N93ibCRjOsTwbYJl4PyZI22PFJTwHasVdT7gLBXo3m7R_La1dj_iyN1RRoWBc4Ip9RB5o5PwdpxpNXiQjF7FkJQcKNDu4oRyJ9e9cppl01QnW0PEBYTZxRMhZJNWBTAbLEPLfsN6jrMEnFVg",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "query GetUser {\r\n  user(id: 4) {\r\n    id\r\n    firstName\r\n    lastName\r\n    email\r\n    phone\r\n    profilePhoto\r\n    role\r\n    address\r\n    latitude\r\n    longitude\r\n    bio\r\n    isactive\r\n    emailVerified\r\n    phoneVerified\r\n    createdAt\r\n    ratings {\r\n      id\r\n      ratedUserId\r\n      ratedByUserId\r\n      ratingValue\r\n      review\r\n      ratingType\r\n      createdAt\r\n      updatedAt\r\n    }\r\n    followersCount\r\n    followingCount\r\n  }\r\n}",
+								"variables": ""
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "getuserratings",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiI3ZDcyY2JlYy1mZjBiLTRlMjUtODcwMC02YTkyMjRiYmMwMzkiLCJpYXQiOjE3NTUwOTg2MTksIm5iZiI6MTc1NTA5ODYxOSwiZXhwIjoxNzU1MTA5NDE5LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.X_NGzKDPIi6aSIjoG6oi371vsfMc86cX5NCblHC_w40JNBn4tQ7CSmOK0Ynn5ptzX5zhq4BOjYn1BHJrQpIb7fl4pX_zPTg8jT4ehG3lH2MYOtH_5WWQRay2c9kXJDGT_xbPmfw_hIVRZgXZKcNetRql--z2RjBQZCFOTzXvQ1m24zTpX2euGeiIcoDNTZhiToRfy5N93ibCRjOsTwbYJl4PyZI22PFJTwHasVdT7gLBXo3m7R_La1dj_iyN1RRoWBc4Ip9RB5o5PwdpxpNXiQjF7FkJQcKNDu4oRyJ9e9cppl01QnW0PEBYTZxRMhZJNWBTAbLEPLfsN6jrMEnFVg",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "query GetUserRatings {\r\n  userRatings(userId: 1) {\r\n    id\r\n    ratedUserId\r\n    ratedByUserId\r\n    ratingValue\r\n    review\r\n    ratingType\r\n    createdAt\r\n    updatedAt\r\n  }\r\n}",
+								"variables": ""
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "createuserrating",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiI3ZDcyY2JlYy1mZjBiLTRlMjUtODcwMC02YTkyMjRiYmMwMzkiLCJpYXQiOjE3NTUwOTg2MTksIm5iZiI6MTc1NTA5ODYxOSwiZXhwIjoxNzU1MTA5NDE5LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.X_NGzKDPIi6aSIjoG6oi371vsfMc86cX5NCblHC_w40JNBn4tQ7CSmOK0Ynn5ptzX5zhq4BOjYn1BHJrQpIb7fl4pX_zPTg8jT4ehG3lH2MYOtH_5WWQRay2c9kXJDGT_xbPmfw_hIVRZgXZKcNetRql--z2RjBQZCFOTzXvQ1m24zTpX2euGeiIcoDNTZhiToRfy5N93ibCRjOsTwbYJl4PyZI22PFJTwHasVdT7gLBXo3m7R_La1dj_iyN1RRoWBc4Ip9RB5o5PwdpxpNXiQjF7FkJQcKNDu4oRyJ9e9cppl01QnW0PEBYTZxRMhZJNWBTAbLEPLfsN6jrMEnFVg",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation CreateUserRating {\r\n  createUserRating(\r\n    ratedUserId: 1\r\n    ratedByUserId: 4\r\n    ratingValue: 3\r\n    review: \"Excellent service!\"\r\n    ratingType: \"PROFESSIONAL\"\r\n  ) {\r\n    id\r\n    ratedUserId\r\n    ratedByUserId\r\n    ratingValue\r\n    review\r\n    ratingType\r\n    createdAt\r\n    updatedAt\r\n  }\r\n}",
+								"variables": ""
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "getuserfollowers",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0IiwiZW1haWwiOiJyYW05MTUxMUBnbWFpbC5jb20iLCJyb2xlIjoidXNlciIsInNlc3Npb25faWQiOiI0MjlmZDMxMy1lYTBmLTQzMTktYmVmOC0xZDE0YzBhYjI0OTYiLCJpYXQiOjE3NTQ4MDA5MjEsIm5iZiI6MTc1NDgwMDkyMSwiZXhwIjoxNzU0ODExNzIxLCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.OOvcAtQxcnEq4HfB09tG_cwtDowatH7NbNyVkGhNIJvNeyl6hDk90usVBXB4OIxvnH_X7OXtdKD_h6zqro2iE68R0oFaRpmM9glwqIrMorhJJLDW1kjI5qxJw_lEOjaQ4et-yaQcxsnfjwRuinTU2BpALZ2lbduwByd7H8D8f2IhjPM50VCmQgw4-L49ftzL_aii5qVvF0UmWHT9FUmLC5iEIf9UI_u1LAA6INZcG4DdPFtn6aqaaSGcXgXT2wBbu2AHFq9x9Nqy5jto53mH7444IltBa5ulizEbCChkLzM3LX3c-pYPpT4M_Ib5tp6tEDs_b7AEt9ooY_NXNhbcHg",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "query GetUserFollowers {\r\n  userFollowers(userId: 4) {\r\n    id\r\n    userId\r\n    followingId\r\n    status\r\n    followedAt\r\n  }\r\n}",
+								"variables": ""
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "createuser",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation CreateUser {\r\n  createUser(\r\n    firstName: \"siva\"\r\n    lastName: \"swaroop\"\r\n    email: \"ram89787511@gmail.com\"  # Fixed email format\r\n    phone: \"1234111\"  # Changed phone number to be unique\r\n    password: \"123451\"\r\n    role: \"builder\"\r\n    address: \"123 Main St\"\r\n    bio: \"Software Developer\"\r\n  ) {\r\n    id\r\n    firstName\r\n    lastName\r\n    email\r\n    phone\r\n    profilePhoto\r\n    role\r\n    address\r\n    latitude\r\n    longitude\r\n    bio\r\n    isactive\r\n    emailVerified\r\n    phoneVerified\r\n    createdAt\r\n  }\r\n}",
+								"variables": ""
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "getusrefollowing",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0IiwiZW1haWwiOiJyYW05MTUxMUBnbWFpbC5jb20iLCJyb2xlIjoidXNlciIsInNlc3Npb25faWQiOiI0MjlmZDMxMy1lYTBmLTQzMTktYmVmOC0xZDE0YzBhYjI0OTYiLCJpYXQiOjE3NTQ4MDA5MjEsIm5iZiI6MTc1NDgwMDkyMSwiZXhwIjoxNzU0ODExNzIxLCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.OOvcAtQxcnEq4HfB09tG_cwtDowatH7NbNyVkGhNIJvNeyl6hDk90usVBXB4OIxvnH_X7OXtdKD_h6zqro2iE68R0oFaRpmM9glwqIrMorhJJLDW1kjI5qxJw_lEOjaQ4et-yaQcxsnfjwRuinTU2BpALZ2lbduwByd7H8D8f2IhjPM50VCmQgw4-L49ftzL_aii5qVvF0UmWHT9FUmLC5iEIf9UI_u1LAA6INZcG4DdPFtn6aqaaSGcXgXT2wBbu2AHFq9x9Nqy5jto53mH7444IltBa5ulizEbCChkLzM3LX3c-pYPpT4M_Ib5tp6tEDs_b7AEt9ooY_NXNhbcHg",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "query GetUserFollowing {\r\n  userFollowing(userId: 1) {\r\n    id\r\n    userId\r\n    followingId\r\n    status\r\n    followedAt\r\n  }\r\n}",
+								"variables": ""
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "followuser",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiI3ZDcyY2JlYy1mZjBiLTRlMjUtODcwMC02YTkyMjRiYmMwMzkiLCJpYXQiOjE3NTUwOTg2MTksIm5iZiI6MTc1NTA5ODYxOSwiZXhwIjoxNzU1MTA5NDE5LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.X_NGzKDPIi6aSIjoG6oi371vsfMc86cX5NCblHC_w40JNBn4tQ7CSmOK0Ynn5ptzX5zhq4BOjYn1BHJrQpIb7fl4pX_zPTg8jT4ehG3lH2MYOtH_5WWQRay2c9kXJDGT_xbPmfw_hIVRZgXZKcNetRql--z2RjBQZCFOTzXvQ1m24zTpX2euGeiIcoDNTZhiToRfy5N93ibCRjOsTwbYJl4PyZI22PFJTwHasVdT7gLBXo3m7R_La1dj_iyN1RRoWBc4Ip9RB5o5PwdpxpNXiQjF7FkJQcKNDu4oRyJ9e9cppl01QnW0PEBYTZxRMhZJNWBTAbLEPLfsN6jrMEnFVg",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation FollowUser {\r\n  followUser(userId: 1, followingId: 4) {\r\n    id\r\n    followerId\r\n    followingId\r\n    status\r\n    followedAt\r\n  }\r\n}",
+								"variables": ""
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "checkfollowingstatus",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiI3ZDcyY2JlYy1mZjBiLTRlMjUtODcwMC02YTkyMjRiYmMwMzkiLCJpYXQiOjE3NTUwOTg2MTksIm5iZiI6MTc1NTA5ODYxOSwiZXhwIjoxNzU1MTA5NDE5LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.X_NGzKDPIi6aSIjoG6oi371vsfMc86cX5NCblHC_w40JNBn4tQ7CSmOK0Ynn5ptzX5zhq4BOjYn1BHJrQpIb7fl4pX_zPTg8jT4ehG3lH2MYOtH_5WWQRay2c9kXJDGT_xbPmfw_hIVRZgXZKcNetRql--z2RjBQZCFOTzXvQ1m24zTpX2euGeiIcoDNTZhiToRfy5N93ibCRjOsTwbYJl4PyZI22PFJTwHasVdT7gLBXo3m7R_La1dj_iyN1RRoWBc4Ip9RB5o5PwdpxpNXiQjF7FkJQcKNDu4oRyJ9e9cppl01QnW0PEBYTZxRMhZJNWBTAbLEPLfsN6jrMEnFVg",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "query CheckFollowingStatus {\r\n  checkFollowingStatus(userId: 4, followingId: 1) {\r\n    id\r\n    followerId\r\n    followingId\r\n    status\r\n    followedAt\r\n  }\r\n}",
+								"variables": ""
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "updateprofilephoto",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiI3ZDcyY2JlYy1mZjBiLTRlMjUtODcwMC02YTkyMjRiYmMwMzkiLCJpYXQiOjE3NTUwOTg2MTksIm5iZiI6MTc1NTA5ODYxOSwiZXhwIjoxNzU1MTA5NDE5LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.X_NGzKDPIi6aSIjoG6oi371vsfMc86cX5NCblHC_w40JNBn4tQ7CSmOK0Ynn5ptzX5zhq4BOjYn1BHJrQpIb7fl4pX_zPTg8jT4ehG3lH2MYOtH_5WWQRay2c9kXJDGT_xbPmfw_hIVRZgXZKcNetRql--z2RjBQZCFOTzXvQ1m24zTpX2euGeiIcoDNTZhiToRfy5N93ibCRjOsTwbYJl4PyZI22PFJTwHasVdT7gLBXo3m7R_La1dj_iyN1RRoWBc4Ip9RB5o5PwdpxpNXiQjF7FkJQcKNDu4oRyJ9e9cppl01QnW0PEBYTZxRMhZJNWBTAbLEPLfsN6jrMEnFVg",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation UpdateProfilePhoto($userId: Int!, $filePath: String!, $fileName: String, $contentType: String) {\r\n  updateProfilePhoto(userId: $userId, filePath: $filePath, fileName: $fileName, contentType: $contentType) {\r\n    id\r\n    profilePhotoId\r\n    coverPhotoId\r\n  }\r\n}",
+								"variables": "{\r\n  \"userId\": 4,\r\n  \"filePath\": \"C:/Users/ram91/Downloads/photo.jpg\",\r\n  \"fileName\": \"avatar.jpg\",\r\n  \"contentType\": \"image/jpeg\"\r\n}"
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "getuserphotoid",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0IiwiZW1haWwiOiJyYW05MTUxMUBnbWFpbC5jb20iLCJyb2xlIjoidXNlciIsInNlc3Npb25faWQiOiI0MjlmZDMxMy1lYTBmLTQzMTktYmVmOC0xZDE0YzBhYjI0OTYiLCJpYXQiOjE3NTQ4MDA5MjEsIm5iZiI6MTc1NDgwMDkyMSwiZXhwIjoxNzU0ODExNzIxLCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.OOvcAtQxcnEq4HfB09tG_cwtDowatH7NbNyVkGhNIJvNeyl6hDk90usVBXB4OIxvnH_X7OXtdKD_h6zqro2iE68R0oFaRpmM9glwqIrMorhJJLDW1kjI5qxJw_lEOjaQ4et-yaQcxsnfjwRuinTU2BpALZ2lbduwByd7H8D8f2IhjPM50VCmQgw4-L49ftzL_aii5qVvF0UmWHT9FUmLC5iEIf9UI_u1LAA6INZcG4DdPFtn6aqaaSGcXgXT2wBbu2AHFq9x9Nqy5jto53mH7444IltBa5ulizEbCChkLzM3LX3c-pYPpT4M_Ib5tp6tEDs_b7AEt9ooY_NXNhbcHg",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "query UserWithPhotoIds($id: Int!) {\r\nuser(id: $id) {\r\nid\r\nprofilePhotoId\r\ncoverPhotoId\r\n}\r\n}",
+								"variables": "{ \"id\": 4}"
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "getphotos3url",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiI3ZDcyY2JlYy1mZjBiLTRlMjUtODcwMC02YTkyMjRiYmMwMzkiLCJpYXQiOjE3NTUwOTg2MTksIm5iZiI6MTc1NTA5ODYxOSwiZXhwIjoxNzU1MTA5NDE5LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.X_NGzKDPIi6aSIjoG6oi371vsfMc86cX5NCblHC_w40JNBn4tQ7CSmOK0Ynn5ptzX5zhq4BOjYn1BHJrQpIb7fl4pX_zPTg8jT4ehG3lH2MYOtH_5WWQRay2c9kXJDGT_xbPmfw_hIVRZgXZKcNetRql--z2RjBQZCFOTzXvQ1m24zTpX2euGeiIcoDNTZhiToRfy5N93ibCRjOsTwbYJl4PyZI22PFJTwHasVdT7gLBXo3m7R_La1dj_iyN1RRoWBc4Ip9RB5o5PwdpxpNXiQjF7FkJQcKNDu4oRyJ9e9cppl01QnW0PEBYTZxRMhZJNWBTAbLEPLfsN6jrMEnFVg",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "query MediaById($mediaId: Int!) {\r\nmedia(mediaId: $mediaId) {\r\nid\r\nmediaUrl\r\ncaption\r\nuploadedAt\r\n}\r\n}",
+								"variables": "{ \"mediaId\": 2 }"
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "uploadcoverphoto",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiI3ZDcyY2JlYy1mZjBiLTRlMjUtODcwMC02YTkyMjRiYmMwMzkiLCJpYXQiOjE3NTUwOTg2MTksIm5iZiI6MTc1NTA5ODYxOSwiZXhwIjoxNzU1MTA5NDE5LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.X_NGzKDPIi6aSIjoG6oi371vsfMc86cX5NCblHC_w40JNBn4tQ7CSmOK0Ynn5ptzX5zhq4BOjYn1BHJrQpIb7fl4pX_zPTg8jT4ehG3lH2MYOtH_5WWQRay2c9kXJDGT_xbPmfw_hIVRZgXZKcNetRql--z2RjBQZCFOTzXvQ1m24zTpX2euGeiIcoDNTZhiToRfy5N93ibCRjOsTwbYJl4PyZI22PFJTwHasVdT7gLBXo3m7R_La1dj_iyN1RRoWBc4Ip9RB5o5PwdpxpNXiQjF7FkJQcKNDu4oRyJ9e9cppl01QnW0PEBYTZxRMhZJNWBTAbLEPLfsN6jrMEnFVg",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation updateCoverPhoto($userId: Int!, $filePath: String!, $fileName: String, $contentType: String) {\r\n  updateCoverPhoto(userId: $userId, filePath: $filePath, fileName: $fileName, contentType: $contentType) {\r\n    id\r\n    profilePhotoId\r\n    coverPhotoId\r\n  }\r\n}",
+								"variables": "{\r\n  \"userId\": 4,\r\n  \"filePath\": \"C:/Users/ram91/Downloads/photo.jpg\",\r\n  \"fileName\": \"avatar.jpg\",\r\n  \"contentType\": \"image/jpeg\"\r\n}"
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "updateuserlocation",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiI3ZDcyY2JlYy1mZjBiLTRlMjUtODcwMC02YTkyMjRiYmMwMzkiLCJpYXQiOjE3NTUwOTg2MTksIm5iZiI6MTc1NTA5ODYxOSwiZXhwIjoxNzU1MTA5NDE5LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.X_NGzKDPIi6aSIjoG6oi371vsfMc86cX5NCblHC_w40JNBn4tQ7CSmOK0Ynn5ptzX5zhq4BOjYn1BHJrQpIb7fl4pX_zPTg8jT4ehG3lH2MYOtH_5WWQRay2c9kXJDGT_xbPmfw_hIVRZgXZKcNetRql--z2RjBQZCFOTzXvQ1m24zTpX2euGeiIcoDNTZhiToRfy5N93ibCRjOsTwbYJl4PyZI22PFJTwHasVdT7gLBXo3m7R_La1dj_iyN1RRoWBc4Ip9RB5o5PwdpxpNXiQjF7FkJQcKNDu4oRyJ9e9cppl01QnW0PEBYTZxRMhZJNWBTAbLEPLfsN6jrMEnFVg",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation UpdateUserLocation($userId: Int!, $lat: Float!, $lng: Float!) {\r\n  updateUserLocation(userId: $userId, latitude: $lat, longitude: $lng) {\r\n    id\r\n    latitude\r\n    longitude\r\n  }\r\n}",
+								"variables": "{\"userId\": 4, \r\n\"lat\": 17.41, \r\n\"lng\": 78.4919}"
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "auth",
+			"item": [
+				{
+					"name": "login",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiI3ZDcyY2JlYy1mZjBiLTRlMjUtODcwMC02YTkyMjRiYmMwMzkiLCJpYXQiOjE3NTUwOTg2MTksIm5iZiI6MTc1NTA5ODYxOSwiZXhwIjoxNzU1MTA5NDE5LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.X_NGzKDPIi6aSIjoG6oi371vsfMc86cX5NCblHC_w40JNBn4tQ7CSmOK0Ynn5ptzX5zhq4BOjYn1BHJrQpIb7fl4pX_zPTg8jT4ehG3lH2MYOtH_5WWQRay2c9kXJDGT_xbPmfw_hIVRZgXZKcNetRql--z2RjBQZCFOTzXvQ1m24zTpX2euGeiIcoDNTZhiToRfy5N93ibCRjOsTwbYJl4PyZI22PFJTwHasVdT7gLBXo3m7R_La1dj_iyN1RRoWBc4Ip9RB5o5PwdpxpNXiQjF7FkJQcKNDu4oRyJ9e9cppl01QnW0PEBYTZxRMhZJNWBTAbLEPLfsN6jrMEnFVg",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation Login {\r\n  login(\r\n    email: \"ram9151@gmail.com\"\r\n    password: \"12345\"\r\n  ) {\r\n    success\r\n    token\r\n    refreshToken\r\n    message\r\n    userInfo {\r\n      id\r\n      firstName\r\n      lastName\r\n      email\r\n      phone\r\n      profilePhoto\r\n      role\r\n      address\r\n      latitude\r\n      longitude\r\n      bio\r\n      isactive\r\n      emailVerified\r\n      phoneVerified\r\n      createdAt\r\n    }\r\n  }\r\n}",
+								"variables": ""
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "emailverification",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation SendVerificationOTP {\r\n  sendOtp(\r\n    email: \"ram9151@gmail.com\"\r\n    type: PASSWORD_RESET\r\n  ) {\r\n    success\r\n    message\r\n    channels  # [\"email\"] or [\"email\", \"sms\"] if phone provided\r\n  }\r\n}\r\n",
+								"variables": ""
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "loginotp",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation SendLoginOTP {\r\n  sendOtp(\r\n    email: \"ram9151@gmail.com\"\r\n    type: LOGIN\r\n  ) {\r\n    success\r\n    message\r\n    channels\r\n  }\r\n}\r\n",
+								"variables": ""
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "password_reset_verify",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation VerifyPasswordResetOTP {\r\n  verifyOtp(\r\n    email: \"ram9151@gmail.com\"\r\n    otpCode: \"482712\"\r\n    type: PASSWORD_RESET\r\n  ) {\r\n    success\r\n    message\r\n    userInfo {\r\n      email\r\n      emailVerified\r\n    }\r\n  }\r\n}",
+								"variables": ""
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "reset_password",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation ResetPassword {\r\n  resetPassword(\r\n    email: \"ram9151@gmail.com\"\r\n    otpCode: \"482712\"\r\n    newPassword: \"12345\"\r\n    confirmPassword: \"12345\"\r\n  ) {\r\n    success\r\n    message\r\n    userInfo {\r\n      email\r\n      emailVerified\r\n    }\r\n  }\r\n}",
+								"variables": ""
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "logout",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0IiwiZW1haWwiOiJyYW05MTUxMUBnbWFpbC5jb20iLCJyb2xlIjoidXNlciIsInNlc3Npb25faWQiOiJmOTEyZjQyMy1lZjZmLTQ4YmQtYTBjOC01ZDBiNDg1MmE1ZGUiLCJpYXQiOjE3NTQ4MDcyNTAsIm5iZiI6MTc1NDgwNzI1MCwiZXhwIjoxNzU0ODE4MDUwLCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.or-dMdGpFnW4X5Z3Qm3ff_26PhUO-7Z-1YvKGysSpb9R92Vwr33wud9WGRFMWTz6VR1pzcJLv6PPo76kcBuFt1q9Q-9oE3rEB6gjqn0L1TubzhyyzA4gHb6aMgB9LAQBMX3FxE0FEPUj-RiFTk5QWQp5trGJMyUDRm0Wj2n2xRNCF-aMrqYY4MCv6hw0nPEqeq4FoPn8TAJ3H0kUw0JYegw6DIKyFXw256ui2Zz4v5RNw6XUBxGxVYHeo4CLQyOVP8shmEejzC-XXqfQsKx6btFZnyD6p0ZrbVfFCzKQ5iYJmLCMoLMwwzrnPN8B7FqKofkoNyvcIDgpgvmMCqkwmg",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation Logout($token:String!,$refresh:String){ logout(token:$token, refreshToken:$refresh) { success message } }",
+								"variables": "{\r\n\"token\": \"eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0IiwiZW1haWwiOiJyYW05MTUxMUBnbWFpbC5jb20iLCJyb2xlIjoidXNlciIsInNlc3Npb25faWQiOiJmOTEyZjQyMy1lZjZmLTQ4YmQtYTBjOC01ZDBiNDg1MmE1ZGUiLCJpYXQiOjE3NTQ4MDcyNTAsIm5iZiI6MTc1NDgwNzI1MCwiZXhwIjoxNzU0ODE4MDUwLCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.or-dMdGpFnW4X5Z3Qm3ff_26PhUO-7Z-1YvKGysSpb9R92Vwr33wud9WGRFMWTz6VR1pzcJLv6PPo76kcBuFt1q9Q-9oE3rEB6gjqn0L1TubzhyyzA4gHb6aMgB9LAQBMX3FxE0FEPUj-RiFTk5QWQp5trGJMyUDRm0Wj2n2xRNCF-aMrqYY4MCv6hw0nPEqeq4FoPn8TAJ3H0kUw0JYegw6DIKyFXw256ui2Zz4v5RNw6XUBxGxVYHeo4CLQyOVP8shmEejzC-XXqfQsKx6btFZnyD6p0ZrbVfFCzKQ5iYJmLCMoLMwwzrnPN8B7FqKofkoNyvcIDgpgvmMCqkwmg\",\r\n\"refresh\": \"eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0IiwiZW1haWwiOiJyYW05MTUxMUBnbWFpbC5jb20iLCJqdGkiOiI5MzM0Mzc5Mi1kZDQ3LTRlY2EtYmJlOS0zYTg2MDBhZWYzOGQiLCJpYXQiOjE3NTQ4MDcyNTAsImV4cCI6MTc1NTQxMjA1MCwiaXNzIjoiWlBDIiwiYXVkIjoiZ3JhcGhxbC1hcGkifQ.bl7uJTmBGo3toLk5m-sBPWD6CbTKVn-DTxFlJVBfY6zvdYlBhp9aP7QClYBFdwT48h9bC4Gn3vcNISJ21eQz6qBHT8w2-pR_9TAO6n1wdVbgK8TIyuzymRaobmzQDpM2NPrjT_mkkB6yGCDhHJm0H5fXMfNk_CjIK47EQe27TtAbQVUpg24nI8YGC2QkYS7H32NFap6fRgOwidKDWGdit0My1gga7KLxKvADlc_APr9Hj3M7WMlzIyw3xzGtlVUPZSbO6x1_c8xfHspgH64TEfm_Nc2I_BsiO-7b70T782BuaPED49xLJT_A0CtiJyTx2KCMw23aSkQ7p6YSCRSawg\"\r\n}\r\n"
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "posts",
+			"item": [
+				{
+					"name": "createpost_with_image",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiI1NDBlYzQwNi05YTRiLTRiYWEtYmUyNi03N2E4MmQ3Y2VlZTUiLCJpYXQiOjE3NTUxMDc1MzksIm5iZiI6MTc1NTEwNzUzOSwiZXhwIjoxNzU1MTE4MzM5LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.i1jLh2xe8PBqKwyqZrh1XYjOpJV1jF8Iqb_L4nhBGCqTvgJwWdieGcp6zzHiYMxOsNwGeOJURKJKqouGXAn8xTB-7Azcg8d0XXabY3uEQ--wPBDABe_BOql0WSVU6exopRHnjKeDbJ7wrPOZO7amnmNks_lg0d5UqhpeyZH8aop6wteza7hmnCvr9EWibvkf3mj7xkwt295LEbvgp-S14OKYhIvdCRUeDswbsttM0UB2Xqu7fwNKOQoSID5sA0XvwFUO1-cvBg1PCpwws0FvntalDdA4HzbSHyXaOJg3De5sVQSNrLDaNToh_A0iVCZBELqoz__-gDB_sOE9lWybfA",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation ($userId:Int!,$title:String!,$content:String!,$visibility:String!,$propertyType:String!,$location:String!,$price:Float!,$status:String!,$latitude:Float,$longitude:Float,$media:[PostMediaInput!]) {\r\n  createPost(\r\n    userId:$userId, title:$title, content:$content, visibility:$visibility,\r\n    propertyType:$propertyType, location:$location, price:$price, status:$status,\r\n    latitude:$latitude, longitude:$longitude, media:$media\r\n  ) { success message post { id title location latitude longitude createdAt media { id mediaUrl mediaType mediaOrder } } }\r\n}",
+								"variables": "{\r\n  \"userId\": 4, \"title\": \"My post\", \"content\": \"Hello\",\r\n  \"visibility\": \"public\", \"propertyType\": \"listing\",\r\n  \"location\": \"Noida\", \"price\": 7500000, \"status\": \"active\",\r\n  \"latitude\": 28.614, \"longitude\": 77.362,\r\n  \"media\": [\r\n    { \"filePath\": \"C:/Users/ram91//Downloads/photo2.jpg\", \"fileName\": \"front.jpg\", \"contentType\": \"image/jpeg\", \"mediaOrder\": 1, \"caption\": \"Front\" }\r\n  \r\n  ]\r\n}"
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "createpost_with_no_media",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiI1NDBlYzQwNi05YTRiLTRiYWEtYmUyNi03N2E4MmQ3Y2VlZTUiLCJpYXQiOjE3NTUxMDc1MzksIm5iZiI6MTc1NTEwNzUzOSwiZXhwIjoxNzU1MTE4MzM5LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.i1jLh2xe8PBqKwyqZrh1XYjOpJV1jF8Iqb_L4nhBGCqTvgJwWdieGcp6zzHiYMxOsNwGeOJURKJKqouGXAn8xTB-7Azcg8d0XXabY3uEQ--wPBDABe_BOql0WSVU6exopRHnjKeDbJ7wrPOZO7amnmNks_lg0d5UqhpeyZH8aop6wteza7hmnCvr9EWibvkf3mj7xkwt295LEbvgp-S14OKYhIvdCRUeDswbsttM0UB2Xqu7fwNKOQoSID5sA0XvwFUO1-cvBg1PCpwws0FvntalDdA4HzbSHyXaOJg3De5sVQSNrLDaNToh_A0iVCZBELqoz__-gDB_sOE9lWybfA",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation CreatePost(\r\n  $userId: Int!\r\n  $title: String!\r\n  $content: String!\r\n  $visibility: String!\r\n  $propertyType: String!\r\n  $location: String!\r\n  $price: Float!\r\n  $status: String!\r\n  $latitude: Float\r\n  $longitude: Float\r\n) {\r\n  createPost(\r\n    userId: $userId\r\n    title: $title\r\n    content: $content\r\n    visibility: $visibility\r\n    propertyType: $propertyType\r\n    location: $location\r\n    price: $price\r\n    status: $status\r\n    latitude: $latitude\r\n    longitude: $longitude\r\n  ) {\r\n    success\r\n    message\r\n    post { id title location latitude longitude status createdAt }\r\n  }\r\n}",
+								"variables": "{\r\n  \"userId\": 1,\r\n  \"title\": \"My post\",\r\n  \"content\": \"Hello world\",\r\n  \"visibility\": \"public\",\r\n  \"propertyType\": \"listing\",\r\n  \"location\": \"Noida\",\r\n  \"price\": 7500000,\r\n  \"status\": \"active\",\r\n  \"latitude\": 28.614,\r\n  \"longitude\": 77.362\r\n}"
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "update_post",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiI1NDBlYzQwNi05YTRiLTRiYWEtYmUyNi03N2E4MmQ3Y2VlZTUiLCJpYXQiOjE3NTUxMDc1MzksIm5iZiI6MTc1NTEwNzUzOSwiZXhwIjoxNzU1MTE4MzM5LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.i1jLh2xe8PBqKwyqZrh1XYjOpJV1jF8Iqb_L4nhBGCqTvgJwWdieGcp6zzHiYMxOsNwGeOJURKJKqouGXAn8xTB-7Azcg8d0XXabY3uEQ--wPBDABe_BOql0WSVU6exopRHnjKeDbJ7wrPOZO7amnmNks_lg0d5UqhpeyZH8aop6wteza7hmnCvr9EWibvkf3mj7xkwt295LEbvgp-S14OKYhIvdCRUeDswbsttM0UB2Xqu7fwNKOQoSID5sA0XvwFUO1-cvBg1PCpwws0FvntalDdA4HzbSHyXaOJg3De5sVQSNrLDaNToh_A0iVCZBELqoz__-gDB_sOE9lWybfA",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation UpdatePost {\r\n  updatePost(\r\n    postId: 2\r\n    title: \"chikkadpally\"\r\n    price: 550000.0\r\n    status: \"pending\"\r\n  ) {\r\n    success\r\n    message\r\n    post {\r\n      id\r\n      title\r\n      price\r\n      status\r\n    }\r\n  }\r\n}",
+								"variables": ""
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "delete_post",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiI1NDBlYzQwNi05YTRiLTRiYWEtYmUyNi03N2E4MmQ3Y2VlZTUiLCJpYXQiOjE3NTUxMDc1MzksIm5iZiI6MTc1NTEwNzUzOSwiZXhwIjoxNzU1MTE4MzM5LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.i1jLh2xe8PBqKwyqZrh1XYjOpJV1jF8Iqb_L4nhBGCqTvgJwWdieGcp6zzHiYMxOsNwGeOJURKJKqouGXAn8xTB-7Azcg8d0XXabY3uEQ--wPBDABe_BOql0WSVU6exopRHnjKeDbJ7wrPOZO7amnmNks_lg0d5UqhpeyZH8aop6wteza7hmnCvr9EWibvkf3mj7xkwt295LEbvgp-S14OKYhIvdCRUeDswbsttM0UB2Xqu7fwNKOQoSID5sA0XvwFUO1-cvBg1PCpwws0FvntalDdA4HzbSHyXaOJg3De5sVQSNrLDaNToh_A0iVCZBELqoz__-gDB_sOE9lWybfA",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation DeletePost {\r\n  deletePost(postId: 2) {\r\n    success\r\n    message\r\n  }\r\n}",
+								"variables": ""
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "add_media_to_post",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiI1NDBlYzQwNi05YTRiLTRiYWEtYmUyNi03N2E4MmQ3Y2VlZTUiLCJpYXQiOjE3NTUxMDc1MzksIm5iZiI6MTc1NTEwNzUzOSwiZXhwIjoxNzU1MTE4MzM5LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.i1jLh2xe8PBqKwyqZrh1XYjOpJV1jF8Iqb_L4nhBGCqTvgJwWdieGcp6zzHiYMxOsNwGeOJURKJKqouGXAn8xTB-7Azcg8d0XXabY3uEQ--wPBDABe_BOql0WSVU6exopRHnjKeDbJ7wrPOZO7amnmNks_lg0d5UqhpeyZH8aop6wteza7hmnCvr9EWibvkf3mj7xkwt295LEbvgp-S14OKYhIvdCRUeDswbsttM0UB2Xqu7fwNKOQoSID5sA0XvwFUO1-cvBg1PCpwws0FvntalDdA4HzbSHyXaOJg3De5sVQSNrLDaNToh_A0iVCZBELqoz__-gDB_sOE9lWybfA",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation AddPostMedia($postId: Int!, $media: [PostMediaInput!]!) {\r\n  addPostMedia(postId: $postId, media: $media) {\r\n    success\r\n    message\r\n    post {\r\n      id\r\n      media {\r\n        id\r\n        mediaType\r\n        mediaUrl\r\n        mediaOrder\r\n        caption\r\n      }\r\n    }\r\n  }\r\n}",
+								"variables": "{\r\n  \"postId\": 6,\r\n  \"media\": [\r\n    {\r\n      \"filePath\": \"C:/Users/ram91//Downloads/photo2.jpg\",\r\n      \"fileName\": \"clip.jpg\",\r\n      \"contentType\": \"image/jpeg\",\r\n      \"mediaOrder\": 2,\r\n      \"caption\": \"Tour\"\r\n    }\r\n  ]\r\n}"
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "deletepostmedia",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiI1NDBlYzQwNi05YTRiLTRiYWEtYmUyNi03N2E4MmQ3Y2VlZTUiLCJpYXQiOjE3NTUxMDc1MzksIm5iZiI6MTc1NTEwNzUzOSwiZXhwIjoxNzU1MTE4MzM5LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.i1jLh2xe8PBqKwyqZrh1XYjOpJV1jF8Iqb_L4nhBGCqTvgJwWdieGcp6zzHiYMxOsNwGeOJURKJKqouGXAn8xTB-7Azcg8d0XXabY3uEQ--wPBDABe_BOql0WSVU6exopRHnjKeDbJ7wrPOZO7amnmNks_lg0d5UqhpeyZH8aop6wteza7hmnCvr9EWibvkf3mj7xkwt295LEbvgp-S14OKYhIvdCRUeDswbsttM0UB2Xqu7fwNKOQoSID5sA0XvwFUO1-cvBg1PCpwws0FvntalDdA4HzbSHyXaOJg3De5sVQSNrLDaNToh_A0iVCZBELqoz__-gDB_sOE9lWybfA",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation DeletePostMedia {\r\n  deletePostMedia(mediaId: 3) {\r\n    success\r\n    message\r\n  }\r\n}",
+								"variables": ""
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "likepost",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiI1NDBlYzQwNi05YTRiLTRiYWEtYmUyNi03N2E4MmQ3Y2VlZTUiLCJpYXQiOjE3NTUxMDc1MzksIm5iZiI6MTc1NTEwNzUzOSwiZXhwIjoxNzU1MTE4MzM5LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.i1jLh2xe8PBqKwyqZrh1XYjOpJV1jF8Iqb_L4nhBGCqTvgJwWdieGcp6zzHiYMxOsNwGeOJURKJKqouGXAn8xTB-7Azcg8d0XXabY3uEQ--wPBDABe_BOql0WSVU6exopRHnjKeDbJ7wrPOZO7amnmNks_lg0d5UqhpeyZH8aop6wteza7hmnCvr9EWibvkf3mj7xkwt295LEbvgp-S14OKYhIvdCRUeDswbsttM0UB2Xqu7fwNKOQoSID5sA0XvwFUO1-cvBg1PCpwws0FvntalDdA4HzbSHyXaOJg3De5sVQSNrLDaNToh_A0iVCZBELqoz__-gDB_sOE9lWybfA",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation LikePost {\r\n  likePost(postId: 4, userId: 2) {\r\n    success\r\n    message\r\n    post {\r\n      id\r\n      likeCount\r\n    }\r\n  }\r\n}\r\n",
+								"variables": ""
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "unlikepost",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiI1NDBlYzQwNi05YTRiLTRiYWEtYmUyNi03N2E4MmQ3Y2VlZTUiLCJpYXQiOjE3NTUxMDc1MzksIm5iZiI6MTc1NTEwNzUzOSwiZXhwIjoxNzU1MTE4MzM5LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.i1jLh2xe8PBqKwyqZrh1XYjOpJV1jF8Iqb_L4nhBGCqTvgJwWdieGcp6zzHiYMxOsNwGeOJURKJKqouGXAn8xTB-7Azcg8d0XXabY3uEQ--wPBDABe_BOql0WSVU6exopRHnjKeDbJ7wrPOZO7amnmNks_lg0d5UqhpeyZH8aop6wteza7hmnCvr9EWibvkf3mj7xkwt295LEbvgp-S14OKYhIvdCRUeDswbsttM0UB2Xqu7fwNKOQoSID5sA0XvwFUO1-cvBg1PCpwws0FvntalDdA4HzbSHyXaOJg3De5sVQSNrLDaNToh_A0iVCZBELqoz__-gDB_sOE9lWybfA",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation UnlikePost {\r\n  unlikePost(postId: 4, userId: 2) {\r\n    success\r\n    message\r\n    post {\r\n      id\r\n      likeCount\r\n    }\r\n  }\r\n}",
+								"variables": ""
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "createcomment",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiI1NDBlYzQwNi05YTRiLTRiYWEtYmUyNi03N2E4MmQ3Y2VlZTUiLCJpYXQiOjE3NTUxMDc1MzksIm5iZiI6MTc1NTEwNzUzOSwiZXhwIjoxNzU1MTE4MzM5LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.i1jLh2xe8PBqKwyqZrh1XYjOpJV1jF8Iqb_L4nhBGCqTvgJwWdieGcp6zzHiYMxOsNwGeOJURKJKqouGXAn8xTB-7Azcg8d0XXabY3uEQ--wPBDABe_BOql0WSVU6exopRHnjKeDbJ7wrPOZO7amnmNks_lg0d5UqhpeyZH8aop6wteza7hmnCvr9EWibvkf3mj7xkwt295LEbvgp-S14OKYhIvdCRUeDswbsttM0UB2Xqu7fwNKOQoSID5sA0XvwFUO1-cvBg1PCpwws0FvntalDdA4HzbSHyXaOJg3De5sVQSNrLDaNToh_A0iVCZBELqoz__-gDB_sOE9lWybfA",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation CreateComment {\r\n  createComment(\r\n    postId: 4\r\n    userId: 4,\r\n    comment: \"Great property!\"\r\n  ) {\r\n    success\r\n    message\r\n    comment {\r\n      id\r\n      comment\r\n      addedAt\r\n      likeCount\r\n    }\r\n  }\r\n}",
+								"variables": ""
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "comment_reply",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiI1NDBlYzQwNi05YTRiLTRiYWEtYmUyNi03N2E4MmQ3Y2VlZTUiLCJpYXQiOjE3NTUxMDc1MzksIm5iZiI6MTc1NTEwNzUzOSwiZXhwIjoxNzU1MTE4MzM5LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.i1jLh2xe8PBqKwyqZrh1XYjOpJV1jF8Iqb_L4nhBGCqTvgJwWdieGcp6zzHiYMxOsNwGeOJURKJKqouGXAn8xTB-7Azcg8d0XXabY3uEQ--wPBDABe_BOql0WSVU6exopRHnjKeDbJ7wrPOZO7amnmNks_lg0d5UqhpeyZH8aop6wteza7hmnCvr9EWibvkf3mj7xkwt295LEbvgp-S14OKYhIvdCRUeDswbsttM0UB2Xqu7fwNKOQoSID5sA0XvwFUO1-cvBg1PCpwws0FvntalDdA4HzbSHyXaOJg3De5sVQSNrLDaNToh_A0iVCZBELqoz__-gDB_sOE9lWybfA",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation CreateCommentReply {\r\n  createComment(\r\n    postId: 4\r\n    userId: 4\r\n    comment: \"Thanks for your feedback!\"\r\n    parentCommentId: 0\r\n  ) {\r\n    success\r\n    message\r\n    comment {\r\n      id\r\n      parentCommentId\r\n      comment\r\n      addedAt\r\n    }\r\n  }\r\n}",
+								"variables": ""
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "updatecomment",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiI1NDBlYzQwNi05YTRiLTRiYWEtYmUyNi03N2E4MmQ3Y2VlZTUiLCJpYXQiOjE3NTUxMDc1MzksIm5iZiI6MTc1NTEwNzUzOSwiZXhwIjoxNzU1MTE4MzM5LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.i1jLh2xe8PBqKwyqZrh1XYjOpJV1jF8Iqb_L4nhBGCqTvgJwWdieGcp6zzHiYMxOsNwGeOJURKJKqouGXAn8xTB-7Azcg8d0XXabY3uEQ--wPBDABe_BOql0WSVU6exopRHnjKeDbJ7wrPOZO7amnmNks_lg0d5UqhpeyZH8aop6wteza7hmnCvr9EWibvkf3mj7xkwt295LEbvgp-S14OKYhIvdCRUeDswbsttM0UB2Xqu7fwNKOQoSID5sA0XvwFUO1-cvBg1PCpwws0FvntalDdA4HzbSHyXaOJg3De5sVQSNrLDaNToh_A0iVCZBELqoz__-gDB_sOE9lWybfA",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation ($commentId:Int!,$comment:String,$status:String) {\r\n  updateComment(commentId:$commentId, comment:$comment, status:$status) {\r\n    success\r\n    message\r\n    comment { id postId userId comment status }\r\n  }\r\n}",
+								"variables": "{\"commentId\":1,\r\n\"comment\":\"I am updated\"}"
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "deletecomment",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiI1NDBlYzQwNi05YTRiLTRiYWEtYmUyNi03N2E4MmQ3Y2VlZTUiLCJpYXQiOjE3NTUxMDc1MzksIm5iZiI6MTc1NTEwNzUzOSwiZXhwIjoxNzU1MTE4MzM5LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.i1jLh2xe8PBqKwyqZrh1XYjOpJV1jF8Iqb_L4nhBGCqTvgJwWdieGcp6zzHiYMxOsNwGeOJURKJKqouGXAn8xTB-7Azcg8d0XXabY3uEQ--wPBDABe_BOql0WSVU6exopRHnjKeDbJ7wrPOZO7amnmNks_lg0d5UqhpeyZH8aop6wteza7hmnCvr9EWibvkf3mj7xkwt295LEbvgp-S14OKYhIvdCRUeDswbsttM0UB2Xqu7fwNKOQoSID5sA0XvwFUO1-cvBg1PCpwws0FvntalDdA4HzbSHyXaOJg3De5sVQSNrLDaNToh_A0iVCZBELqoz__-gDB_sOE9lWybfA",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation DeleteComment {\r\n  deleteComment(commentId: 1) {\r\n    success\r\n    message\r\n  }\r\n}",
+								"variables": ""
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "likecomment",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiI1NDBlYzQwNi05YTRiLTRiYWEtYmUyNi03N2E4MmQ3Y2VlZTUiLCJpYXQiOjE3NTUxMDc1MzksIm5iZiI6MTc1NTEwNzUzOSwiZXhwIjoxNzU1MTE4MzM5LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.i1jLh2xe8PBqKwyqZrh1XYjOpJV1jF8Iqb_L4nhBGCqTvgJwWdieGcp6zzHiYMxOsNwGeOJURKJKqouGXAn8xTB-7Azcg8d0XXabY3uEQ--wPBDABe_BOql0WSVU6exopRHnjKeDbJ7wrPOZO7amnmNks_lg0d5UqhpeyZH8aop6wteza7hmnCvr9EWibvkf3mj7xkwt295LEbvgp-S14OKYhIvdCRUeDswbsttM0UB2Xqu7fwNKOQoSID5sA0XvwFUO1-cvBg1PCpwws0FvntalDdA4HzbSHyXaOJg3De5sVQSNrLDaNToh_A0iVCZBELqoz__-gDB_sOE9lWybfA",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation LikeComment {\r\n  likeComment(commentId: 2, userId: 2) {\r\n    success\r\n    message\r\n    comment {\r\n      id\r\n      likeCount\r\n    }\r\n  }\r\n}",
+								"variables": ""
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "searchposts",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0IiwiZW1haWwiOiJyYW05MTUxMUBnbWFpbC5jb20iLCJyb2xlIjoidXNlciIsInNlc3Npb25faWQiOiI0MjlmZDMxMy1lYTBmLTQzMTktYmVmOC0xZDE0YzBhYjI0OTYiLCJpYXQiOjE3NTQ4MDA5MjEsIm5iZiI6MTc1NDgwMDkyMSwiZXhwIjoxNzU0ODExNzIxLCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.OOvcAtQxcnEq4HfB09tG_cwtDowatH7NbNyVkGhNIJvNeyl6hDk90usVBXB4OIxvnH_X7OXtdKD_h6zqro2iE68R0oFaRpmM9glwqIrMorhJJLDW1kjI5qxJw_lEOjaQ4et-yaQcxsnfjwRuinTU2BpALZ2lbduwByd7H8D8f2IhjPM50VCmQgw4-L49ftzL_aii5qVvF0UmWHT9FUmLC5iEIf9UI_u1LAA6INZcG4DdPFtn6aqaaSGcXgXT2wBbu2AHFq9x9Nqy5jto53mH7444IltBa5ulizEbCChkLzM3LX3c-pYPpT4M_Ib5tp6tEDs_b7AEt9ooY_NXNhbcHg",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "query {\r\n  searchPosts(page: 1, limit: 10) {\r\n    id\r\n    userId\r\n    userFirstName    # Make sure these are included in the query\r\n    userLastName\r\n    userRole\r\n    title\r\n    content\r\n    visibility\r\n    propertyType\r\n    location\r\n    mapLocation\r\n    price\r\n    status\r\n    createdAt\r\n    likeCount\r\n    commentCount\r\n    media {\r\n      id\r\n      mediaType\r\n      mediaUrl\r\n      mediaOrder\r\n      mediaSize\r\n      caption\r\n      uploadedAt\r\n    }\r\n  }\r\n}",
+								"variables": ""
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "unlikecomment",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiI1NDBlYzQwNi05YTRiLTRiYWEtYmUyNi03N2E4MmQ3Y2VlZTUiLCJpYXQiOjE3NTUxMDc1MzksIm5iZiI6MTc1NTEwNzUzOSwiZXhwIjoxNzU1MTE4MzM5LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.i1jLh2xe8PBqKwyqZrh1XYjOpJV1jF8Iqb_L4nhBGCqTvgJwWdieGcp6zzHiYMxOsNwGeOJURKJKqouGXAn8xTB-7Azcg8d0XXabY3uEQ--wPBDABe_BOql0WSVU6exopRHnjKeDbJ7wrPOZO7amnmNks_lg0d5UqhpeyZH8aop6wteza7hmnCvr9EWibvkf3mj7xkwt295LEbvgp-S14OKYhIvdCRUeDswbsttM0UB2Xqu7fwNKOQoSID5sA0XvwFUO1-cvBg1PCpwws0FvntalDdA4HzbSHyXaOJg3De5sVQSNrLDaNToh_A0iVCZBELqoz__-gDB_sOE9lWybfA",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation UnlikeComment {\r\n  unlikeComment(commentId: 2, userId: 2) {\r\n    success\r\n    message\r\n    comment {\r\n      id\r\n      likeCount\r\n    }\r\n  }\r\n}",
+								"variables": ""
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "olaapi",
+			"item": [
+				{
+					"name": "olasuggestions",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "X-Request-Id",
+								"value": ""
+							},
+							{
+								"key": "X-Correlation-Id",
+								"value": ""
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiI3ZDcyY2JlYy1mZjBiLTRlMjUtODcwMC02YTkyMjRiYmMwMzkiLCJpYXQiOjE3NTUwOTg2MTksIm5iZiI6MTc1NTA5ODYxOSwiZXhwIjoxNzU1MTA5NDE5LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.X_NGzKDPIi6aSIjoG6oi371vsfMc86cX5NCblHC_w40JNBn4tQ7CSmOK0Ynn5ptzX5zhq4BOjYn1BHJrQpIb7fl4pX_zPTg8jT4ehG3lH2MYOtH_5WWQRay2c9kXJDGT_xbPmfw_hIVRZgXZKcNetRql--z2RjBQZCFOTzXvQ1m24zTpX2euGeiIcoDNTZhiToRfy5N93ibCRjOsTwbYJl4PyZI22PFJTwHasVdT7gLBXo3m7R_La1dj_iyN1RRoWBc4Ip9RB5o5PwdpxpNXiQjF7FkJQcKNDu4oRyJ9e9cppl01QnW0PEBYTZxRMhZJNWBTAbLEPLfsN6jrMEnFVg",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "query {\r\n  olaAutocomplete(input: \"srouthy krupa chikkad\") {\r\n    reference\r\n    placeId\r\n    description\r\n    lat\r\n    lng\r\n    types\r\n  }\r\n}",
+								"variables": ""
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "properties",
+			"item": [
+				{
+					"name": "createproperty",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiJkOTg1OTUwZS1kMmU2LTQ1NDYtOGU1MC1kZmI3MzczZDViNmQiLCJpYXQiOjE3NTUxMTEzMTcsIm5iZiI6MTc1NTExMTMxNywiZXhwIjoxNzU1MTIyMTE3LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.zSe_nROzYyeI2fMPVMUScyXfVkqeFbaTo-Bd05agtwmvVjlE9YvfnoLNv-JhQR_A3ZFnAybKmZSxJ6e0e07wx8kjIbGHXSaSHlyNDgDSKFBoj3VPiyINoEPR6Dq0BUle4sNi9epWBDymJwhan6h-N7V6PwOiPBa3Tff6flG6O4LP1vo-XpFjq5pg13ilVzeNqI7EHsBJVvxG9EekWNtkaYf5pp3L1B0MtAkKO-VOFlppy7O8Obd_c4OBYQcqB0KEcWfp3yUcJc43Hug-TK8neSlquXWeYVUup7BSnv_gX-Ezy5bf3t4Z15xc2w8C0gVMHTF7S72TwTjl1iAH7JahQw",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation CreateProperty(\r\n  $userId: String!, $title: String!, $description: String!,\r\n  $price: Float!, $location: String!, $propertyType: PropertyType!, $status: PropertyStatus!,\r\n  $bedrooms: Int!, $bathrooms: Int!, $area: Float!, $yearBuilt: Int!,\r\n  $images: [String!]!, $amenities: [String!]!,\r\n  $latitude: Float!, $longitude: Float!, $address: String!,\r\n  $city: String!, $state: String!, $country: String!, $zipCode: String!\r\n) {\r\n  createProperty(\r\n    userId: $userId, title: $title, description: $description,\r\n    price: $price, location: $location, propertyType: $propertyType, status: $status,\r\n    bedrooms: $bedrooms, bathrooms: $bathrooms, area: $area, yearBuilt: $yearBuilt,\r\n    images: $images, amenities: $amenities,\r\n    latitude: $latitude, longitude: $longitude, address: $address,\r\n    city: $city, state: $state, country: $country, zipCode: $zipCode,\r\n    isActive: true\r\n  ) { propertyId title price city state country }\r\n}",
+								"variables": "{\r\n  \"userId\": \"1\",\r\n  \"title\": \"2 BHK Apartment\",\r\n  \"description\": \"Nice flat\",\r\n  \"price\": 7500000,\r\n  \"location\": \"Noida\",\r\n  \"propertyType\": \"APARTMENT\",\r\n  \"status\": \"ACTIVE\",\r\n  \"bedrooms\": 2,\r\n  \"bathrooms\": 2,\r\n  \"area\": 1200,\r\n  \"yearBuilt\": 2018,\r\n  \"images\": [],\r\n  \"amenities\": [],\r\n  \"latitude\": 28.614,\r\n  \"longitude\": 77.362,\r\n  \"address\": \"Sector 62\",\r\n  \"city\": \"Noida\",\r\n  \"state\": \"UP\",\r\n  \"country\": \"India\",\r\n  \"zipCode\": \"201301\"\r\n}"
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "getproperty",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiJkOTg1OTUwZS1kMmU2LTQ1NDYtOGU1MC1kZmI3MzczZDViNmQiLCJpYXQiOjE3NTUxMTEzMTcsIm5iZiI6MTc1NTExMTMxNywiZXhwIjoxNzU1MTIyMTE3LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.zSe_nROzYyeI2fMPVMUScyXfVkqeFbaTo-Bd05agtwmvVjlE9YvfnoLNv-JhQR_A3ZFnAybKmZSxJ6e0e07wx8kjIbGHXSaSHlyNDgDSKFBoj3VPiyINoEPR6Dq0BUle4sNi9epWBDymJwhan6h-N7V6PwOiPBa3Tff6flG6O4LP1vo-XpFjq5pg13ilVzeNqI7EHsBJVvxG9EekWNtkaYf5pp3L1B0MtAkKO-VOFlppy7O8Obd_c4OBYQcqB0KEcWfp3yUcJc43Hug-TK8neSlquXWeYVUup7BSnv_gX-Ezy5bf3t4Z15xc2w8C0gVMHTF7S72TwTjl1iAH7JahQw",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "query GetProperty($id: String!) {\r\n  property(propertyId: $id) {\r\n    propertyId title description price location\r\n    propertyType status bedrooms bathrooms area yearBuilt\r\n    images amenities latitude longitude address city state country zipCode\r\n    createdAt updatedAt viewCount isActive\r\n  }\r\n}",
+								"variables": "{ \"id\": \"6\" }"
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "search_properties",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiJkOTg1OTUwZS1kMmU2LTQ1NDYtOGU1MC1kZmI3MzczZDViNmQiLCJpYXQiOjE3NTUxMTEzMTcsIm5iZiI6MTc1NTExMTMxNywiZXhwIjoxNzU1MTIyMTE3LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.zSe_nROzYyeI2fMPVMUScyXfVkqeFbaTo-Bd05agtwmvVjlE9YvfnoLNv-JhQR_A3ZFnAybKmZSxJ6e0e07wx8kjIbGHXSaSHlyNDgDSKFBoj3VPiyINoEPR6Dq0BUle4sNi9epWBDymJwhan6h-N7V6PwOiPBa3Tff6flG6O4LP1vo-XpFjq5pg13ilVzeNqI7EHsBJVvxG9EekWNtkaYf5pp3L1B0MtAkKO-VOFlppy7O8Obd_c4OBYQcqB0KEcWfp3yUcJc43Hug-TK8neSlquXWeYVUup7BSnv_gX-Ezy5bf3t4Z15xc2w8C0gVMHTF7S72TwTjl1iAH7JahQw",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "query SearchProperties(\r\n  $query:String, $propertyType:PropertyType, $minPrice:Float, $maxPrice:Float,\r\n  $location:String, $minBedrooms:Int, $minBathrooms:Int, $minArea:Float, $maxArea:Float\r\n) {\r\n  searchProperties(\r\n    query:$query, propertyType:$propertyType, minPrice:$minPrice, maxPrice:$maxPrice,\r\n    location:$location, minBedrooms:$minBedrooms, minBathrooms:$minBathrooms,\r\n    minArea:$minArea, maxArea:$maxArea\r\n  ) {\r\n    propertyId title price city state\r\n  }\r\n}",
+								"variables": "{  \"location\":\"Noida\" }"
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "propertratings",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiJkOTg1OTUwZS1kMmU2LTQ1NDYtOGU1MC1kZmI3MzczZDViNmQiLCJpYXQiOjE3NTUxMTEzMTcsIm5iZiI6MTc1NTExMTMxNywiZXhwIjoxNzU1MTIyMTE3LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.zSe_nROzYyeI2fMPVMUScyXfVkqeFbaTo-Bd05agtwmvVjlE9YvfnoLNv-JhQR_A3ZFnAybKmZSxJ6e0e07wx8kjIbGHXSaSHlyNDgDSKFBoj3VPiyINoEPR6Dq0BUle4sNi9epWBDymJwhan6h-N7V6PwOiPBa3Tff6flG6O4LP1vo-XpFjq5pg13ilVzeNqI7EHsBJVvxG9EekWNtkaYf5pp3L1B0MtAkKO-VOFlppy7O8Obd_c4OBYQcqB0KEcWfp3yUcJc43Hug-TK8neSlquXWeYVUup7BSnv_gX-Ezy5bf3t4Z15xc2w8C0gVMHTF7S72TwTjl1iAH7JahQw",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "query PropertyRatings($propertyId:Int!) {\r\n  propertyRatings(propertyId:$propertyId) {\r\n    id propertyId ratedByUserId ratingValue title review ratingType isAnonymous createdAt updatedAt\r\n  }\r\n}",
+								"variables": "{ \"propertyId\": 6 }"
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "propertyfollowers",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiJkOTg1OTUwZS1kMmU2LTQ1NDYtOGU1MC1kZmI3MzczZDViNmQiLCJpYXQiOjE3NTUxMTEzMTcsIm5iZiI6MTc1NTExMTMxNywiZXhwIjoxNzU1MTIyMTE3LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.zSe_nROzYyeI2fMPVMUScyXfVkqeFbaTo-Bd05agtwmvVjlE9YvfnoLNv-JhQR_A3ZFnAybKmZSxJ6e0e07wx8kjIbGHXSaSHlyNDgDSKFBoj3VPiyINoEPR6Dq0BUle4sNi9epWBDymJwhan6h-N7V6PwOiPBa3Tff6flG6O4LP1vo-XpFjq5pg13ilVzeNqI7EHsBJVvxG9EekWNtkaYf5pp3L1B0MtAkKO-VOFlppy7O8Obd_c4OBYQcqB0KEcWfp3yUcJc43Hug-TK8neSlquXWeYVUup7BSnv_gX-Ezy5bf3t4Z15xc2w8C0gVMHTF7S72TwTjl1iAH7JahQw",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "query PropertyFollowers($propertyId:Int!) {\r\n  propertyFollowers(propertyId:$propertyId) {\r\n    id userId propertyId status followedAt\r\n  }\r\n}",
+								"variables": "{ \"propertyId\": 3 }"
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "updateproperty",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiJkOTg1OTUwZS1kMmU2LTQ1NDYtOGU1MC1kZmI3MzczZDViNmQiLCJpYXQiOjE3NTUxMTEzMTcsIm5iZiI6MTc1NTExMTMxNywiZXhwIjoxNzU1MTIyMTE3LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.zSe_nROzYyeI2fMPVMUScyXfVkqeFbaTo-Bd05agtwmvVjlE9YvfnoLNv-JhQR_A3ZFnAybKmZSxJ6e0e07wx8kjIbGHXSaSHlyNDgDSKFBoj3VPiyINoEPR6Dq0BUle4sNi9epWBDymJwhan6h-N7V6PwOiPBa3Tff6flG6O4LP1vo-XpFjq5pg13ilVzeNqI7EHsBJVvxG9EekWNtkaYf5pp3L1B0MtAkKO-VOFlppy7O8Obd_c4OBYQcqB0KEcWfp3yUcJc43Hug-TK8neSlquXWeYVUup7BSnv_gX-Ezy5bf3t4Z15xc2w8C0gVMHTF7S72TwTjl1iAH7JahQw",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation UpdateProperty($id:String!, $title:String, $price:Float, $status:PropertyStatus) {\r\n  updateProperty(propertyId:$id, title:$title, price:$price, status:$status) {\r\n    propertyId title price status\r\n  }\r\n}",
+								"variables": "{ \"id\":\"5\", \"title\":\"Updated Title\", \"price\":7999999, \"status\":\"ACTIVE\" }"
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "deleteproperty",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiJkOTg1OTUwZS1kMmU2LTQ1NDYtOGU1MC1kZmI3MzczZDViNmQiLCJpYXQiOjE3NTUxMTEzMTcsIm5iZiI6MTc1NTExMTMxNywiZXhwIjoxNzU1MTIyMTE3LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.zSe_nROzYyeI2fMPVMUScyXfVkqeFbaTo-Bd05agtwmvVjlE9YvfnoLNv-JhQR_A3ZFnAybKmZSxJ6e0e07wx8kjIbGHXSaSHlyNDgDSKFBoj3VPiyINoEPR6Dq0BUle4sNi9epWBDymJwhan6h-N7V6PwOiPBa3Tff6flG6O4LP1vo-XpFjq5pg13ilVzeNqI7EHsBJVvxG9EekWNtkaYf5pp3L1B0MtAkKO-VOFlppy7O8Obd_c4OBYQcqB0KEcWfp3yUcJc43Hug-TK8neSlquXWeYVUup7BSnv_gX-Ezy5bf3t4Z15xc2w8C0gVMHTF7S72TwTjl1iAH7JahQw",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation DeleteProperty($id:String!) { deleteProperty(propertyId:$id) }",
+								"variables": "{ \"id\":\"6\" }"
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "incrementalviewcount",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiJkOTg1OTUwZS1kMmU2LTQ1NDYtOGU1MC1kZmI3MzczZDViNmQiLCJpYXQiOjE3NTUxMTEzMTcsIm5iZiI6MTc1NTExMTMxNywiZXhwIjoxNzU1MTIyMTE3LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.zSe_nROzYyeI2fMPVMUScyXfVkqeFbaTo-Bd05agtwmvVjlE9YvfnoLNv-JhQR_A3ZFnAybKmZSxJ6e0e07wx8kjIbGHXSaSHlyNDgDSKFBoj3VPiyINoEPR6Dq0BUle4sNi9epWBDymJwhan6h-N7V6PwOiPBa3Tff6flG6O4LP1vo-XpFjq5pg13ilVzeNqI7EHsBJVvxG9EekWNtkaYf5pp3L1B0MtAkKO-VOFlppy7O8Obd_c4OBYQcqB0KEcWfp3yUcJc43Hug-TK8neSlquXWeYVUup7BSnv_gX-Ezy5bf3t4Z15xc2w8C0gVMHTF7S72TwTjl1iAH7JahQw",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation IncViews($id: String!) {\r\n  incrementViewCount(propertyId: $id) {\r\n    propertyId\r\n    viewCount\r\n    title\r\n  }\r\n}",
+								"variables": "{ \"id\":\"5\" }"
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "rateproperty",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiJkOTg1OTUwZS1kMmU2LTQ1NDYtOGU1MC1kZmI3MzczZDViNmQiLCJpYXQiOjE3NTUxMTEzMTcsIm5iZiI6MTc1NTExMTMxNywiZXhwIjoxNzU1MTIyMTE3LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.zSe_nROzYyeI2fMPVMUScyXfVkqeFbaTo-Bd05agtwmvVjlE9YvfnoLNv-JhQR_A3ZFnAybKmZSxJ6e0e07wx8kjIbGHXSaSHlyNDgDSKFBoj3VPiyINoEPR6Dq0BUle4sNi9epWBDymJwhan6h-N7V6PwOiPBa3Tff6flG6O4LP1vo-XpFjq5pg13ilVzeNqI7EHsBJVvxG9EekWNtkaYf5pp3L1B0MtAkKO-VOFlppy7O8Obd_c4OBYQcqB0KEcWfp3yUcJc43Hug-TK8neSlquXWeYVUup7BSnv_gX-Ezy5bf3t4Z15xc2w8C0gVMHTF7S72TwTjl1iAH7JahQw",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation RateProperty(\r\n  $propertyId: Int!\r\n  $ratedBy: Int!\r\n  $value: Int!\r\n  $title: String\r\n  $review: String\r\n  $ratingType: String\r\n  $isAnonymous: Boolean\r\n) {\r\n  createPropertyRating(\r\n    propertyId: $propertyId\r\n    ratedByUserId: $ratedBy\r\n    ratingValue: $value\r\n    title: $title\r\n    review: $review\r\n    ratingType: $ratingType\r\n    isAnonymous: $isAnonymous\r\n  ) {\r\n    id propertyId ratedByUserId ratingValue title review\r\n  }\r\n}",
+								"variables": "{\r\n  \"propertyId\": 5,\r\n  \"ratedBy\": 4,\r\n  \"value\": 5,\r\n  \"title\": \"Great\",\r\n  \"review\": \"Nice project\",\r\n  \"ratingType\": \"quality\",\r\n  \"isAnonymous\": false\r\n}"
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "followproperty",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiJkOTg1OTUwZS1kMmU2LTQ1NDYtOGU1MC1kZmI3MzczZDViNmQiLCJpYXQiOjE3NTUxMTEzMTcsIm5iZiI6MTc1NTExMTMxNywiZXhwIjoxNzU1MTIyMTE3LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.zSe_nROzYyeI2fMPVMUScyXfVkqeFbaTo-Bd05agtwmvVjlE9YvfnoLNv-JhQR_A3ZFnAybKmZSxJ6e0e07wx8kjIbGHXSaSHlyNDgDSKFBoj3VPiyINoEPR6Dq0BUle4sNi9epWBDymJwhan6h-N7V6PwOiPBa3Tff6flG6O4LP1vo-XpFjq5pg13ilVzeNqI7EHsBJVvxG9EekWNtkaYf5pp3L1B0MtAkKO-VOFlppy7O8Obd_c4OBYQcqB0KEcWfp3yUcJc43Hug-TK8neSlquXWeYVUup7BSnv_gX-Ezy5bf3t4Z15xc2w8C0gVMHTF7S72TwTjl1iAH7JahQw",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation FollowProperty($userId:Int!, $propertyId:Int!, $status:String) {\r\n  followProperty(userId:$userId, propertyId:$propertyId, status:$status) {\r\n    id userId propertyId status followedAt\r\n  }\r\n}",
+								"variables": "{ \"userId\":4, \"propertyId\":5, \"status\":\"active\" }"
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "addpropertymedia",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiJkOTg1OTUwZS1kMmU2LTQ1NDYtOGU1MC1kZmI3MzczZDViNmQiLCJpYXQiOjE3NTUxMTEzMTcsIm5iZiI6MTc1NTExMTMxNywiZXhwIjoxNzU1MTIyMTE3LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.zSe_nROzYyeI2fMPVMUScyXfVkqeFbaTo-Bd05agtwmvVjlE9YvfnoLNv-JhQR_A3ZFnAybKmZSxJ6e0e07wx8kjIbGHXSaSHlyNDgDSKFBoj3VPiyINoEPR6Dq0BUle4sNi9epWBDymJwhan6h-N7V6PwOiPBa3Tff6flG6O4LP1vo-XpFjq5pg13ilVzeNqI7EHsBJVvxG9EekWNtkaYf5pp3L1B0MtAkKO-VOFlppy7O8Obd_c4OBYQcqB0KEcWfp3yUcJc43Hug-TK8neSlquXWeYVUup7BSnv_gX-Ezy5bf3t4Z15xc2w8C0gVMHTF7S72TwTjl1iAH7JahQw",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation AddPropertyMedia($propertyId:Int!, $media:[PropertyMediaInput!]!) {\r\n  addPropertyMedia(propertyId:$propertyId, media:$media) {\r\n    success\r\n    message\r\n    media { id propertyId mediaUrl mediaType mediaOrder caption uploadedAt }\r\n  }\r\n}",
+								"variables": "{\r\n  \"propertyId\":5,\r\n  \"media\":[\r\n    { \"filePath\":\"C:/Users/ram91/Downloads/photo.jpg\", \"mediaType\":\"image\", \"mediaOrder\":1, \"caption\":\"Front\", \"contentType\":\"image/jpeg\" }\r\n  ]\r\n}"
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "updateprofilephoto",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiJkOTg1OTUwZS1kMmU2LTQ1NDYtOGU1MC1kZmI3MzczZDViNmQiLCJpYXQiOjE3NTUxMTEzMTcsIm5iZiI6MTc1NTExMTMxNywiZXhwIjoxNzU1MTIyMTE3LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.zSe_nROzYyeI2fMPVMUScyXfVkqeFbaTo-Bd05agtwmvVjlE9YvfnoLNv-JhQR_A3ZFnAybKmZSxJ6e0e07wx8kjIbGHXSaSHlyNDgDSKFBoj3VPiyINoEPR6Dq0BUle4sNi9epWBDymJwhan6h-N7V6PwOiPBa3Tff6flG6O4LP1vo-XpFjq5pg13ilVzeNqI7EHsBJVvxG9EekWNtkaYf5pp3L1B0MtAkKO-VOFlppy7O8Obd_c4OBYQcqB0KEcWfp3yUcJc43Hug-TK8neSlquXWeYVUup7BSnv_gX-Ezy5bf3t4Z15xc2w8C0gVMHTF7S72TwTjl1iAH7JahQw",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation UpdatePropertyProfilePhoto($propertyId:Int!, $media:PropertyMediaInput!) {\r\n  updatePropertyProfilePhoto(propertyId:$propertyId, media:$media) {\r\n    propertyId\r\n    title\r\n    coverPhotoId\r\n    profilePhotoId\r\n    updatedAt\r\n  }\r\n}",
+								"variables": "{\r\n  \"propertyId\": 5,\r\n  \"media\": {\r\n    \"filePath\": \"C:/Users/ram91/Downloads/photo.jpg\",\r\n    \"mediaType\": \"image\",\r\n    \"mediaOrder\": 1,\r\n    \"caption\": \"profile photo\",\r\n    \"contentType\": \"image/jpeg\"\r\n  }\r\n}"
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "updatecoverphoto",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZW1haWwiOiJyYW05MTUxQGdtYWlsLmNvbSIsInJvbGUiOiJhZ2VudCIsInNlc3Npb25faWQiOiJkOTg1OTUwZS1kMmU2LTQ1NDYtOGU1MC1kZmI3MzczZDViNmQiLCJpYXQiOjE3NTUxMTEzMTcsIm5iZiI6MTc1NTExMTMxNywiZXhwIjoxNzU1MTIyMTE3LCJpc3MiOiJaUEMiLCJhdWQiOiJncmFwaHFsLWFwaSJ9.zSe_nROzYyeI2fMPVMUScyXfVkqeFbaTo-Bd05agtwmvVjlE9YvfnoLNv-JhQR_A3ZFnAybKmZSxJ6e0e07wx8kjIbGHXSaSHlyNDgDSKFBoj3VPiyINoEPR6Dq0BUle4sNi9epWBDymJwhan6h-N7V6PwOiPBa3Tff6flG6O4LP1vo-XpFjq5pg13ilVzeNqI7EHsBJVvxG9EekWNtkaYf5pp3L1B0MtAkKO-VOFlppy7O8Obd_c4OBYQcqB0KEcWfp3yUcJc43Hug-TK8neSlquXWeYVUup7BSnv_gX-Ezy5bf3t4Z15xc2w8C0gVMHTF7S72TwTjl1iAH7JahQw",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "mutation UpdatePropertyCoverPhoto($propertyId:Int!, $media:PropertyMediaInput!) {\r\n  updatePropertyCoverPhoto(propertyId:$propertyId, media:$media) {\r\n    propertyId\r\n    title\r\n    coverPhotoId\r\n    profilePhotoId\r\n    updatedAt\r\n  }\r\n}",
+								"variables": "{\r\n  \"propertyId\": 5,\r\n  \"media\": {\r\n    \"filePath\": \"C:/Users/ram91/Downloads/photo.jpg\",\r\n    \"mediaType\": \"image\",\r\n    \"mediaOrder\": 1,\r\n    \"caption\": \"Cover\",\r\n    \"contentType\": \"image/jpeg\"\r\n  }\r\n}"
+							}
+						},
+						"url": "http://localhost:8000/api/v1/graphql"
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}
