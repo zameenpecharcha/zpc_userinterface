@@ -45,7 +45,11 @@ export class AuthService {
   async sendOTP(input: OTPInput): Promise<AuthResponse> {
     const { data } = await this.client.mutate({
       mutation: SEND_OTP_MUTATION,
-      variables: input,
+      variables: {
+        email: input.email,
+        phone: input.phone,
+        type: input.type,
+      },
     });
     return data.sendOtp;
   }
@@ -53,7 +57,11 @@ export class AuthService {
   async verifyOTP(input: VerifyOTPInput): Promise<AuthResponse> {
     const { data } = await this.client.mutate({
       mutation: VERIFY_OTP_MUTATION,
-      variables: input,
+      variables: {
+        email: input.email,
+        otpCode: input.otpCode,
+        type: input.type,
+      },
     });
     return data.verifyOtp;
   }
@@ -61,7 +69,10 @@ export class AuthService {
   async forgotPassword(input: OTPInput): Promise<AuthResponse> {
     const { data } = await this.client.mutate({
       mutation: FORGOT_PASSWORD_MUTATION,
-      variables: input,
+      variables: {
+        email: input.email,
+        phone: input.phone,
+      },
     });
     return data.forgotPassword;
   }

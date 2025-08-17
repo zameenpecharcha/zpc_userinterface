@@ -24,7 +24,6 @@ const ForgotPassword = () => {
     try {
       const response = await authService.forgotPassword({
         email,
-        type: OTPType.PASSWORD_RESET,
       });
 
       if (response.success) {

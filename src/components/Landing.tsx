@@ -70,9 +70,8 @@ const Landing = () => {
     setSuccessMessage('');
     try {
       if (resetStep === 'email') {
-        const response = await authService.sendOTP({
+        const response = await authService.forgotPassword({
           email: resetData.email,
-          type: OTPType.PASSWORD_RESET,
         });
 
         if (response.success) {

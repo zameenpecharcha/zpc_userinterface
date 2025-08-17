@@ -1,7 +1,7 @@
 export enum OTPType {
-  VERIFICATION = 0,
-  PASSWORD_RESET = 1,
-  LOGIN = 2
+  VERIFICATION = 'VERIFICATION',
+  PASSWORD_RESET = 'PASSWORD_RESET',
+  LOGIN = 'LOGIN'
 }
 
 export interface UserInfo {
