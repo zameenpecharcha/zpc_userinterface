@@ -269,6 +269,14 @@ interface User {
     profilePhoto?: string;
 }
 
+interface PostMedia {
+    id: number;
+    mediaType: string;
+    mediaUrl: string;
+    mediaOrder: number;
+    caption?: string;
+}
+
 interface Post {
     id: string;
     content: string;
@@ -278,6 +286,7 @@ interface Post {
     commentsCount?: number;
     commentsList?: Comment[];
     isLiked?: boolean;
+    media?: PostMedia[];
 }
 
 interface Comment {
@@ -469,7 +478,8 @@ const GRAPHQL_QUERIES = {
                 visibility
                 propertyType
                 location
-                mapLocation
+                latitude
+                longitude
                 price
                 status
                 createdAt
@@ -711,6 +721,13 @@ const apiService = {
                     lastName: post.userLastName || '',
                     profilePhoto: undefined
                 },
+                media: (post.media || []).map((m: any) => ({
+                    id: m.id,
+                    mediaType: m.mediaType,
+                    mediaUrl: m.mediaUrl,
+                    mediaOrder: m.mediaOrder,
+                    caption: m.caption,
+                })),
                 likesCount: post.likeCount || 0,
                 commentsCount: post.commentCount || 0
             }));
@@ -1390,6 +1407,16 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                             </Typography>
                                         </Box>
                                     </Box>
+
+                                    {post.media && post.media.length > 0 && (
+                                        <Box sx={{ mb: 2 }}>
+                                            <img
+                                                src={post.media[0].mediaUrl}
+                                                alt={post.media[0].caption || 'Post media'}
+                                                style={{ width: '100%', borderRadius: 12, maxHeight: 340, objectFit: 'cover' }}
+                                            />
+                                        </Box>
+                                    )}
 
                                     <Typography sx={{ mb: 2 }}>{post.content}</Typography>
 

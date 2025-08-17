@@ -12,11 +12,8 @@ import {
 } from '@mui/material';
 import {
   ArrowBack,
-  LocationOn,
-  Engineering,
   BusinessCenter,
   Home,
-  Gavel,
   MapOutlined,
   AccountCircle,
 } from '@mui/icons-material';
@@ -25,6 +22,7 @@ import BalanceIcon from '@mui/icons-material/Balance';
 import { useAuth } from '../contexts/AuthContext';
 import { AuthService } from '../services/authService';
 import { useApolloClient } from '@apollo/client';
+import LocationAutocomplete from './LocationAutocomplete';
 
 const professionOptions = [
   { id: 'builder', label: 'Builder', icon: ApartmentIcon, color: '#6366F1' },
@@ -62,6 +60,15 @@ const Register = () => {
     setSelectedProfession(professionId);
   };
 
+  const handleLocationSelect = (location: { address: string; latitude: number; longitude: number }) => {
+    setFormData(prev => ({
+      ...prev,
+      address: location.address,
+      latitude: location.latitude.toString(),
+      longitude: location.longitude.toString(),
+    }));
+  };
+
   const handleContinueFromStep1 = () => {
     if (!selectedProfession) {
       setError('Please select a profession');
@@ -69,6 +76,10 @@ const Register = () => {
     }
     if (!formData.address.trim()) {
       setError('Please enter your location');
+      return;
+    }
+    if (!formData.latitude || !formData.longitude) {
+      setError('Please select a location from the suggestions');
       return;
     }
     setError('');
@@ -89,7 +100,7 @@ const Register = () => {
       const latitude = parseFloat(formData.latitude);
       const longitude = parseFloat(formData.longitude);
       if (isNaN(latitude) || isNaN(longitude)) {
-        setError('Please enter valid latitude and longitude');
+        setError('Please select a valid location from the suggestions');
         return;
       }
 
@@ -227,23 +238,12 @@ const Register = () => {
             })}
           </Box>
 
-          <TextField
-            fullWidth
-            placeholder="Enter your location"
-            name="address"
+          <LocationAutocomplete
             value={formData.address}
-            onChange={handleChange}
-            InputProps={{
-              startAdornment: <LocationOn sx={{ color: '#9CA3AF', mr: 1 }} />,
-              sx: {
-                bgcolor: '#F9FAFB',
-                '&:hover': { bgcolor: '#F3F4F6' },
-                borderRadius: 2,
-                px: 1,
-                height: 56,
-              },
-            }}
-            sx={{ width: '100%', maxWidth: 500, mb: 6 }}
+            onChange={(value) => setFormData(prev => ({ ...prev, address: value }))}
+            onLocationSelect={handleLocationSelect}
+            error={Boolean(error && !formData.address.trim())}
+            helperText={error && !formData.address.trim() ? 'Please enter your location' : undefined}
           />
 
           <Box sx={{ position: 'fixed', bottom: 16, left: 0, right: 0, px: 2 }}>
@@ -415,48 +415,6 @@ const Register = () => {
               type="password"
               placeholder="Enter your password"
               value={formData.password}
-              onChange={handleChange}
-              sx={{ mb: 3 }}
-              InputProps={{
-                sx: {
-                  bgcolor: '#F9FAFB',
-                  '&:hover': {
-                    bgcolor: '#F3F4F6',
-                  },
-                },
-              }}
-            />
-
-            <Typography variant="subtitle1" sx={{ mb: 2 }}>
-              Latitude
-            </Typography>
-            <TextField
-              required
-              fullWidth
-              name="latitude"
-              placeholder="Enter latitude"
-              value={formData.latitude}
-              onChange={handleChange}
-              sx={{ mb: 3 }}
-              InputProps={{
-                sx: {
-                  bgcolor: '#F9FAFB',
-                  '&:hover': {
-                    bgcolor: '#F3F4F6',
-                  },
-                },
-              }}
-            />
-
-            <Typography variant="subtitle1" sx={{ mb: 2 }}>
-              Longitude
-            </Typography>
-            <TextField
-              required
-              fullWidth
-              name="longitude"
-              placeholder="Enter longitude"
-              value={formData.longitude}
               onChange={handleChange}
               sx={{ mb: 3 }}
               InputProps={{

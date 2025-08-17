@@ -32,18 +32,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [refreshToken, setRefreshToken] = useState<string | null>(null);
 
   useEffect(() => {
-    // Check localStorage for existing auth data
-    const storedToken = localStorage.getItem('token');
-    const storedRefreshToken = localStorage.getItem('refreshToken');
-    const storedUser = localStorage.getItem('user');
-
-    if (storedToken && storedUser) {
-      setToken(storedToken);
-      setRefreshToken(storedRefreshToken);
-      setUser(JSON.parse(storedUser));
-      setIsAuthenticated(true);
-    }
-  }, []);
+    // Clear any existing auth data on mount
+    localStorage.removeItem('token');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('user');
+    
+    setToken(null);
+    setRefreshToken(null);
+    setUser(null);
+    setIsAuthenticated(false);
+  }, []); // Empty dependency array means this runs once on mount
 
   const setAuth = (token: string, refreshToken: string, user: UserInfo) => {
     localStorage.setItem('token', token);
