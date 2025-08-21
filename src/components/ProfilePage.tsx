@@ -269,15 +269,28 @@ interface User {
     profilePhoto?: string;
 }
 
+interface PostMedia {
+    id: number;
+    mediaType: string;
+    mediaUrl: string;
+    mediaOrder: number;
+    caption?: string;
+}
+
 interface Post {
     id: string;
     content: string;
+    title?: string;
+    location?: string;
+    propertyType?: string;
+    price?: number;
     createdAt: string;
     user?: User;
     likesCount?: number;
     commentsCount?: number;
     commentsList?: Comment[];
     isLiked?: boolean;
+    media?: PostMedia[];
 }
 
 interface Comment {
@@ -469,7 +482,8 @@ const GRAPHQL_QUERIES = {
                 visibility
                 propertyType
                 location
-                mapLocation
+                latitude
+                longitude
                 price
                 status
                 createdAt
@@ -482,6 +496,39 @@ const GRAPHQL_QUERIES = {
                 }
                 likeCount
                 commentCount
+            }
+        }
+    `,
+
+    SEARCH_POSTS: `
+        query SearchPosts($page: Int, $limit: Int) {
+            searchPosts(page: $page, limit: $limit) {
+                id
+                userId
+                userFirstName
+                userLastName
+                userRole
+                title
+                content
+                visibility
+                propertyType
+                location
+                latitude
+                longitude
+                price
+                status
+                createdAt
+                likeCount
+                commentCount
+                media {
+                    id
+                    mediaType
+                    mediaUrl
+                    mediaOrder
+                    mediaSize
+                    caption
+                    uploadedAt
+                }
             }
         }
     `,
@@ -602,10 +649,18 @@ const apiService = {
     async graphqlRequest(query: string, variables: Record<string, any> = {}) {
         try {
             console.log('Making GraphQL request:', { query, variables });
+
+            // Get authentication token
+            const token = localStorage.getItem('token');
+            if (!token) {
+                throw new Error('Authentication token not found. Please log in again.');
+            }
+
             const response = await fetch('http://localhost:8000/api/v1/graphql', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
                 },
                 body: JSON.stringify({
                     query,
@@ -689,31 +744,91 @@ const apiService = {
     async fetchUserPosts(userId: number): Promise<Post[]> {
         try {
             console.log('Fetching user posts for ID:', userId);
-            const data = await this.graphqlRequest(GRAPHQL_QUERIES.GET_USER_POSTS, {
-                userId,
-                page: 1,
-                limit: 100
-            });
-            console.log('User posts data received:', data);
 
-            if (!data.postsByUser) {
-                console.warn('No postsByUser field in response');
-                return [];
+            // Try postsByUser first
+            try {
+                const data = await this.graphqlRequest(GRAPHQL_QUERIES.GET_USER_POSTS, {
+                    userId,
+                    page: 1,
+                    limit: 100
+                });
+                console.log('User posts data received (postsByUser):', data);
+                console.log('Full response structure:', JSON.stringify(data, null, 2));
+
+                if (data.postsByUser) {
+                    console.log('Posts found (postsByUser):', data.postsByUser.length);
+                    console.log('First post sample:', data.postsByUser[0]);
+
+                    return data.postsByUser.map((post: any) => ({
+                        id: post.id,
+                        content: post.content,
+                        title: post.title,
+                        location: post.location,
+                        propertyType: post.propertyType,
+                        price: post.price,
+                        createdAt: post.createdAt,
+                        user: {
+                            id: post.userId,
+                            firstName: post.userFirstName || '',
+                            lastName: post.userLastName || '',
+                            profilePhoto: post.userProfilePhoto || undefined
+                        },
+                        media: (post.media || []).map((m: any) => ({
+                            id: m.id,
+                            mediaType: m.mediaType,
+                            mediaUrl: m.mediaUrl,
+                            mediaOrder: m.mediaOrder,
+                            caption: m.caption,
+                        })),
+                        likesCount: post.likeCount || 0,
+                        commentsCount: post.commentCount || 0
+                    }));
+                }
+            } catch (postsByUserError) {
+                console.warn('postsByUser query failed, trying searchPosts:', postsByUserError);
             }
 
-            return data.postsByUser.map((post: any) => ({
-                id: post.id,
-                content: post.content,
-                createdAt: post.createdAt,
-                user: {
-                    id: post.userId,
-                    firstName: post.userFirstName || '',
-                    lastName: post.userLastName || '',
-                    profilePhoto: undefined
-                },
-                likesCount: post.likeCount || 0,
-                commentsCount: post.commentCount || 0
-            }));
+            // Fallback to searchPosts and filter client-side
+            console.log('Trying searchPosts as fallback...');
+            const searchData = await this.graphqlRequest(GRAPHQL_QUERIES.SEARCH_POSTS, {
+                page: 1,
+                limit: 1000 // Get more posts to ensure we find user's posts
+            });
+            console.log('Search posts data received:', searchData);
+
+            if (searchData.searchPosts) {
+                // Filter posts by userId since searchPosts returns all posts
+                const userPosts = searchData.searchPosts.filter((post: any) => post.userId === userId);
+                console.log('Filtered user posts:', userPosts.length);
+
+                return userPosts.map((post: any) => ({
+                    id: post.id,
+                    content: post.content,
+                    title: post.title,
+                    location: post.location,
+                    propertyType: post.propertyType,
+                    price: post.price,
+                    createdAt: post.createdAt,
+                    user: {
+                        id: post.userId,
+                        firstName: post.userFirstName || '',
+                        lastName: post.userLastName || '',
+                        profilePhoto: post.userProfilePhoto || undefined
+                    },
+                    media: (post.media || []).map((m: any) => ({
+                        id: m.id,
+                        mediaType: m.mediaType,
+                        mediaUrl: m.mediaUrl,
+                        mediaOrder: m.mediaOrder,
+                        caption: m.caption,
+                    })),
+                    likesCount: post.likeCount || 0,
+                    commentsCount: post.commentCount || 0
+                }));
+            }
+
+            console.warn('No posts found with either query');
+            return [];
         } catch (error) {
             console.error('Error fetching user posts:', error);
             return [];
@@ -1378,7 +1493,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                 <Box key={post.id} sx={{ bgcolor: '#fff', borderRadius: 3, p: 3, mb: 3, boxShadow: '0 2px 12px rgba(37,99,235,0.08)' }}>
                                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                                         <Avatar
-                                            src={post.user?.profilePhoto}
+                                            src={user.profilePhoto || post.user?.profilePhoto}
                                             sx={{ width: 40, height: 40, mr: 2 }}
                                         />
                                         <Box>
@@ -1391,7 +1506,75 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                         </Box>
                                     </Box>
 
-                                    <Typography sx={{ mb: 2 }}>{post.content}</Typography>
+                                    {post.title && (
+                                        <Typography sx={{ color: '#2563EB', fontWeight: 700, fontSize: 17, mb: 1 }}>
+                                            {post.title}
+                                        </Typography>
+                                    )}
+
+                                    <Typography sx={{ color: '#374151', fontSize: 16, mb: 2 }}>{post.content}</Typography>
+
+                                    <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', mb: 1 }}>
+                                        <Typography sx={{ fontSize: 14, color: '#6B7280', bgcolor: 'rgba(37,99,235,0.06)', px: 1.5, py: 0.5, borderRadius: 2 }}>
+                                            Location: {post.location || 'No location'}
+                                        </Typography>
+                                        <Typography sx={{ fontSize: 14, color: '#6B7280', bgcolor: 'rgba(99,102,241,0.06)', px: 1.5, py: 0.5, borderRadius: 2 }}>
+                                            Type: {post.propertyType || 'No type'}
+                                        </Typography>
+                                        <Typography sx={{ fontSize: 14, color: '#6B7280', bgcolor: 'rgba(239,68,68,0.06)', px: 1.5, py: 0.5, borderRadius: 2 }}>
+                                            Price: ₹{post.price?.toLocaleString() || '0'}
+                                        </Typography>
+                                    </Box>
+
+                                    {post.media && post.media.length > 0 && (
+                                        <Box sx={{ mb: 2 }}>
+                                            {post.media.map((media: any, index: number) => {
+                                                const mediaUrl = media.mediaUrl || media.filePath || media.url;
+                                                if (!mediaUrl) return null;
+
+                                                if (media.mediaType === 'image' || media.contentType?.startsWith('image/')) {
+                                                    return (
+                                                        <img
+                                                            key={media.id || index}
+                                                            src={mediaUrl}
+                                                            alt={media.caption || 'Post media'}
+                                                            style={{
+                                                                width: '100%',
+                                                                borderRadius: 12,
+                                                                maxHeight: 340,
+                                                                objectFit: 'cover',
+                                                                marginBottom: index < (post.media?.length || 0) - 1 ? 8 : 0,
+                                                                boxShadow: '0 2px 8px rgba(37,99,235,0.08)'
+                                                            }}
+                                                            onError={(e) => {
+                                                                console.error('Failed to load image:', mediaUrl);
+                                                                e.currentTarget.style.display = 'none';
+                                                            }}
+                                                        />
+                                                    );
+                                                } else if (media.mediaType === 'video' || media.contentType?.startsWith('video/')) {
+                                                    return (
+                                                        <video
+                                                            key={media.id || index}
+                                                            controls
+                                                            style={{
+                                                                width: '100%',
+                                                                borderRadius: 12,
+                                                                maxHeight: 340,
+                                                                objectFit: 'cover',
+                                                                marginBottom: index < (post.media?.length || 0) - 1 ? 8 : 0,
+                                                                boxShadow: '0 2px 8px rgba(37,99,235,0.08)'
+                                                            }}
+                                                        >
+                                                            <source src={mediaUrl} type={media.contentType} />
+                                                            Your browser does not support the video tag.
+                                                        </video>
+                                                    );
+                                                }
+                                                return null;
+                                            })}
+                                        </Box>
+                                    )}
 
                                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
                                         <Button
