@@ -779,7 +779,7 @@ const Home = () => {
       title: currentUser.role || 'User',
       location: currentUser.address || 'No location',
       coverImage: 'https://images.unsplash.com/photo-1519904981063-b0cf448d479e?w=800&h=300&fit=crop',
-      profileImage: currentUser.profilePhoto || 'https://randomuser.me/api/portraits/lego/1.jpg',
+      profileImage: (currentUser as any).profilePhotoSignedUrl || currentUser.profilePhoto || 'https://randomuser.me/api/portraits/lego/1.jpg',
       friendsCount: 0,
       postsCount: 0,
       rating: 0,
@@ -1136,7 +1136,7 @@ const Home = () => {
           {/* Create Post Card */}
           <Box sx={{ mb: 4, p: 3, bgcolor: '#fff', borderRadius: 4, boxShadow: '0 2px 12px rgba(37,99,235,0.08)', display: 'flex', flexDirection: 'column', gap: 2, position: 'relative' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Avatar src={currentUserData?.profileImage} sx={{ width: 44, height: 44 }} />
+              <Avatar src={currentUserData?.profileImage || ''} sx={{ width: 44, height: 44 }} />
               <InputBase
                 placeholder="What's on your mind?"
                 sx={{
