@@ -20,6 +20,7 @@ export const POST_FIELDS = gql`
     price
     status
     createdAt
+    userProfilePhotoSignedUrl
     media {
       id
       mediaType

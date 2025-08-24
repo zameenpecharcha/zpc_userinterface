@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import Snackbar from '@mui/material/Snackbar';
 import {
     AppBar,
     Toolbar,
@@ -12,6 +13,7 @@ import {
     CircularProgress,
     Alert,
 } from '@mui/material';
+import Rating from '@mui/material/Rating';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import CameraAltIcon from '@mui/icons-material/CameraAlt';
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
@@ -327,6 +329,8 @@ interface UserProfile {
     email: string;
     phone: string;
     profilePhoto?: string;
+    profilePhotoSignedUrl?: string;
+    coverPhotoSignedUrl?: string;
     role?: string;
     address?: string;
     bio?: string;
@@ -344,6 +348,7 @@ interface ProfilePageProps {
     onGoBack: () => void;
     userId: number;
     currentUserId?: number;
+    onOpenProfile?: (userId: number) => void;
 }
 
 const GRAPHQL_QUERIES = {
@@ -356,6 +361,10 @@ const GRAPHQL_QUERIES = {
                 email
                 phone
                 profilePhoto
+                profilePhotoId
+                coverPhotoId
+                profilePhotoSignedUrl
+                coverPhotoSignedUrl
                 role
                 address
                 bio
@@ -379,6 +388,38 @@ const GRAPHQL_QUERIES = {
         }
     `,
 
+    PRESIGN_USER_PHOTO_UPLOAD: `
+        mutation PresignUserPhotoUpload($fileName: String!, $contentType: String) {
+            presignUserPhotoUpload(fileName: $fileName, contentType: $contentType) {
+                uploadUrl
+                publicUrl
+                key
+            }
+        }
+    `,
+
+    UPDATE_PROFILE_PHOTO: `
+        mutation UpdateProfilePhoto($userId: Int!, $filePath: String!, $fileName: String, $contentType: String) {
+            updateProfilePhoto(userId: $userId, filePath: $filePath, fileName: $fileName, contentType: $contentType) {
+                id
+                profilePhotoId
+                profilePhotoUrl
+                profilePhotoSignedUrl
+            }
+        }
+    `,
+
+    UPDATE_COVER_PHOTO: `
+        mutation UpdateCoverPhoto($userId: Int!, $filePath: String!, $fileName: String, $contentType: String) {
+            updateCoverPhoto(userId: $userId, filePath: $filePath, fileName: $fileName, contentType: $contentType) {
+                id
+                coverPhotoId
+                coverPhotoUrl
+                coverPhotoSignedUrl
+            }
+        }
+    `,
+
     GET_USER_RATINGS: `
         query GetUserRatings($userId: Int!) {
             userRatings(userId: $userId) {
@@ -398,7 +439,7 @@ const GRAPHQL_QUERIES = {
         query GetUserFollowers($userId: Int!) {
             userFollowers(userId: $userId) {
                 id
-                userId
+                followerId
                 followingId
                 status
                 followedAt
@@ -410,7 +451,7 @@ const GRAPHQL_QUERIES = {
         query GetUserFollowing($userId: Int!) {
             userFollowing(userId: $userId) {
                 id
-                userId
+                followerId
                 followingId
                 status
                 followedAt
@@ -422,7 +463,7 @@ const GRAPHQL_QUERIES = {
         query CheckFollowingStatus($userId: Int!, $followingId: Int!) {
             checkFollowingStatus(userId: $userId, followingId: $followingId) {
                 id
-                userId
+                followerId
                 followingId
                 status
                 followedAt
@@ -455,7 +496,7 @@ const GRAPHQL_QUERIES = {
         mutation FollowUser($userId: Int!, $followingId: Int!) {
             followUser(userId: $userId, followingId: $followingId) {
                 id
-                userId
+                followerId
                 followingId
                 status
                 followedAt
@@ -608,21 +649,23 @@ const GRAPHQL_QUERIES = {
     `,
 };
 
+// Remove these imports as they're not being used yet
+
 const apiService = {
-    async graphqlRequest(query: string, variables: Record<string, any> = {}) {
-        try {
-            console.log('Making GraphQL request:', { query, variables });
-            const response = await fetch('http://localhost:8000/api/v1/graphql', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
-                },
-                body: JSON.stringify({
-                    query,
-                    variables
-                }),
-            });
+  async graphqlRequest(query: string, variables: Record<string, any> = {}) {
+    try {
+      console.log('Making GraphQL request:', { query, variables });
+      const response = await fetch('http://localhost:8000/api/v1/graphql', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
+        body: JSON.stringify({
+          query,
+          variables
+        }),
+      });
 
             console.log('GraphQL response status:', response.status);
 
@@ -670,6 +713,8 @@ const apiService = {
                 email: user.email,
                 phone: user.phone,
                 profilePhoto: user.profilePhoto,
+                profilePhotoSignedUrl: user.profilePhotoSignedUrl,
+                coverPhotoSignedUrl: user.coverPhotoSignedUrl,
                 role: user.role,
                 address: user.address,
                 bio: user.bio,
@@ -789,7 +834,28 @@ const apiService = {
 
     async fetchUserReviews(userId: number): Promise<UserRating[]> {
         const data = await this.graphqlRequest(GRAPHQL_QUERIES.GET_USER_RATINGS, { userId });
-        return (data.userRatings || []).map((rating: any) => ({
+        const list = (data.userRatings || []);
+
+        // Fetch rater info (first/last name, profilePhoto) for each unique ratedByUserId
+        const uniqueRaterIds: number[] = Array.from(
+            new Set<number>(
+                (list as any[])
+                    .map((r: any) => Number(r.ratedByUserId))
+                    .filter((x: number) => Number.isFinite(x) && x > 0)
+            )
+        );
+        const raterEntries = await Promise.all(uniqueRaterIds.map(async (rid) => {
+            try {
+                const u = await this.graphqlRequest(GRAPHQL_QUERIES.GET_USER_PROFILE, { id: rid });
+                const user = u.user;
+                return [rid, { firstName: user?.firstName, lastName: user?.lastName, profilePhoto: user?.profilePhotoSignedUrl || user?.profilePhoto }];
+            } catch {
+                return [rid, null];
+            }
+        }));
+        const raterMap = Object.fromEntries(raterEntries);
+
+        return list.map((rating: any) => ({
             id: rating.id,
             ratedUserId: rating.ratedUserId,
             ratedByUserId: rating.ratedByUserId,
@@ -797,7 +863,8 @@ const apiService = {
             review: rating.review,
             ratingType: rating.ratingType,
             createdAt: rating.createdAt,
-            updatedAt: rating.updatedAt
+            updatedAt: rating.updatedAt,
+            raterInfo: raterMap[rating.ratedByUserId] || undefined,
         }));
     },
 
@@ -905,7 +972,7 @@ const apiService = {
     },
 };
 
-const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUserId }) => {
+const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUserId, onOpenProfile }) => {
     const [user, setUser] = useState<UserProfile | null>(null);
     const [posts, setPosts] = useState<Post[]>([]);
     const [reviews, setReviews] = useState<UserRating[]>([]);
@@ -931,6 +998,42 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
     const [replyingCommentId, setReplyingCommentId] = useState<number | null>(null);
     const [replyText, setReplyText] = useState('');
     const [replying, setReplying] = useState(false);
+    // Followers/Following modal state
+    const [followersOpen, setFollowersOpen] = useState(false);
+    const [followingOpen, setFollowingOpen] = useState(false);
+    const [followersList, setFollowersList] = useState<UserFollower[]>([]);
+    const [followingList, setFollowingList] = useState<UserFollower[]>([]);
+    const [followersDetails, setFollowersDetails] = useState<any[]>([]);
+    const [followingDetails, setFollowingDetails] = useState<any[]>([]);
+    const [loadingFF, setLoadingFF] = useState(false);
+
+    const enrichUsers = async (userIds: number[]) => {
+        const unique = Array.from(new Set(userIds.filter((x) => Number.isFinite(x))));
+        const entries = await Promise.all(unique.map(async (uid) => {
+            try {
+                const res = await apiService.graphqlRequest(GRAPHQL_QUERIES.GET_USER_PROFILE, { id: uid });
+                const u = res.user;
+                return [uid, {
+                    id: u.id,
+                    firstName: u.firstName,
+                    lastName: u.lastName,
+                    role: u.role,
+                    photo: u.profilePhotoSignedUrl || u.profilePhoto,
+                }];
+            } catch {
+                return [uid, null];
+            }
+        }));
+        return Object.fromEntries(entries);
+    };
+    // Rating state
+    const [ratingOpen, setRatingOpen] = useState(false);
+    const [ratingValue, setRatingValue] = useState<number>(5);
+    const [ratingText, setRatingText] = useState('');
+    const [ratingSubmitting, setRatingSubmitting] = useState(false);
+    // Snackbar state
+    const [snack, setSnack] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' | 'warning' }>({ open: false, message: '', severity: 'success' });
+    const handleSnackClose = () => setSnack(prev => ({ ...prev, open: false }));
 
     useEffect(() => {
         const fetchData = async () => {
@@ -1028,19 +1131,105 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
         try {
             setFollowingInProgress(true);
 
-            if (isFollowing) {
-                setIsFollowing(false);
-                setUser(prev => prev ? { ...prev, followersCount: prev.followersCount - 1 } : null);
-            } else {
-                const followResult = await apiService.followUser(currentUserId, userId);
-                setFollowingStatus(followResult);
-                setIsFollowing(true);
+            // Only allow action when not already following or pending
+            if (isFollowing || followingStatus?.status === 'pending') {
+                return;
+            }
+
+            const followResult = await apiService.followUser(currentUserId, userId);
+            setFollowingStatus(followResult);
+            const isActive = followResult?.status === 'active';
+            setIsFollowing(isActive);
+            // Followers count only increases if accepted immediately (shouldn't for users)
+            if (isActive) {
                 setUser(prev => prev ? { ...prev, followersCount: prev.followersCount + 1 } : null);
             }
+            setSnack({ open: true, message: followResult?.status === 'pending' ? 'Follow request sent' : 'Following', severity: 'success' });
         } catch (err) {
-            console.error('Error following/unfollowing user:', err);
+            console.error('Error sending follow request:', err);
+            setSnack({ open: true, message: 'Failed to send follow request', severity: 'error' });
         } finally {
             setFollowingInProgress(false);
+        }
+    };
+
+    // Poll follow status while pending and update followers count upon acceptance
+    const prevStatusRef = useRef<string | null>(null);
+    useEffect(() => {
+        prevStatusRef.current = followingStatus?.status || null;
+    }, [followingStatus]);
+
+    useEffect(() => {
+        if (!currentUserId || currentUserId === userId) return;
+        if (followingStatus?.status !== 'pending') return;
+
+        const interval = setInterval(async () => {
+            try {
+                const latest = await apiService.checkFollowingStatus(currentUserId, userId);
+                if (latest?.status && latest.status !== followingStatus.status) {
+                    setFollowingStatus(latest);
+                    setIsFollowing(latest.status === 'active');
+                    if (prevStatusRef.current === 'pending' && latest.status === 'active') {
+                        setUser(prev => prev ? { ...prev, followersCount: prev.followersCount + 1 } : null);
+                        setSnack({ open: true, message: 'Follow request accepted', severity: 'success' });
+                    }
+                }
+            } catch (e) {
+                // Ignore polling errors
+            }
+        }, 10000); // 10 seconds
+
+        return () => clearInterval(interval);
+    }, [followingStatus, currentUserId, userId]);
+
+    // Photo upload handlers (profile/cover)
+    const fileInputRef = useRef<HTMLInputElement | null>(null);
+    const coverFileInputRef = useRef<HTMLInputElement | null>(null);
+
+    const handleChooseProfilePhoto = () => fileInputRef.current?.click();
+    const handleChooseCoverPhoto = () => coverFileInputRef.current?.click();
+
+    const uploadWithPresign = async (file: File, isCover: boolean) => {
+        try {
+            // Step 1: presign
+            const presignRes = await apiService.graphqlRequest(GRAPHQL_QUERIES.PRESIGN_USER_PHOTO_UPLOAD, {
+                fileName: file.name,
+                contentType: file.type
+            });
+            const { uploadUrl, publicUrl } = presignRes.presignUserPhotoUpload;
+
+            // Step 2: upload to S3
+            const putResp = await fetch(uploadUrl, {
+                method: 'PUT',
+                headers: { 'Content-Type': file.type },
+                body: file,
+            });
+            if (!putResp.ok) throw new Error('Upload failed');
+
+            // Step 3: update profile/cover via GraphQL
+            const mutation = isCover ? GRAPHQL_QUERIES.UPDATE_COVER_PHOTO : GRAPHQL_QUERIES.UPDATE_PROFILE_PHOTO;
+            const updateRes = await apiService.graphqlRequest(mutation, {
+                userId: userId,
+                filePath: publicUrl,
+                fileName: file.name,
+                contentType: file.type,
+            });
+
+            // Update UI with signed URL from response
+            const updated = isCover ? updateRes.updateCoverPhoto : updateRes.updateProfilePhoto;
+            setUser(prev => prev ? {
+                ...prev,
+                profilePhoto: !isCover ? (updated.profilePhotoSignedUrl || prev.profilePhoto) : prev.profilePhoto,
+                // Pass along signed URLs by attaching them on the user object cast
+                ...(isCover ? { coverPhotoSignedUrl: updated.coverPhotoSignedUrl } : { profilePhotoSignedUrl: updated.profilePhotoSignedUrl })
+            } as any : prev);
+
+            setSnack({ open: true, message: isCover ? 'Cover photo updated' : 'Profile photo updated', severity: 'success' });
+
+        } catch (e) {
+            console.error('Photo upload failed:', e);
+            const msg = e instanceof Error ? e.message : 'Photo upload failed';
+            setSnack({ open: true, message: msg, severity: 'error' });
         }
     };
 
@@ -1247,7 +1436,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
             <Box sx={{ pt: 10, px: 2 }}>
                 <Box sx={{ position: 'relative', borderRadius: 2, overflow: 'hidden', mb: 3 }}>
                     <img
-                        src={user.profilePhoto || 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&h=300&fit=crop'}
+                        src={(user as any).coverPhotoSignedUrl || 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&h=300&fit=crop'}
                         alt="Cover"
                         style={{ width: '100%', height: 250, objectFit: 'cover' }}
                         onError={(e) => {
@@ -1266,18 +1455,29 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                 textTransform: 'none',
                                 fontWeight: 600
                             }}
+                            onClick={handleChooseCoverPhoto}
                         >
                             Edit Cover
                         </Button>
                     )}
                 </Box>
 
+                {/* hidden file inputs */}
+                <input ref={coverFileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) uploadWithPresign(f, true);
+                }} />
+                <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) uploadWithPresign(f, false);
+                }} />
+
                 <Box sx={{ bgcolor: '#fff', borderRadius: 3, p: 3, mb: 3, boxShadow: '0 2px 12px rgba(37,99,235,0.08)' }}>
                     <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 3 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                             <Box sx={{ position: 'relative' }}>
                                 <Avatar
-                                    src={user.profilePhoto || 'https://randomuser.me/api/portraits/lego/1.jpg'}
+                                    src={(user as any).profilePhotoSignedUrl || user.profilePhoto || 'https://randomuser.me/api/portraits/lego/1.jpg'}
                                     sx={{ width: 100, height: 100, border: '4px solid white', boxShadow: 2 }}
                                     onError={(e) => {
                                         (e.target as HTMLImageElement).src = 'https://randomuser.me/api/portraits/lego/1.jpg';
@@ -1327,7 +1527,10 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                         }
                                     }}
                                 >
-                                    {followingInProgress ? 'Loading...' : (isFollowing ? 'Following' : 'Follow')}
+                                    {followingInProgress ? 'Loading...' : (
+                                        followingStatus?.status === 'pending' ? 'Requested' : (
+                                        isFollowing ? 'Following' : 'Follow')
+                                    )}
                                 </Button>
                                 <Button
                                     variant="outlined"
@@ -1343,16 +1546,49 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                 </Button>
                             </Box>
                         )}
+                        {isOwnProfile && (
+                            <Box sx={{ display: 'flex', gap: 1 }}>
+                                <Button variant="outlined" onClick={handleChooseProfilePhoto}>Change Profile Photo</Button>
+                            </Box>
+                        )}
                     </Box>
 
                     <Box sx={{ display: 'flex', gap: 4, pt: 2, borderTop: '1px solid #E5E7EB' }}>
-                        <Box sx={{ textAlign: 'center' }}>
+                        <Box sx={{ textAlign: 'center', cursor: 'pointer' }} onClick={async () => {
+                            try {
+                                setLoadingFF(true);
+                                const list = await apiService.fetchUserFollowers(userId);
+                                setFollowersList(list);
+                                const map = await enrichUsers(list.map((f: any) => f.followerId || f.userId));
+                                setFollowersDetails(list.map((f: any) => ({
+                                    id: f.id,
+                                    uid: f.followerId || f.userId,
+                                    status: f.status,
+                                    info: map[f.followerId || f.userId] || null,
+                                })));
+                                setFollowersOpen(true);
+                            } finally { setLoadingFF(false); }
+                        }}>
                             <Typography variant="h5" sx={{ fontWeight: 700, color: '#2563EB' }}>
                                 {user.followersCount.toLocaleString()}
                             </Typography>
                             <Typography sx={{ color: '#6B7280', fontSize: '0.875rem' }}>Followers</Typography>
                         </Box>
-                        <Box sx={{ textAlign: 'center' }}>
+                        <Box sx={{ textAlign: 'center', cursor: 'pointer' }} onClick={async () => {
+                            try {
+                                setLoadingFF(true);
+                                const list = await apiService.fetchUserFollowing(userId);
+                                setFollowingList(list);
+                                const map = await enrichUsers(list.map((f: any) => f.followingId));
+                                setFollowingDetails(list.map((f: any) => ({
+                                    id: f.id,
+                                    uid: f.followingId,
+                                    status: f.status,
+                                    info: map[f.followingId] || null,
+                                })));
+                                setFollowingOpen(true);
+                            } finally { setLoadingFF(false); }
+                        }}>
                             <Typography variant="h5" sx={{ fontWeight: 700, color: '#2563EB' }}>
                                 {user.followingCount}
                             </Typography>
@@ -1488,12 +1724,78 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                 <Typography variant="h6" sx={{ fontWeight: 700, color: '#2563EB' }}>
                                     Ratings & Reviews
                                 </Typography>
-                                {!isOwnProfile && (
-                                    <Button sx={{ color: '#2563EB', textTransform: 'none', fontWeight: 600 }}>
-                                        Rate User
+                                {!isOwnProfile && currentUserId && (
+                                    <Button onClick={() => setRatingOpen(v => !v)} sx={{ color: '#2563EB', textTransform: 'none', fontWeight: 600 }}>
+                                        {ratingOpen ? 'Close' : 'Rate User'}
                                     </Button>
                                 )}
                             </Box>
+
+                            {!isOwnProfile && currentUserId && ratingOpen && (
+                                <Box sx={{ mb: 3, p: 2, bgcolor: '#F6F8FB', borderRadius: 2 }}>
+                                    <Typography sx={{ fontWeight: 600, mb: 1 }}>Your rating</Typography>
+                                    <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1 }}>
+                                        <Rating value={ratingValue} onChange={(_, v) => setRatingValue(v || 5)} />
+                                        <Typography sx={{ color: '#6B7280' }}>{ratingValue} / 5</Typography>
+                                    </Stack>
+                                    <InputBase
+                                        placeholder="Write a short review (optional)"
+                                        value={ratingText}
+                                        onChange={(e) => setRatingText(e.target.value)}
+                                        sx={{
+                                            bgcolor: '#fff',
+                                            px: 2,
+                                            py: 1.2,
+                                            borderRadius: 2,
+                                            fontSize: 15,
+                                            flex: 1,
+                                            boxShadow: 1,
+                                            border: '1px solid #E5E7EB',
+                                            mb: 1
+                                        }}
+                                        multiline minRows={2} maxRows={4}
+                                    />
+                                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+                                        <Button disabled={ratingSubmitting} onClick={() => setRatingOpen(false)}>Cancel</Button>
+                                        <Button
+                                            variant="contained"
+                                            disabled={ratingSubmitting}
+                                            sx={{ bgcolor: '#2563EB', '&:hover': { bgcolor: '#1D4ED8' } }}
+                                            onClick={async () => {
+                                                if (!currentUserId) return;
+                                                try {
+                                                    setRatingSubmitting(true);
+                                                    const created = await apiService.createRating(userId, currentUserId, ratingValue, ratingText || undefined, undefined);
+                                                    // Update local reviews and averages
+                                                    setReviews(prev => [{
+                                                        id: created.id,
+                                                        ratedUserId: userId,
+                                                        ratedByUserId: currentUserId,
+                                                        ratingValue,
+                                                        review: ratingText || undefined,
+                                                        ratingType: undefined,
+                                                        createdAt: created.createdAt || new Date().toISOString(),
+                                                        updatedAt: created.updatedAt || new Date().toISOString(),
+                                                        raterInfo: undefined,
+                                                    }, ...prev]);
+                                                    setUser(prev => prev ? { ...prev, averageRating: Number(((prev.averageRating * prev.ratings.length + ratingValue) / (prev.ratings.length + 1)).toFixed(1)), ratings: [{ id: created.id, ratedUserId: userId, ratedByUserId: currentUserId, ratingValue, review: ratingText || undefined, ratingType: undefined, createdAt: created.createdAt || new Date().toISOString(), updatedAt: created.updatedAt || new Date().toISOString() }, ...prev.ratings] } : prev);
+                                                    setSnack({ open: true, message: 'Rating submitted', severity: 'success' });
+                                                    setRatingText('');
+                                                    setRatingValue(5);
+                                                    setRatingOpen(false);
+                                                } catch (e) {
+                                                    console.error('Create rating failed', e);
+                                                    setSnack({ open: true, message: 'Failed to submit rating', severity: 'error' });
+                                                } finally {
+                                                    setRatingSubmitting(false);
+                                                }
+                                            }}
+                                        >
+                                            {ratingSubmitting ? 'Submitting...' : 'Submit'}
+                                        </Button>
+                                    </Box>
+                                </Box>
+                            )}
 
                             <Box sx={{ textAlign: 'center', mb: 3 }}>
                                 <Typography variant="h2" sx={{ fontWeight: 700, color: '#2563EB', mb: 1 }}>
@@ -1716,6 +2018,60 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                     </Box>
                 );
             })()}
+
+            {/* Followers modal */}
+            {followersOpen && (
+                <Box sx={{ position: 'fixed', inset: 0, bgcolor: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setFollowersOpen(false)}>
+                    <Box sx={{ bgcolor: '#fff', borderRadius: 3, width: 420, maxWidth: '90vw', maxHeight: '70vh', overflowY: 'auto', p: 2 }} onClick={e => e.stopPropagation()}>
+                        <Typography sx={{ fontWeight: 700, color: '#2563EB', mb: 1 }}>Followers</Typography>
+                        {loadingFF ? (
+                            <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress /></Box>
+                        ) : followersDetails.length === 0 ? (
+                            <Typography sx={{ color: '#6B7280' }}>No followers</Typography>
+                        ) : (
+                            <Stack spacing={1.2}>
+                                {followersDetails.map((f) => (
+                                    <Box key={f.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.2, p: 1, borderRadius: 2, '&:hover': { bgcolor: '#F3F4F6' }, cursor: onOpenProfile ? 'pointer' : 'default' }}
+                                         onClick={() => onOpenProfile && onOpenProfile(f.uid)}>
+                                        <Avatar src={f.info?.photo || ''} sx={{ width: 32, height: 32 }}>{(f.info?.firstName || '').charAt(0)}</Avatar>
+                                        <Box>
+                                            <Typography sx={{ fontWeight: 600 }}>{f.info ? `${f.info.firstName} ${f.info.lastName}` : `User ${f.uid}`}</Typography>
+                                            <Typography sx={{ fontSize: 12, color: '#6B7280' }}>{f.info?.role || f.status}</Typography>
+                                        </Box>
+                                    </Box>
+                                ))}
+                            </Stack>
+                        )}
+                    </Box>
+                </Box>
+            )}
+
+            {/* Following modal */}
+            {followingOpen && (
+                <Box sx={{ position: 'fixed', inset: 0, bgcolor: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setFollowingOpen(false)}>
+                    <Box sx={{ bgcolor: '#fff', borderRadius: 3, width: 420, maxWidth: '90vw', maxHeight: '70vh', overflowY: 'auto', p: 2 }} onClick={e => e.stopPropagation()}>
+                        <Typography sx={{ fontWeight: 700, color: '#2563EB', mb: 1 }}>Following</Typography>
+                        {loadingFF ? (
+                            <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress /></Box>
+                        ) : followingDetails.length === 0 ? (
+                            <Typography sx={{ color: '#6B7280' }}>No following</Typography>
+                        ) : (
+                            <Stack spacing={1.2}>
+                                {followingDetails.map((f) => (
+                                    <Box key={f.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.2, p: 1, borderRadius: 2, '&:hover': { bgcolor: '#F3F4F6' }, cursor: onOpenProfile ? 'pointer' : 'default' }}
+                                         onClick={() => onOpenProfile && onOpenProfile(f.uid)}>
+                                        <Avatar src={f.info?.photo || ''} sx={{ width: 32, height: 32 }}>{(f.info?.firstName || '').charAt(0)}</Avatar>
+                                        <Box>
+                                            <Typography sx={{ fontWeight: 600 }}>{f.info ? `${f.info.firstName} ${f.info.lastName}` : `User ${f.uid}`}</Typography>
+                                            <Typography sx={{ fontSize: 12, color: '#6B7280' }}>{f.info?.role || f.status}</Typography>
+                                        </Box>
+                                    </Box>
+                                ))}
+                            </Stack>
+                        )}
+                    </Box>
+                </Box>
+            )}
         </Box>
     );
 };

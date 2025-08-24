@@ -145,7 +145,8 @@ mutation UnlikePost($postId: Int!, $userId: Int!) {
 // Get user data dynamically to handle login state changes
 const getUserData = () => {
   try {
-    return JSON.parse(localStorage.getItem('userInfo') || '{}');
+    const stored = localStorage.getItem('user') || localStorage.getItem('userInfo');
+    return stored ? JSON.parse(stored) : {};
   } catch {
     return {};
   }
@@ -208,13 +209,14 @@ interface PostProps {
   };
   onLikeToggle: (postId: number) => void;
   onCommentClick: (postId: number) => void;
+  onOpenProfile: (userId: number) => void;
   likedPosts: { [postId: number]: boolean };
   likeCounts: { [postId: number]: number };
   likingPost: boolean;
   unlikingPost: boolean;
 }
 
-const Post = memo(({ post, onLikeToggle, onCommentClick, likedPosts, likeCounts, likingPost, unlikingPost }: PostProps) => {
+const Post = memo(({ post, onLikeToggle, onCommentClick, onOpenProfile, likedPosts, likeCounts, likingPost, unlikingPost }: PostProps) => {
   const formatDate = useCallback((dateString: string) => {
     return new Date(dateString).toLocaleString();
   }, []);
@@ -232,8 +234,17 @@ const Post = memo(({ post, onLikeToggle, onCommentClick, likedPosts, likeCounts,
       gap: 1.5,
     }}>
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-        <Avatar src={post.profilePhoto || `https://randomuser.me/api/portraits/lego/${post.userId % 10}.jpg`} sx={{ mr: 2, width: 44, height: 44, boxShadow: 1 }} />
-        <Box>
+        <Avatar
+          src={(post as any).userProfilePhotoSignedUrl || post.profilePhoto || `https://randomuser.me/api/portraits/lego/${post.userId % 10}.jpg`}
+          sx={{ mr: 2, width: 44, height: 44, boxShadow: 1, cursor: 'pointer' }}
+          onClick={() => onOpenProfile(post.userId)}
+        />
+        <Box
+          onClick={() => onOpenProfile(post.userId)}
+          sx={{ cursor: 'pointer' }}
+          role="button"
+          aria-label={`Open profile of ${post.userFirstName} ${post.userLastName}`}
+        >
           <Typography sx={{ fontWeight: 700, fontSize: 18, color: '#2563EB', ...interFont }}>
             {post.userFirstName} {post.userLastName}
           </Typography>
@@ -675,7 +686,10 @@ const Home = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
   const commentsRefreshTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Authenticated user object (from localStorage) – do not repurpose for viewing profiles
   const [currentUser, setCurrentUser] = useState(getUserData());
+  // The user whose profile we are viewing from the feed
+  const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
 
   const isMobile = useMediaQuery('(max-width:900px)');
 
@@ -723,7 +737,7 @@ const Home = () => {
     };
   }, [currentUser]);
 
-  // Auto-refresh functionality (always enabled, simplified)
+  // Auto-refresh functionality (every 5 minutes)
   useEffect(() => {
     if (!loading) {
       refreshTimerRef.current = setInterval(async () => {
@@ -735,7 +749,7 @@ const Home = () => {
         } finally {
           setIsRefreshing(false);
         }
-      }, 1000); // 1 second
+      }, 300000); // 5 minutes
 
       return () => {
         if (refreshTimerRef.current) {
@@ -784,12 +798,19 @@ const Home = () => {
   }, []);
 
   const handleProfileClick = useCallback(() => {
+    // Open own profile explicitly
+    setSelectedProfileId(storedUser?.id || currentUser?.id || null);
     setCurrentPage('profile');
     handleClose();
   }, [handleClose]);
 
   const handleGoHome = useCallback(() => {
     setCurrentPage('home');
+  }, []);
+
+  const handleOpenProfile = useCallback((uid: number) => {
+    setSelectedProfileId(uid);
+    setCurrentPage('profile');
   }, []);
 
   const handleLikeToggle = useCallback(async (postId: number) => {
@@ -984,16 +1005,22 @@ const Home = () => {
 
   // Render Profile Page
   if (currentPage === 'profile') {
-    const currentUserId = currentUser?.id;
-    if (!currentUserId) {
+    const authUserId = currentUser?.id || storedUser?.id;
+    if (!authUserId) {
       return <Typography sx={{ m: 4, color: 'red' }}>User not logged in. Please log in again.</Typography>;
     }
+    if (!selectedProfileId) {
+      return <Typography sx={{ m: 4 }}>No profile selected.</Typography>;
+    }
 
-    return <ProfilePage
-      onGoBack={handleGoHome}
-      userId={currentUserId}
-      currentUserId={currentUserId}
-    />;
+    return (
+      <ProfilePage
+        onGoBack={handleGoHome}
+        userId={selectedProfileId}
+        currentUserId={authUserId}
+        onOpenProfile={handleOpenProfile}
+      />
+    );
   }
 
   // Render Home Page
@@ -1042,7 +1069,10 @@ const Home = () => {
               <MenuItem onClick={handleClose}>Settings</MenuItem>
               <MenuItem
                 onClick={() => {
+                  localStorage.removeItem('user');
                   localStorage.removeItem('userInfo');
+                  localStorage.removeItem('token');
+                  localStorage.removeItem('refreshToken');
                   window.location.href = '/';
                 }}
               >
@@ -1152,6 +1182,7 @@ const Home = () => {
                   post={post}
                   onLikeToggle={handleLikeToggle}
                   onCommentClick={handleCommentClick}
+                  onOpenProfile={handleOpenProfile}
                   likedPosts={likedPosts}
                   likeCounts={likeCounts}
                   likingPost={likingPost}

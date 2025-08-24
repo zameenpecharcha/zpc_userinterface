@@ -5,7 +5,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   user: UserInfo | null;
   token: string | null;
-  refreshToken: string | null;
+  refreshToken: string | null ;
   setAuth: (token: string, refreshToken: string, user: UserInfo) => void;
   clearAuth: () => void;
 }
@@ -32,32 +32,50 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [refreshToken, setRefreshToken] = useState<string | null>(null);
 
   useEffect(() => {
-    // Clear any existing auth data on mount
-    localStorage.removeItem('token');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('user');
+    // Try to restore auth state from localStorage (support both 'user' and legacy 'userInfo')
+    const storedToken = localStorage.getItem('token');
+    const storedRefreshToken = localStorage.getItem('refreshToken');
+    const storedUser = localStorage.getItem('user') || localStorage.getItem('userInfo');
     
-    setToken(null);
-    setRefreshToken(null);
-    setUser(null);
-    setIsAuthenticated(false);
+    if (storedToken && storedRefreshToken && storedUser) {
+      try {
+        const parsedUser = JSON.parse(storedUser);
+        setToken(storedToken);
+        setRefreshToken(storedRefreshToken);
+        setUser(parsedUser);
+        setIsAuthenticated(true);
+        console.log('Auth state restored:', { token: storedToken, user: parsedUser });
+      } catch (error) {
+        console.error('Error restoring auth state:', error);
+        clearAuth();
+      }
+    } else {
+      console.log('No stored auth state found');
+      clearAuth();
+    }
   }, []); // Empty dependency array means this runs once on mount
 
-  const setAuth = (token: string, refreshToken: string, user: UserInfo) => {
-    localStorage.setItem('token', token);
-    localStorage.setItem('refreshToken', refreshToken);
-    localStorage.setItem('user', JSON.stringify(user));
+  const setAuth = (newToken: string, newRefreshToken: string, newUser: UserInfo) => {
+    console.log('Setting auth state:', { token: newToken, user: newUser });
+    localStorage.setItem('token', newToken);
+    localStorage.setItem('refreshToken', newRefreshToken);
+    // Write to both keys for compatibility
+    const userString = JSON.stringify(newUser);
+    localStorage.setItem('user', userString);
+    localStorage.setItem('userInfo', userString);
     
-    setToken(token);
-    setRefreshToken(refreshToken);
-    setUser(user);
+    setToken(newToken);
+    setRefreshToken(newRefreshToken);
+    setUser(newUser);
     setIsAuthenticated(true);
   };
 
   const clearAuth = () => {
+    console.log('Clearing auth state');
     localStorage.removeItem('token');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
+    localStorage.removeItem('userInfo');
     
     setToken(null);
     setRefreshToken(null);
