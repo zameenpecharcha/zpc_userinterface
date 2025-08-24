@@ -63,6 +63,7 @@ export const SEARCH_POSTS = gql`
       userFirstName
       userLastName
       userRole
+      userProfilePhotoSignedUrl
       title
       content
       visibility
