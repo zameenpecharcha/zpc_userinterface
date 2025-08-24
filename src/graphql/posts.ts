@@ -24,6 +24,7 @@ export const POST_FIELDS = gql`
       id
       mediaType
       mediaUrl
+      signedUrl
       mediaOrder
       mediaSize
       caption
@@ -54,28 +55,37 @@ export const GET_POSTS_BY_USER = gql`
 `;
 
 export const SEARCH_POSTS = gql`
-  query SearchPosts(
-    $propertyType: String
-    $location: String
-    $minPrice: Float
-    $maxPrice: Float
-    $status: String
-    $page: Int = 1
-    $limit: Int = 10
-  ) {
-    searchPosts(
-      propertyType: $propertyType
-      location: $location
-      minPrice: $minPrice
-      maxPrice: $maxPrice
-      status: $status
-      page: $page
-      limit: $limit
-    ) {
-      ...PostFields
+  query SearchPosts($page: Int = 1, $limit: Int = 10) {
+    searchPosts(page: $page, limit: $limit) {
+      id
+      userId
+      userFirstName
+      userLastName
+      userRole
+      title
+      content
+      visibility
+      propertyType
+      location
+      latitude
+      longitude
+      price
+      status
+      createdAt
+      likeCount
+      commentCount
+      media {
+        id
+        mediaType
+        mediaUrl
+        signedUrl
+        mediaOrder
+        mediaSize
+        caption
+        uploadedAt
+      }
     }
   }
-  ${POST_FIELDS}
 `;
 
 export const GET_POST_COMMENTS = gql`
@@ -334,6 +344,7 @@ export const ADD_POST_MEDIA = gql`
           id
           mediaType
           mediaUrl
+          signedUrl
           mediaOrder
           mediaSize
           caption

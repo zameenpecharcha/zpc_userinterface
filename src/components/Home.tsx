@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback, memo, useEffect, useRef } from 'react';
 import { styled } from '@mui/material/styles';
 import { gql, useQuery, useMutation } from '@apollo/client';
+import { SEARCH_POSTS, POST_FIELDS } from '../graphql/posts';
 import {
   AppBar,
   Toolbar,
@@ -39,38 +40,7 @@ import { PostService } from '../services/postService';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 
-const SEARCH_POSTS_QUERY = gql`
-query SearchPosts($page: Int, $limit: Int) {
-  searchPosts(page: $page, limit: $limit) {
-    id
-    userId
-    userFirstName
-    userLastName
-    userRole
-    title
-    content
-    visibility
-    propertyType
-    location
-    latitude
-    longitude
-    price
-    status
-    createdAt
-    likeCount
-    commentCount
-    media {
-      id
-      mediaType
-      mediaUrl
-      mediaOrder
-      mediaSize
-      caption
-      uploadedAt
-    }
-  }
-}
-`;
+
 
 const GET_POST_COMMENTS_QUERY = gql`
 query GetPostComments($postId: Int!, $page: Int, $limit: Int) {
@@ -207,7 +177,44 @@ const trendingTopics = [
 ];
 
 // Memoized Post component to prevent unnecessary re-renders
-const Post = memo(({ post, onLikeToggle, onCommentClick, likedPosts, likeCounts, likingPost, unlikingPost }: any) => {
+interface PostProps {
+  post: {
+    id: number;
+    userId: number;
+    userFirstName: string;
+    userLastName: string;
+    userRole: string;
+    title: string;
+    content: string;
+    visibility: string;
+    propertyType: string;
+    location: string;
+    price: number;
+    status: string;
+    createdAt: string;
+    likeCount: number;
+    commentCount: number;
+    profilePhoto?: string;
+    media?: Array<{
+      id: number;
+      mediaType: string;
+      mediaUrl: string;
+      signedUrl?: string;
+      caption?: string;
+      mediaOrder: number;
+      mediaSize?: number;
+      uploadedAt: string;
+    }>;
+  };
+  onLikeToggle: (postId: number) => void;
+  onCommentClick: (postId: number) => void;
+  likedPosts: { [postId: number]: boolean };
+  likeCounts: { [postId: number]: number };
+  likingPost: boolean;
+  unlikingPost: boolean;
+}
+
+const Post = memo(({ post, onLikeToggle, onCommentClick, likedPosts, likeCounts, likingPost, unlikingPost }: PostProps) => {
   const formatDate = useCallback((dateString: string) => {
     return new Date(dateString).toLocaleString();
   }, []);
@@ -245,13 +252,61 @@ const Post = memo(({ post, onLikeToggle, onCommentClick, likedPosts, likeCounts,
         <Typography sx={{ fontSize: 14, color: '#6B7280', bgcolor: 'rgba(99,102,241,0.06)', px: 1.5, py: 0.5, borderRadius: 2 }}>Type: {post.propertyType}</Typography>
         <Typography sx={{ fontSize: 14, color: '#6B7280', bgcolor: 'rgba(239,68,68,0.06)', px: 1.5, py: 0.5, borderRadius: 2 }}>Price: ₹{post.price}</Typography>
       </Box>
-      {post.media?.length > 0 && post.media[0].mediaType === 'image' && (
-        <Box sx={{ mb: 2 }}>
-          <img
-            src={post.media[0].mediaUrl}
-            alt={post.media[0].caption || 'Post media'}
-            style={{ width: '100%', borderRadius: 12, maxHeight: 340, objectFit: 'cover', boxShadow: '0 2px 8px rgba(37,99,235,0.08)' }}
-          />
+      {post.media && post.media.length > 0 && (
+        <Box sx={{ mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+          {post.media.map((media, index) => 
+            media.mediaType === 'image' && (
+              <Box key={media.id} sx={{ flex: '1 1 300px', maxWidth: '100%', position: 'relative' }}>
+                <div>
+                  {/* Debug media object */}
+                  {(() => { console.log('Media object:', media); return null; })()}
+                  <img
+                    src={media.signedUrl || media.mediaUrl}
+                    alt={media.caption || `Post media ${index + 1}`}
+                    style={{ 
+                      width: '100%', 
+                      borderRadius: 12, 
+                      maxHeight: 340, 
+                      objectFit: 'cover', 
+                      boxShadow: '0 2px 8px rgba(37,99,235,0.08)'
+                    }}
+                    onError={(e) => {
+                      console.error('Image load error for:', {
+                        mediaId: media.id,
+                        signedUrl: media.signedUrl,
+                        mediaUrl: media.mediaUrl,
+                        currentSrc: e.currentTarget.src,
+                        error: e
+                      });
+                      const img = e.currentTarget;
+                      // If using signedUrl, fallback to mediaUrl
+                      if (img.src === media.signedUrl && media.mediaUrl) {
+                        console.log('Falling back to mediaUrl for media:', media.id);
+                        img.src = media.mediaUrl;
+                      }
+                    }}
+                  />
+                  {media.caption && (
+                    <Typography 
+                      sx={{ 
+                        position: 'absolute',
+                        bottom: 8,
+                        left: 8,
+                        right: 8,
+                        color: '#fff',
+                        backgroundColor: 'rgba(0,0,0,0.6)',
+                        padding: '4px 8px',
+                        borderRadius: 1,
+                        fontSize: 14
+                      }}
+                    >
+                      {media.caption}
+                    </Typography>
+                  )}
+                </div>
+              </Box>
+            )
+          )}
         </Box>
       )}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 2 }}>
@@ -582,10 +637,19 @@ const CommentsModal = memo(({
 });
 
 const Home = () => {
-  const { data, loading, error, refetch } = useQuery(SEARCH_POSTS_QUERY, {
+  const { data, loading, error, refetch } = useQuery(SEARCH_POSTS, {
     variables: { page: 1, limit: 10 },
     fetchPolicy: 'network-only',
   });
+
+  // Clear cache and refetch on mount
+  useEffect(() => {
+    const clearAndRefetch = async () => {
+      await client.clearStore();
+      await refetch();
+    };
+    clearAndRefetch();
+  }, []);
 
   // Optimized state management
   const [commentsModalOpen, setCommentsModalOpen] = useState<{ open: boolean; postId: number | null }>({ open: false, postId: null });
