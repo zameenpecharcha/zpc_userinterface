@@ -9,7 +9,7 @@ const httpLink = createHttpLink({
 });
 
 // Error handling link
-const errorLink = onError(({ graphQLErrors, networkError }) => {
+const errorLink = onError(({ graphQLErrors, networkError, operation, forward }) => {
   if (graphQLErrors) {
     graphQLErrors.forEach(({ message, locations, path }) => {
       console.error(
@@ -17,17 +17,34 @@ const errorLink = onError(({ graphQLErrors, networkError }) => {
       );
       
       // If we get an authentication error, clear the tokens and redirect to login
-      if (message.includes('not logged in') || message.includes('not authenticated')) {
+      if (message.includes('not logged in') || message.includes('not authenticated') || message.toLowerCase().includes('expired') || message.toLowerCase().includes('token')) {
         localStorage.removeItem('token');
         localStorage.removeItem('refreshToken');
         localStorage.removeItem('user');
-        window.location.href = '/';
+        // Avoid runtime crashes: soft-redirect
+        if (typeof window !== 'undefined' && window.location.pathname !== '/') {
+          window.location.replace('/');
+        }
+        return;
       }
     });
   }
   if (networkError) {
     console.error(`[Network error]: ${networkError}`);
+    const msg = String((networkError as any)?.message || networkError);
+    const status = (networkError as any)?.statusCode || (networkError as any)?.response?.status;
+    if (status === 401 || status === 403 || msg.includes('Failed to fetch')) {
+      try {
+        localStorage.removeItem('token');
+        localStorage.removeItem('refreshToken');
+        localStorage.removeItem('user');
+      } catch {}
+      if (typeof window !== 'undefined' && window.location.pathname !== '/') {
+        window.location.replace('/');
+      }
+    }
   }
+  return forward ? forward(operation) : undefined;
 });
 
 // Auth link to add headers

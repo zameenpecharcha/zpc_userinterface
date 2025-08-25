@@ -420,6 +420,30 @@ const GRAPHQL_QUERIES = {
         }
     `,
 
+    UPDATE_FOLLOW_STATUS: `
+        mutation UpdateFollowStatus($followerId: Int!, $followingId: Int!, $status: String!) {
+            updateFollowStatus(followerId: $followerId, followingId: $followingId, status: $status) {
+                id
+                followerId
+                followingId
+                status
+                followedAt
+            }
+        }
+    `,
+
+    PENDING_FOLLOW_REQUESTS: `
+        query PendingFollowRequests($userId: Int!) {
+            pendingFollowRequests(userId: $userId) {
+                id
+                followerId
+                followingId
+                status
+                followedAt
+            }
+        }
+    `,
+
     GET_USER_RATINGS: `
         query GetUserRatings($userId: Int!) {
             userRatings(userId: $userId) {
@@ -1007,6 +1031,9 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
     const [followingDetails, setFollowingDetails] = useState<any[]>([]);
     const [loadingFF, setLoadingFF] = useState(false);
 
+    // Pending request from profile user -> current user
+    const [incomingFollowStatus, setIncomingFollowStatus] = useState<UserFollower | null>(null);
+
     const enrichUsers = async (userIds: number[]) => {
         const unique = Array.from(new Set(userIds.filter((x) => Number.isFinite(x))));
         const entries = await Promise.all(unique.map(async (uid) => {
@@ -1070,12 +1097,17 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
 
                 if (currentUserId && currentUserId !== userId) {
                     try {
+                        // Outgoing status (you -> profile user)
                         const followStatus = await apiService.checkFollowingStatus(currentUserId, userId);
                         setFollowingStatus(followStatus);
                         setIsFollowing(followStatus?.status === 'active');
+                        // Incoming status (profile user -> you) for accept/decline
+                        const incoming = await apiService.checkFollowingStatus(userId, currentUserId);
+                        setIncomingFollowStatus(incoming);
                     } catch (err) {
                         console.warn('Error checking following status:', err);
                         setIsFollowing(false);
+                        setIncomingFollowStatus(null);
                     }
                 }
 
@@ -1511,44 +1543,142 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                         </Box>
                         {!isOwnProfile && (
                             <Box sx={{ display: 'flex', gap: 1 }}>
+                                {incomingFollowStatus?.status === 'pending' ? (
+                                    <>
+                                        <Button
+                                            variant="contained"
+                                            sx={{ bgcolor: '#16A34A', '&:hover': { bgcolor: '#15803D' } }}
+                                            onClick={async () => {
+                                                try {
+                                                    const data = await apiService.graphqlRequest(GRAPHQL_QUERIES.UPDATE_FOLLOW_STATUS, {
+                                                        followerId: userId,
+                                                        followingId: currentUserId,
+                                                        status: 'active'
+                                                    });
+                                                    setIncomingFollowStatus(data.updateFollowStatus);
+                                                    setSnack({ open: true, message: 'Request accepted', severity: 'success' });
+                                                } catch (e) {
+                                                    setSnack({ open: true, message: 'Failed to accept request', severity: 'error' });
+                                                }
+                                            }}
+                                        >Accept</Button>
+                                        <Button
+                                            variant="outlined"
+                                            sx={{ borderColor: '#EF4444', color: '#EF4444' }}
+                                            onClick={async () => {
+                                                try {
+                                                    const data = await apiService.graphqlRequest(GRAPHQL_QUERIES.UPDATE_FOLLOW_STATUS, {
+                                                        followerId: userId,
+                                                        followingId: currentUserId,
+                                                        status: 'rejected'
+                                                    });
+                                                    setIncomingFollowStatus(data.updateFollowStatus);
+                                                    setSnack({ open: true, message: 'Request declined', severity: 'success' });
+                                                } catch (e) {
+                                                    setSnack({ open: true, message: 'Failed to decline request', severity: 'error' });
+                                                }
+                                            }}
+                                        >Decline</Button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Button
+                                            variant={isFollowing ? "outlined" : "contained"}
+                                            startIcon={<PersonAddIcon />}
+                                            onClick={handleFollow}
+                                            disabled={followingInProgress}
+                                            sx={{
+                                                bgcolor: isFollowing ? 'transparent' : '#2563EB',
+                                                borderColor: '#2563EB',
+                                                color: isFollowing ? '#2563EB' : 'white',
+                                                textTransform: 'none',
+                                                fontWeight: 600,
+                                                '&:hover': {
+                                                    bgcolor: isFollowing ? 'rgba(37, 99, 235, 0.1)' : '#1D4ED8'
+                                                }
+                                            }}
+                                        >
+                                            {followingInProgress ? 'Loading...' : (
+                                                followingStatus?.status === 'pending' ? 'Requested' : (
+                                                isFollowing ? 'Following' : 'Follow')
+                                            )}
+                                        </Button>
+                                        <Button
+                                            variant="outlined"
+                                            startIcon={<MessageIcon />}
+                                            sx={{
+                                                borderColor: '#2563EB',
+                                                color: '#2563EB',
+                                                textTransform: 'none',
+                                                fontWeight: 600
+                                            }}
+                                        >
+                                            Message
+                                        </Button>
+                                    </>
+                                )}
+                            </Box>
+                        )}
+                        {isOwnProfile && followingStatus?.status === 'pending' && (
+                            <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
                                 <Button
-                                    variant={isFollowing ? "outlined" : "contained"}
-                                    startIcon={<PersonAddIcon />}
-                                    onClick={handleFollow}
-                                    disabled={followingInProgress}
-                                    sx={{
-                                        bgcolor: isFollowing ? 'transparent' : '#2563EB',
-                                        borderColor: '#2563EB',
-                                        color: isFollowing ? '#2563EB' : 'white',
-                                        textTransform: 'none',
-                                        fontWeight: 600,
-                                        '&:hover': {
-                                            bgcolor: isFollowing ? 'rgba(37, 99, 235, 0.1)' : '#1D4ED8'
+                                    variant="contained"
+                                    sx={{ bgcolor: '#16A34A', '&:hover': { bgcolor: '#15803D' } }}
+                                    onClick={async () => {
+                                        try {
+                                            const data = await apiService.graphqlRequest(GRAPHQL_QUERIES.UPDATE_FOLLOW_STATUS, {
+                                                followerId: (followingStatus as any)?.followerId || (followingStatus as any)?.userId || 0,
+                                                followingId: userId,
+                                                status: 'active'
+                                            });
+                                            const updated = data.updateFollowStatus;
+                                            setFollowingStatus(updated);
+                                            setIsFollowing(true);
+                                            setUser(prev => prev ? { ...prev, followersCount: prev.followersCount + 1 } : prev);
+                                            setSnack({ open: true, message: 'Request accepted', severity: 'success' });
+                                        } catch (e) {
+                                            setSnack({ open: true, message: 'Failed to accept request', severity: 'error' });
                                         }
                                     }}
-                                >
-                                    {followingInProgress ? 'Loading...' : (
-                                        followingStatus?.status === 'pending' ? 'Requested' : (
-                                        isFollowing ? 'Following' : 'Follow')
-                                    )}
-                                </Button>
+                                >Accept</Button>
                                 <Button
                                     variant="outlined"
-                                    startIcon={<MessageIcon />}
-                                    sx={{
-                                        borderColor: '#2563EB',
-                                        color: '#2563EB',
-                                        textTransform: 'none',
-                                        fontWeight: 600
+                                    sx={{ borderColor: '#EF4444', color: '#EF4444' }}
+                                    onClick={async () => {
+                                        try {
+                                            const data = await apiService.graphqlRequest(GRAPHQL_QUERIES.UPDATE_FOLLOW_STATUS, {
+                                                followerId: (followingStatus as any)?.followerId || (followingStatus as any)?.userId || 0,
+                                                followingId: userId,
+                                                status: 'rejected'
+                                            });
+                                            const updated = data.updateFollowStatus;
+                                            setFollowingStatus(updated);
+                                            setIsFollowing(false);
+                                            setSnack({ open: true, message: 'Request declined', severity: 'success' });
+                                        } catch (e) {
+                                            setSnack({ open: true, message: 'Failed to decline request', severity: 'error' });
+                                        }
                                     }}
-                                >
-                                    Message
-                                </Button>
+                                >Decline</Button>
                             </Box>
                         )}
                         {isOwnProfile && (
                             <Box sx={{ display: 'flex', gap: 1 }}>
                                 <Button variant="outlined" onClick={handleChooseProfilePhoto}>Change Profile Photo</Button>
+                                <Button
+                                    variant="contained"
+                                    sx={{ bgcolor: '#2563EB', '&:hover': { bgcolor: '#1D4ED8' } }}
+                                    onClick={async () => {
+                                        try {
+                                            setLoadingFF(true);
+                                            const data = await apiService.graphqlRequest(GRAPHQL_QUERIES.PENDING_FOLLOW_REQUESTS, { userId });
+                                            const list = (data?.pendingFollowRequests || []);
+                                            const map = await enrichUsers(list.map((p: any) => p.followerId));
+                                            setFollowersDetails(list.map((p: any) => ({ id: p.id, uid: p.followerId, status: p.status, info: map[p.followerId] || null })));
+                                            setFollowersOpen(true);
+                                        } finally { setLoadingFF(false); }
+                                    }}
+                                >Pending requests</Button>
                             </Box>
                         )}
                     </Box>
@@ -2034,10 +2164,43 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                     <Box key={f.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.2, p: 1, borderRadius: 2, '&:hover': { bgcolor: '#F3F4F6' }, cursor: onOpenProfile ? 'pointer' : 'default' }}
                                          onClick={() => onOpenProfile && onOpenProfile(f.uid)}>
                                         <Avatar src={f.info?.photo || ''} sx={{ width: 32, height: 32 }}>{(f.info?.firstName || '').charAt(0)}</Avatar>
-                                        <Box>
+                                        <Box sx={{ flex: 1 }}>
                                             <Typography sx={{ fontWeight: 600 }}>{f.info ? `${f.info.firstName} ${f.info.lastName}` : `User ${f.uid}`}</Typography>
                                             <Typography sx={{ fontSize: 12, color: '#6B7280' }}>{f.info?.role || f.status}</Typography>
                                         </Box>
+                                        {isOwnProfile && f.status === 'pending' && (
+                                            <Box sx={{ display: 'flex', gap: 0.5 }} onClick={(e) => e.stopPropagation()}>
+                                                <Button size="small" variant="contained" sx={{ bgcolor: '#16A34A', '&:hover': { bgcolor: '#15803D' } }}
+                                                    onClick={async () => {
+                                                        try {
+                                                            const data = await apiService.graphqlRequest(GRAPHQL_QUERIES.UPDATE_FOLLOW_STATUS, {
+                                                                followerId: f.uid,
+                                                                followingId: userId,
+                                                                status: 'active'
+                                                            });
+                                                            setFollowersDetails(prev => prev.map(x => x.id === f.id ? { ...x, status: 'active' } : x));
+                                                            setUser(prev => prev ? { ...prev, followersCount: prev.followersCount + 1 } : prev);
+                                                            setSnack({ open: true, message: 'Request accepted', severity: 'success' });
+                                                        } catch (e) {
+                                                            setSnack({ open: true, message: 'Failed to accept request', severity: 'error' });
+                                                        }
+                                                    }}>Accept</Button>
+                                                <Button size="small" variant="outlined" sx={{ borderColor: '#EF4444', color: '#EF4444' }}
+                                                    onClick={async () => {
+                                                        try {
+                                                            const data = await apiService.graphqlRequest(GRAPHQL_QUERIES.UPDATE_FOLLOW_STATUS, {
+                                                                followerId: f.uid,
+                                                                followingId: userId,
+                                                                status: 'rejected'
+                                                            });
+                                                            setFollowersDetails(prev => prev.map(x => x.id === f.id ? { ...x, status: 'rejected' } : x));
+                                                            setSnack({ open: true, message: 'Request declined', severity: 'success' });
+                                                        } catch (e) {
+                                                            setSnack({ open: true, message: 'Failed to decline request', severity: 'error' });
+                                                        }
+                                                    }}>Decline</Button>
+                                            </Box>
+                                        )}
                                     </Box>
                                 ))}
                             </Stack>
