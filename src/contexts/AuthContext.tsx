@@ -5,7 +5,8 @@ interface AuthContextType {
   isAuthenticated: boolean;
   user: UserInfo | null;
   token: string | null;
-  refreshToken: string | null ;
+  refreshToken: string | null;
+  loading: boolean;
   setAuth: (token: string, refreshToken: string, user: UserInfo) => void;
   clearAuth: () => void;
 }
@@ -15,6 +16,7 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   token: null,
   refreshToken: null,
+  loading: false,
   setAuth: () => {},
   clearAuth: () => {},
 });
@@ -30,12 +32,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<UserInfo | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true); // Start with loading true
 
   useEffect(() => {
+    console.log('AuthProvider: Starting auth restoration...');
+    
     // Try to restore auth state from localStorage (support both 'user' and legacy 'userInfo')
     const storedToken = localStorage.getItem('token');
     const storedRefreshToken = localStorage.getItem('refreshToken');
     const storedUser = localStorage.getItem('user') || localStorage.getItem('userInfo');
+    
+    console.log('AuthProvider: Found stored data:', {
+      hasToken: !!storedToken,
+      hasRefreshToken: !!storedRefreshToken,
+      hasUser: !!storedUser,
+      token: storedToken?.substring(0, 20) + '...',
+      user: storedUser?.substring(0, 50) + '...'
+    });
     
     if (storedToken && storedRefreshToken && storedUser) {
       try {
@@ -44,15 +57,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setRefreshToken(storedRefreshToken);
         setUser(parsedUser);
         setIsAuthenticated(true);
-        console.log('Auth state restored:', { token: storedToken, user: parsedUser });
+        console.log('AuthProvider: Auth state restored successfully:', { 
+          isAuthenticated: true, 
+          userId: parsedUser.id,
+          userEmail: parsedUser.email
+        });
       } catch (error) {
-        console.error('Error restoring auth state:', error);
+        console.error('AuthProvider: Error parsing stored user data:', error);
         clearAuth();
       }
     } else {
-      console.log('No stored auth state found');
-      clearAuth();
+      console.log('AuthProvider: No complete auth data found, clearing auth');
+      setIsAuthenticated(false);
+      setUser(null);
+      setToken(null);
+      setRefreshToken(null);
     }
+    
+    console.log('AuthProvider: Setting loading to false');
+    setLoading(false);
   }, []); // Empty dependency array means this runs once on mount
 
   const setAuth = (newToken: string, newRefreshToken: string, newUser: UserInfo) => {
@@ -71,7 +94,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const clearAuth = () => {
-    console.log('Clearing auth state');
+    console.log('AuthProvider: Clearing auth state');
     localStorage.removeItem('token');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
@@ -90,6 +113,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         user,
         token,
         refreshToken,
+        loading,
         setAuth,
         clearAuth,
       }}

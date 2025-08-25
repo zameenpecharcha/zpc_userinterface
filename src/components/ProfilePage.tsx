@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import Snackbar from '@mui/material/Snackbar';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     AppBar,
     Toolbar,
@@ -24,6 +23,8 @@ import StarIcon from '@mui/icons-material/Star';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import MessageIcon from '@mui/icons-material/Message';
 import CloseIcon from '@mui/icons-material/Close';
+import { useApolloClient } from '@apollo/client';
+import { GET_POSTS_BY_USER } from '../graphql/posts';
 
 const interFont = {
     fontFamily: 'Inter, Roboto, Arial, sans-serif',
@@ -275,6 +276,7 @@ interface PostMedia {
     id: number;
     mediaType: string;
     mediaUrl: string;
+    signedUrl?: string;
     mediaOrder: number;
     caption?: string;
 }
@@ -552,8 +554,11 @@ const GRAPHQL_QUERIES = {
                     id
                     mediaType
                     mediaUrl
+                    signedUrl
                     mediaOrder
+                    mediaSize
                     caption
+                    uploadedAt
                 }
                 likeCount
                 commentCount
@@ -1123,32 +1128,43 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
         fetchData();
     }, [userId, currentUserId]);
 
+    const client = useApolloClient();
+
     const loadUserPosts = async () => {
         setPostsLoading(true);
         try {
             console.log('Loading user posts for ID:', userId);
-            const userPosts = await apiService.fetchUserPosts(userId);
-            console.log('User posts loaded:', userPosts);
-
-            const postsWithDetails = await Promise.all(
-                userPosts.map(async post => {
-                    try {
-                        const comments = await apiService.fetchPostComments(post.id);
-                        return {
-                            ...post,
-                            commentsList: comments
-                        };
-                    } catch (commentError) {
-                        console.warn('Error fetching comments for post:', post.id, commentError);
-                        return {
-                            ...post,
-                            commentsList: []
-                        };
-                    }
-                })
-            );
-
-            setPosts(postsWithDetails);
+            
+            const { data } = await client.query({
+                query: GET_POSTS_BY_USER,
+                variables: { userId, page: 1, limit: 100 },
+                fetchPolicy: 'network-only'
+            });
+            
+            console.log('User posts loaded from GraphQL:', data);
+            
+            if (data?.postsByUser) {
+                const postsWithDetails = await Promise.all(
+                    data.postsByUser.map(async (post: any) => {
+                        try {
+                            const comments = await apiService.fetchPostComments(post.id);
+                            return {
+                                ...post,
+                                commentsList: comments
+                            };
+                        } catch (commentError) {
+                            console.warn('Error fetching comments for post:', post.id, commentError);
+                            return {
+                                ...post,
+                                commentsList: []
+                            };
+                        }
+                    })
+                );
+                setPosts(postsWithDetails);
+            } else {
+                setPosts([]);
+            }
         } catch (error) {
             console.error('Failed to load posts:', error);
             setPosts([]);
@@ -1739,6 +1755,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                     </Box>
                 </Box>
 
+                {/* User Posts Section */}
                 <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '2fr 1fr' }, gap: 3 }}>
                     <Box>
                         {postsLoading ? (
@@ -1762,30 +1779,103 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                 <Box key={post.id} sx={{ bgcolor: '#fff', borderRadius: 3, p: 3, mb: 3, boxShadow: '0 2px 12px rgba(37,99,235,0.08)' }}>
                                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                                         <Avatar
-                                            src={post.user?.profilePhoto}
-                                            sx={{ width: 40, height: 40, mr: 2 }}
+                                            src={(post as any).userProfilePhotoSignedUrl || (post as any).profilePhoto || `https://randomuser.me/api/portraits/lego/${(post as any).userId % 10}.jpg`}
+                                            sx={{ width: 44, height: 44, mr: 2, boxShadow: 1, cursor: 'pointer' }}
+                                            onClick={() => onOpenProfile && onOpenProfile((post as any).userId)}
                                         />
-                                        <Box>
-                                            <Typography sx={{ fontWeight: 600 }}>
-                                                {post.user?.firstName} {post.user?.lastName}
+                                        <Box
+                                            onClick={() => onOpenProfile && onOpenProfile((post as any).userId)}
+                                            sx={{ cursor: 'pointer' }}
+                                            role="button"
+                                            aria-label={`Open profile of ${(post as any).userFirstName} ${(post as any).userLastName}`}
+                                        >
+                                            <Typography sx={{ fontWeight: 700, fontSize: 18, color: '#2563EB', ...interFont }}>
+                                                {(post as any).userFirstName} {(post as any).userLastName}
                                             </Typography>
-                                            <Typography sx={{ color: '#9CA3AF', fontSize: '0.75rem' }}>
+                                            <Typography sx={{ fontSize: 13, color: '#6B7280', fontWeight: 500 }}>
+                                                {(post as any).userRole}
+                                            </Typography>
+                                            <Typography sx={{ fontSize: 13, color: '#6B7280' }}>
                                                 {new Date(post.createdAt).toLocaleString()}
                                             </Typography>
                                         </Box>
                                     </Box>
 
-                                    {post.media && post.media.length > 0 && (
-                                        <Box sx={{ mb: 2 }}>
-                                            <img
-                                                src={post.media[0].mediaUrl}
-                                                alt={post.media[0].caption || 'Post media'}
-                                                style={{ width: '100%', borderRadius: 12, maxHeight: 340, objectFit: 'cover' }}
-                                            />
-                                        </Box>
+                                    <Typography sx={{ color: '#2563EB', fontWeight: 700, fontSize: 17, mb: 1 }}>{(post as any).title}</Typography>
+                                    <Typography sx={{ color: '#374151', lineHeight: 1.6, mb: 2 }}>{(post as any).content}</Typography>
+                                    
+                                    {(post as any).location && (
+                                        <Typography sx={{ color: '#6B7280', fontSize: 14, mb: 2 }}>
+                                            📍 {(post as any).location}
+                                        </Typography>
                                     )}
 
-                                    <Typography sx={{ mb: 2 }}>{post.content}</Typography>
+                                    {post.media && post.media.length > 0 && (
+                                        <Box sx={{ mb: 2 }}>
+                                            {post.media.slice(0, 4).map((media, index) => {
+                                                const imageUrl = media.signedUrl || media.mediaUrl;
+                                                console.log(`Post ${post.id} Media ${index}:`, {
+                                                    mediaUrl: media.mediaUrl,
+                                                    signedUrl: media.signedUrl,
+                                                    finalUrl: imageUrl
+                                                });
+                                                return (
+                                                    <img
+                                                        key={media.id}
+                                                        src={imageUrl}
+                                                        alt={media.caption || 'Post media'}
+                                                        style={{ 
+                                                            width: (post.media && post.media.length > 1) ? '48%' : '100%', 
+                                                            borderRadius: 12, 
+                                                            maxHeight: 340, 
+                                                            objectFit: 'cover',
+                                                            marginRight: index % 2 === 0 ? '4%' : '0',
+                                                            marginBottom: '8px',
+                                                            display: 'inline-block'
+                                                        }}
+                                                        onError={(e) => {
+                                                            console.error(`Failed to load image: ${imageUrl}`, e);
+                                                            console.error(`Image element:`, e.currentTarget);
+                                                            console.error(`Error details:`, {
+                                                                naturalWidth: e.currentTarget.naturalWidth,
+                                                                naturalHeight: e.currentTarget.naturalHeight,
+                                                                complete: e.currentTarget.complete
+                                                            });
+                                                            
+                                                            // Try fallback to mediaUrl if signedUrl fails
+                                                            if (media.signedUrl && e.currentTarget.src === media.signedUrl) {
+                                                                console.log(`Trying fallback URL: ${media.mediaUrl}`);
+                                                                e.currentTarget.src = media.mediaUrl;
+                                                            } else {
+                                                                // If even fallback fails, show a placeholder
+                                                                console.error(`Both URLs failed for media ${media.id}`);
+                                                                e.currentTarget.style.display = 'none';
+                                                            }
+                                                        }}
+                                                        onLoad={() => {
+                                                            console.log(`Successfully loaded image: ${imageUrl}`);
+                                                        }}
+                                                    />
+                                                );
+                                            })}
+                                            {post.media && post.media.length > 4 && (
+                                                <Box sx={{ 
+                                                    position: 'relative', 
+                                                    display: 'flex',
+                                                    width: '48%',
+                                                    height: '200px',
+                                                    backgroundColor: 'rgba(0,0,0,0.8)',
+                                                    borderRadius: 3,
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center'
+                                                }}>
+                                                    <Typography sx={{ color: 'white', fontSize: '1.5rem', fontWeight: 'bold' }}>
+                                                        +{(post.media?.length || 0) - 4}
+                                                    </Typography>
+                                                </Box>
+                                            )}
+                                        </Box>
+                                    )}
 
                                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
                                         <Button

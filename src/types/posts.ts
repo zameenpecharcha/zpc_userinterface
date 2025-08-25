@@ -2,6 +2,7 @@ export interface PostMedia {
   id: number;
   mediaType: string;
   mediaUrl: string;
+  signedUrl?: string;
   mediaOrder: number;
   mediaSize?: number;
   caption?: string;
