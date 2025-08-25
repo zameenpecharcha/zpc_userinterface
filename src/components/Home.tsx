@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useCallback, memo, useEffect, useRef } from 'react';
-import { styled } from '@mui/material/styles';
-import { gql, useQuery, useMutation } from '@apollo/client';
-import { SEARCH_POSTS, POST_FIELDS } from '../graphql/posts';
+import { gql, useQuery, useMutation, useApolloClient } from '@apollo/client';
+import { SEARCH_POSTS, CREATE_POST } from '../graphql/posts';
+import CreatePost from './CreatePost';
+import { PostService } from '../services/postService';
 import {
   AppBar,
   Toolbar,
@@ -16,10 +17,7 @@ import {
   Menu,
   MenuItem,
   CircularProgress,
-  TextField,
 } from '@mui/material';
-import { useApolloClient } from '@apollo/client';
-import { useNavigate } from 'react-router-dom';
 import HomeIcon from '@mui/icons-material/Home';
 import PeopleIcon from '@mui/icons-material/People';
 import GroupIcon from '@mui/icons-material/Group';
@@ -35,10 +33,7 @@ import ShareIcon from '@mui/icons-material/Share';
 import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
 import ProfilePage from './ProfilePage';
-import LocationAutocomplete from './LocationAutocomplete';
-import { PostService } from '../services/postService';
-import CloudUploadIcon from '@mui/icons-material/CloudUpload';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+
 
 
 
@@ -153,7 +148,6 @@ const getUserData = () => {
 };
 
 const storedUser = getUserData();
-const userId = storedUser?.id;
 const interFont = {
   fontFamily: 'Inter, Roboto, Arial, sans-serif',
 };
@@ -212,11 +206,9 @@ interface PostProps {
   onOpenProfile: (userId: number) => void;
   likedPosts: { [postId: number]: boolean };
   likeCounts: { [postId: number]: number };
-  likingPost: boolean;
-  unlikingPost: boolean;
 }
 
-const Post = memo(({ post, onLikeToggle, onCommentClick, onOpenProfile, likedPosts, likeCounts, likingPost, unlikingPost }: PostProps) => {
+const Post = memo(({ post, onLikeToggle, onCommentClick, onOpenProfile, likedPosts, likeCounts }: PostProps) => {
   const formatDate = useCallback((dateString: string) => {
     return new Date(dateString).toLocaleString();
   }, []);
@@ -339,7 +331,6 @@ const Post = memo(({ post, onLikeToggle, onCommentClick, onOpenProfile, likedPos
               px: 2,
             }}
             onClick={() => onLikeToggle(post.id)}
-            disabled={likingPost || unlikingPost}
           >
             <span style={{ color: '#222', fontWeight: 600 }}>
               {likeCounts[post.id] !== undefined ? likeCounts[post.id] : post.likeCount || 0}
@@ -653,6 +644,8 @@ const Home = () => {
     fetchPolicy: 'network-only',
   });
 
+  const client = useApolloClient();
+
   // Clear cache and refetch on mount
   useEffect(() => {
     const clearAndRefetch = async () => {
@@ -660,14 +653,12 @@ const Home = () => {
       await refetch();
     };
     clearAndRefetch();
-  }, []);
+  }, [client, refetch]);
 
   // Optimized state management
   const [commentsModalOpen, setCommentsModalOpen] = useState<{ open: boolean; postId: number | null }>({ open: false, postId: null });
   const [likedPosts, setLikedPosts] = useState<{ [postId: number]: boolean }>({});
   const [likeCounts, setLikeCounts] = useState<{ [postId: number]: number }>({});
-  const [likingPost, setLikingPost] = useState(false);
-  const [unlikingPost, setUnlikingPost] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState<'home' | 'profile'>('home');
@@ -680,10 +671,8 @@ const Home = () => {
   const [likingComment, setLikingComment] = useState(false);
   const [replyingCommentId, setReplyingCommentId] = useState<number | null>(null);
   const [replyText, setReplyText] = useState('');
-  const [replying, setReplying] = useState(false);
 
   // Auto-refresh state (simplified - always enabled)
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
   const commentsRefreshTimerRef = useRef<NodeJS.Timeout | null>(null);
   // Authenticated user object (from localStorage) – do not repurpose for viewing profiles
@@ -698,23 +687,11 @@ const Home = () => {
   const [likeComment] = useMutation(LIKE_COMMENT_MUTATION);
   const [likePost] = useMutation(LIKE_POST_MUTATION);
   const [unlikePost] = useMutation(UNLIKE_POST_MUTATION);
-  const client = useApolloClient();
-  const postService = new PostService(client);
+  const [createPostMutation] = useMutation(CREATE_POST);
+  const postService = useMemo(() => new PostService(client), [client]);
 
-  // Create Post form state
-  const [cpTitle, setCpTitle] = useState('');
-  const [cpContent, setCpContent] = useState('');
-  const [cpPropertyType, setCpPropertyType] = useState('listing');
-  const [cpVisibility, setCpVisibility] = useState('public');
-  const [cpStatus, setCpStatus] = useState('active');
-  const [cpPrice, setCpPrice] = useState<string>('');
-  const [cpLocationText, setCpLocationText] = useState('');
-  const [cpLat, setCpLat] = useState<number | undefined>(undefined);
-  const [cpLng, setCpLng] = useState<number | undefined>(undefined);
+  // Create Post form state (simplified for new component)
   const [cpSubmitting, setCpSubmitting] = useState(false);
-  const [cpError, setCpError] = useState<string | null>(null);
-  const [cpFiles, setCpFiles] = useState<File[]>([]);
-  const [cpUploaded, setCpUploaded] = useState<{ name: string; url: string; contentType: string }[]>([]);
 
   // Check for user data updates
   useEffect(() => {
@@ -742,12 +719,9 @@ const Home = () => {
     if (!loading) {
       refreshTimerRef.current = setInterval(async () => {
         try {
-          setIsRefreshing(true);
           await refetch();
         } catch (error) {
           console.error('Auto-refresh failed:', error);
-        } finally {
-          setIsRefreshing(false);
         }
       }, 300000); // 5 minutes
 
@@ -802,7 +776,7 @@ const Home = () => {
     setSelectedProfileId(storedUser?.id || currentUser?.id || null);
     setCurrentPage('profile');
     handleClose();
-  }, [handleClose]);
+  }, [handleClose, currentUser?.id]);
 
   const handleGoHome = useCallback(() => {
     setCurrentPage('home');
@@ -812,6 +786,93 @@ const Home = () => {
     setSelectedProfileId(uid);
     setCurrentPage('profile');
   }, []);
+
+  const handleCreatePost = useCallback(async (postData: any) => {
+    if (!currentUser || !currentUser.id) {
+      console.error('User not logged in');
+      return;
+    }
+
+    try {
+      setCpSubmitting(true);
+      
+      // Get the authorization token
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('No authorization token found');
+      }
+      
+      // Upload media files to S3 using presigned URLs
+      const uploadedMedia: { name: string; url: string; contentType: string }[] = [];
+      
+      if (postData.media && postData.media.length > 0) {
+        for (const file of postData.media) {
+          const qs = new URLSearchParams({ 
+            fileName: file.name, 
+            contentType: file.type 
+          }).toString();
+          
+          const presignRes = await fetch(`http://localhost:8000/api/v1/uploads/presign-post-media?${qs}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          if (!presignRes.ok) throw new Error('Failed to get upload URL');
+          
+          const { url, publicUrl } = await presignRes.json();
+          const putRes = await fetch(url, { 
+            method: 'PUT', 
+            headers: { 'Content-Type': file.type }, 
+            body: file 
+          });
+          
+          if (!putRes.ok) throw new Error('Failed to upload media');
+          uploadedMedia.push({ 
+            name: file.name, 
+            url: publicUrl, 
+            contentType: file.type 
+          });
+        }
+      }
+
+      // Create post using GraphQL mutation with proper authorization
+      const { data } = await createPostMutation({
+        variables: {
+          userId: parseInt(currentUser.id.toString()),
+          title: postData.title,
+          content: postData.content,
+          visibility: postData.visibility,
+          propertyType: postData.type,
+          location: postData.location || '',
+          price: 0, // Default price, can be extended later
+          status: 'active',
+          latitude: postData.latitude || null,
+          longitude: postData.longitude || null,
+          media: uploadedMedia.map((media, index) => ({
+            mediaType: media.contentType.startsWith('video/') ? 'video' : 'image',
+            mediaOrder: index + 1,
+            filePath: media.url,
+            fileName: media.name,
+            contentType: media.contentType
+          })),
+        }
+      });
+
+      if (data?.createPost?.success) {
+        setCreateOpen(false);
+        // Refresh posts
+        await refetch();
+      } else {
+        throw new Error(data?.createPost?.message || 'Failed to create post');
+      }
+    } catch (error: any) {
+      console.error('Error creating post:', error);
+      // You can add error handling here (snackbar, alert, etc.)
+    } finally {
+      setCpSubmitting(false);
+    }
+  }, [currentUser, createPostMutation, refetch]);
 
   const handleLikeToggle = useCallback(async (postId: number) => {
     if (!currentUser?.id) return;
@@ -985,17 +1046,7 @@ const Home = () => {
     }
   }, [currentUser, likeComment]);
 
-  // Manual refresh handler
-  const handleManualRefresh = useCallback(async () => {
-    try {
-      setIsRefreshing(true);
-      await refetch();
-    } catch (error) {
-      console.error('Manual refresh failed:', error);
-    } finally {
-      setIsRefreshing(false);
-    }
-  }, [refetch]);
+
 
   // Memoized current post for modal
   const currentPost = useMemo(() => {
@@ -1185,8 +1236,6 @@ const Home = () => {
                   onOpenProfile={handleOpenProfile}
                   likedPosts={likedPosts}
                   likeCounts={likeCounts}
-                  likingPost={likingPost}
-                  unlikingPost={unlikingPost}
                 />
               ))}
             </Stack>
@@ -1243,192 +1292,16 @@ const Home = () => {
         replyText={replyText}
         setReplyText={setReplyText}
         setReplyingCommentId={setReplyingCommentId}
-        replying={replying}
+        replying={false}
       />
 
       {/* Create Post Modal */}
-      {createOpen && (
-        <Box
-          sx={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            width: '100vw',
-            height: '100vh',
-            bgcolor: 'rgba(37,99,235,0.25)',
-            zIndex: 9999,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            p: 2,
-          }}
-          onClick={() => !cpSubmitting && setCreateOpen(false)}
-        >
-          <Box
-            sx={{
-              bgcolor: '#fff',
-              borderRadius: 4,
-              p: 4,
-              width: { xs: '100%', sm: 560 },
-              boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.18)',
-              textAlign: 'left',
-            }}
-            onClick={e => e.stopPropagation()}
-          >
-            <Typography variant="h6" sx={{ mb: 2, fontWeight: 700, color: '#2563EB' }}>Create Post</Typography>
-            <Stack spacing={2}>
-              <InputBase
-                placeholder="Title"
-                value={cpTitle}
-                onChange={(e) => setCpTitle(e.target.value)}
-                sx={{
-                  bgcolor: '#F3F4F6', px: 2, py: 1.2, borderRadius: 2, boxShadow: 1,
-                  border: '1px solid #E5E7EB'
-                }}
-              />
-              <InputBase
-                placeholder="What's on your mind?"
-                value={cpContent}
-                onChange={(e) => setCpContent(e.target.value)}
-                multiline minRows={3}
-                sx={{
-                  bgcolor: '#F3F4F6', px: 2, py: 1.2, borderRadius: 2, boxShadow: 1,
-                  border: '1px solid #E5E7EB'
-                }}
-              />
-              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', flex: 1 }}>
-                  {['listing','building','land','commercial','industrial'].map(opt => (
-                    <Button key={opt}
-                      variant={cpPropertyType === opt ? 'contained' : 'outlined'}
-                      onClick={() => setCpPropertyType(opt)}
-                      sx={{ textTransform: 'none' }}
-                    >{opt}</Button>
-                  ))}
-                </Box>
-                <TextField
-                  select
-                  label="Visibility"
-                  value={cpVisibility}
-                  onChange={(e) => setCpVisibility(e.target.value)}
-                  sx={{ minWidth: 180 }}
-                >
-                  <MenuItem value="public">Public</MenuItem>
-                  <MenuItem value="private">Private</MenuItem>
-                </TextField>
-              </Box>
-              <Box sx={{ p: 2, border: '1px dashed #CBD5E1', borderRadius: 2 }}>
-                <Stack direction="row" spacing={2} alignItems="center">
-                  <Button component="label" variant="outlined" startIcon={<CloudUploadIcon />}>
-                    Select media
-                    <input type="file" hidden multiple accept="image/*,video/*" onChange={(e) => {
-                      if (!e.target.files) return;
-                      setCpFiles(Array.from(e.target.files));
-                    }} />
-                  </Button>
-                  <Typography variant="body2" color="text.secondary">Images or videos. They will be uploaded directly to S3.</Typography>
-                </Stack>
-                {cpFiles.length > 0 && (
-                  <Stack spacing={1} sx={{ mt: 2 }}>
-                    {cpFiles.map(f => (
-                      <Typography key={f.name} variant="body2">
-                        {f.name} {cpUploaded.find(u => u.name === f.name) && <CheckCircleIcon sx={{ color: 'success.main', fontSize: 16, ml: 1 }} />}
-                      </Typography>
-                    ))}
-                  </Stack>
-                )}
-              </Box>
-              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                <InputBase
-                  placeholder="Price"
-                  value={cpPrice}
-                  onChange={(e) => setCpPrice(e.target.value)}
-                  type="number"
-                  sx={{ flex: 1, minWidth: 180, bgcolor: '#F3F4F6', px: 2, py: 1.2, borderRadius: 2, boxShadow: 1, border: '1px solid #E5E7EB' }}
-                />
-                <InputBase
-                  placeholder="Status (active/inactive)"
-                  value={cpStatus}
-                  onChange={(e) => setCpStatus(e.target.value)}
-                  sx={{ flex: 1, minWidth: 180, bgcolor: '#F3F4F6', px: 2, py: 1.2, borderRadius: 2, boxShadow: 1, border: '1px solid #E5E7EB' }}
-                />
-              </Box>
-              <LocationAutocomplete
-                value={cpLocationText}
-                onChange={setCpLocationText}
-                onLocationSelect={({ address, latitude, longitude }) => {
-                  setCpLocationText(address);
-                  setCpLat(latitude);
-                  setCpLng(longitude);
-                }}
-              />
-              {cpError && (
-                <Typography color="error" variant="body2">{cpError}</Typography>
-              )}
-              <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mt: 1 }}>
-                <Button onClick={() => setCreateOpen(false)} disabled={cpSubmitting}>Cancel</Button>
-                <Button
-                  variant="contained"
-                  sx={{ bgcolor: '#2563EB', fontWeight: 600, '&:hover': { bgcolor: '#1D4ED8' } }}
-                  disabled={cpSubmitting || !cpTitle.trim() || !cpContent.trim() || !cpLocationText.trim() || !cpPrice}
-                  onClick={async () => {
-                    try {
-                      setCpError(null);
-                      setCpSubmitting(true);
-                      // Upload selected files to S3 using presigned URLs from gateway
-                      const uploaded: { name: string; url: string; contentType: string }[] = [];
-                      for (const file of cpFiles) {
-                        const qs = new URLSearchParams({ fileName: file.name, contentType: file.type }).toString();
-                        const presignRes = await fetch(`http://localhost:8000/api/v1/uploads/presign-post-media?${qs}`);
-                        if (!presignRes.ok) throw new Error('Failed to get upload URL');
-                        const { url, publicUrl } = await presignRes.json();
-                        const putRes = await fetch(url, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
-                        if (!putRes.ok) throw new Error('Failed to upload media');
-                        uploaded.push({ name: file.name, url: publicUrl, contentType: file.type });
-                      }
-                      setCpUploaded(uploaded);
-                      if (!currentUser || !currentUser.id) {
-                        setCpError('User not logged in');
-                        setCpSubmitting(false);
-                        return;
-                      }
-                      const priceNum = parseFloat(cpPrice);
-                      const resp = await postService.createPost({
-                        userId: parseInt(currentUser.id.toString()),
-                        title: cpTitle.trim(),
-                        content: cpContent.trim(),
-                        visibility: cpVisibility.trim(),
-                        propertyType: cpPropertyType.trim(),
-                        location: cpLocationText.trim(),
-                        price: priceNum,
-                        status: cpStatus.trim(),
-                        latitude: cpLat,
-                        longitude: cpLng,
-                        media: uploaded.map(u => ({ mediaType: u.contentType.startsWith('video/') ? 'video' : 'image', mediaOrder: 1, filePath: u.url, fileName: u.name, contentType: u.contentType })),
-                      });
-                      if (!resp.success) {
-                        setCpError(resp.message || 'Failed to create post');
-                      } else {
-                        // Reset and close
-                        setCpTitle(''); setCpContent(''); setCpPropertyType('listing'); setCpVisibility('public'); setCpStatus('active'); setCpPrice(''); setCpLocationText(''); setCpLat(undefined); setCpLng(undefined); setCpFiles([]); setCpUploaded([]);
-                        setCreateOpen(false);
-                        // Refresh list
-                        await refetch();
-                      }
-                    } catch (e: any) {
-                      setCpError(e.message || 'Error creating post');
-                    } finally {
-                      setCpSubmitting(false);
-                    }
-                  }}
-                >
-                  {cpSubmitting ? 'Posting...' : 'Post'}
-                </Button>
-              </Box>
-            </Stack>
-          </Box>
-        </Box>
-      )}
+      <CreatePost
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onSubmit={handleCreatePost}
+        loading={cpSubmitting}
+      />
     </Box>
   );
 };
