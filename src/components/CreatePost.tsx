@@ -111,7 +111,9 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
   };
 
   const handleLocationSelect = (locationData: { address: string; latitude: number; longitude: number }) => {
-    setLocation(locationData.address);
+    // Truncate location to up to 2 commas
+    const truncatedLocation = locationData.address.split(',').slice(0, 3).join(',').trim();
+    setLocation(truncatedLocation);
     setLatitude(locationData.latitude);
     setLongitude(locationData.longitude);
   };
@@ -166,7 +168,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
           bgcolor: 'white',
           borderRadius: 3,
           boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-          width: { xs: '100%', sm: '90%', md: '600px' },
+          width: { xs: '100%', sm: '90%', md: '900px', lg: '900px' },
           maxHeight: '90vh',
           overflow: 'auto',
           ...interFont

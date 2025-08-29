@@ -807,10 +807,15 @@ const Home = () => {
       
       if (postData.media && postData.media.length > 0) {
         for (const file of postData.media) {
+          console.log('=== Starting file upload ===');
+          console.log('File:', file.name, 'Type:', file.type);
+          
           const qs = new URLSearchParams({ 
             fileName: file.name, 
             contentType: file.type 
           }).toString();
+          
+          console.log('Requesting presigned URL with params:', qs);
           
           const presignRes = await fetch(`http://localhost:8000/api/v1/uploads/presign-post-media?${qs}`, {
             headers: {
@@ -818,16 +823,37 @@ const Home = () => {
               'Content-Type': 'application/json'
             }
           });
-          if (!presignRes.ok) throw new Error('Failed to get upload URL');
           
-          const { url, publicUrl } = await presignRes.json();
+          if (!presignRes.ok) {
+            const errorText = await presignRes.text();
+            console.error('Presigned URL request failed:', presignRes.status, errorText);
+            throw new Error(`Failed to get upload URL: ${presignRes.status} ${errorText}`);
+          }
+          
+          const presignData = await presignRes.json();
+          console.log('Presigned URL response:', presignData);
+          
+          const { url, publicUrl } = presignData;
+          
+          console.log('Using presigned URL for PUT:', url);
+          console.log('Public URL:', publicUrl);
+          
           const putRes = await fetch(url, { 
             method: 'PUT', 
-            headers: { 'Content-Type': file.type }, 
+            headers: { 
+              'Content-Type': file.type,
+              // Don't add Authorization header to S3 PUT request
+            }, 
             body: file 
           });
           
-          if (!putRes.ok) throw new Error('Failed to upload media');
+          if (!putRes.ok) {
+            const errorText = await putRes.text();
+            console.error('S3 PUT request failed:', putRes.status, errorText);
+            throw new Error(`Failed to upload media: ${putRes.status} ${errorText}`);
+          }
+          
+          console.log('File uploaded successfully');
           uploadedMedia.push({ 
             name: file.name, 
             url: publicUrl, 
