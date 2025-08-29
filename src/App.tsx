@@ -8,6 +8,9 @@ import Landing from './components/Landing';
 import ForgotPassword from './components/ForgotPassword';
 import ResetPassword from './components/ResetPassword';
 import Profile from './components/Profile';
+import CreateProperty from './components/CreateProperty';
+import MyProperties from './components/MyProperties';
+import PropertyPage from './components/PropertyPage';
 import client from './apollo-client';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 
@@ -177,6 +180,30 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <Profile />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/create-property"
+        element={
+          <ProtectedRoute>
+            <CreateProperty />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/my-properties"
+        element={
+          <ProtectedRoute>
+            <MyProperties />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/property/:propertyId"
+        element={
+          <ProtectedRoute>
+            <PropertyPage />
           </ProtectedRoute>
         }
       />

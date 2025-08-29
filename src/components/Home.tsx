@@ -688,7 +688,6 @@ const Home = () => {
   const [likePost] = useMutation(LIKE_POST_MUTATION);
   const [unlikePost] = useMutation(UNLIKE_POST_MUTATION);
   const [createPostMutation] = useMutation(CREATE_POST);
-  const postService = useMemo(() => new PostService(client), [client]);
 
   // Create Post form state (simplified for new component)
   const [cpSubmitting, setCpSubmitting] = useState(false);
@@ -1092,7 +1091,7 @@ const Home = () => {
 
     return (
       <ProfilePage
-        onGoBack={handleGoHome}
+      onGoBack={handleGoHome}
         userId={selectedProfileId}
         currentUserId={authUserId}
         onOpenProfile={handleOpenProfile}
@@ -1143,6 +1142,8 @@ const Home = () => {
             </IconButton>
             <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleClose}>
               <MenuItem onClick={handleProfileClick}>Profile</MenuItem>
+              <MenuItem onClick={() => { handleClose(); window.location.href = '/create-property'; }}>Create Property</MenuItem>
+              <MenuItem onClick={() => { handleClose(); window.location.href = '/my-properties'; }}>My Properties</MenuItem>
               <MenuItem onClick={handleClose}>Settings</MenuItem>
               <MenuItem
                 onClick={() => {
