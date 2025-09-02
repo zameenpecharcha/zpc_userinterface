@@ -8,9 +8,6 @@ import Landing from './components/Landing';
 import ForgotPassword from './components/ForgotPassword';
 import ResetPassword from './components/ResetPassword';
 import Profile from './components/Profile';
-import CreateProperty from './components/CreateProperty';
-import MyProperties from './components/MyProperties';
-import PropertyPage from './components/PropertyPage';
 import client from './apollo-client';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 
@@ -41,50 +38,13 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated } = useAuth();
   const location = useLocation();
 
-  console.log('ProtectedRoute: Current state:', {
-    loading,
-    isAuthenticated,
-    pathname: location.pathname
-  });
-
-  // Show loading state while auth is being checked
-  if (loading) {
-    console.log('ProtectedRoute: Showing loading spinner');
-    return (
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        height: '100vh',
-        backgroundColor: '#F6F8FB'
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ 
-            width: '40px', 
-            height: '40px', 
-            border: '4px solid #e0e0e0', 
-            borderTop: '4px solid #2563EB',
-            borderRadius: '50%',
-            animation: 'spin 1s linear infinite',
-            margin: '0 auto 16px'
-          }}></div>
-          <p style={{ color: '#6B7280', fontSize: '14px' }}>Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
   if (!isAuthenticated) {
-    console.log('ProtectedRoute: Not authenticated, redirecting to /', {
-      from: location.pathname
-    });
     return <Navigate to="/" state={{ from: location }} replace />;
   }
 
-  console.log('ProtectedRoute: Authenticated, rendering children');
   return <>{children}</>;
 };
 
@@ -93,34 +53,8 @@ interface PublicRouteProps {
 }
 
 const PublicRoute: React.FC<PublicRouteProps> = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated } = useAuth();
   const location = useLocation();
-
-  // Show loading state while auth is being checked
-  if (loading) {
-    return (
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        height: '100vh',
-        backgroundColor: '#F6F8FB'
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ 
-            width: '40px', 
-            height: '40px', 
-            border: '4px solid #e0e0e0', 
-            borderTop: '4px solid #2563EB',
-            borderRadius: '50%',
-            animation: 'spin 1s linear infinite',
-            margin: '0 auto 16px'
-          }}></div>
-          <p style={{ color: '#6B7280', fontSize: '14px' }}>Loading...</p>
-        </div>
-      </div>
-    );
-  }
 
   if (isAuthenticated) {
     return <Navigate to="/home" state={{ from: location }} replace />;
@@ -180,30 +114,6 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <Profile />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/create-property"
-        element={
-          <ProtectedRoute>
-            <CreateProperty />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/my-properties"
-        element={
-          <ProtectedRoute>
-            <MyProperties />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/property/:propertyId"
-        element={
-          <ProtectedRoute>
-            <PropertyPage />
           </ProtectedRoute>
         }
       />

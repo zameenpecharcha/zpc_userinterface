@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     AppBar,
     Toolbar,
@@ -12,7 +12,6 @@ import {
     CircularProgress,
     Alert,
 } from '@mui/material';
-import Rating from '@mui/material/Rating';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import CameraAltIcon from '@mui/icons-material/CameraAlt';
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
@@ -23,8 +22,6 @@ import StarIcon from '@mui/icons-material/Star';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import MessageIcon from '@mui/icons-material/Message';
 import CloseIcon from '@mui/icons-material/Close';
-import { useApolloClient } from '@apollo/client';
-import { GET_POSTS_BY_USER } from '../graphql/posts';
 
 const interFont = {
     fontFamily: 'Inter, Roboto, Arial, sans-serif',
@@ -276,7 +273,6 @@ interface PostMedia {
     id: number;
     mediaType: string;
     mediaUrl: string;
-    signedUrl?: string;
     mediaOrder: number;
     caption?: string;
 }
@@ -331,8 +327,6 @@ interface UserProfile {
     email: string;
     phone: string;
     profilePhoto?: string;
-    profilePhotoSignedUrl?: string;
-    coverPhotoSignedUrl?: string;
     role?: string;
     address?: string;
     bio?: string;
@@ -350,7 +344,6 @@ interface ProfilePageProps {
     onGoBack: () => void;
     userId: number;
     currentUserId?: number;
-    onOpenProfile?: (userId: number) => void;
 }
 
 const GRAPHQL_QUERIES = {
@@ -363,10 +356,6 @@ const GRAPHQL_QUERIES = {
                 email
                 phone
                 profilePhoto
-                profilePhotoId
-                coverPhotoId
-                profilePhotoSignedUrl
-                coverPhotoSignedUrl
                 role
                 address
                 bio
@@ -390,62 +379,6 @@ const GRAPHQL_QUERIES = {
         }
     `,
 
-    PRESIGN_USER_PHOTO_UPLOAD: `
-        mutation PresignUserPhotoUpload($fileName: String!, $contentType: String) {
-            presignUserPhotoUpload(fileName: $fileName, contentType: $contentType) {
-                uploadUrl
-                publicUrl
-                key
-            }
-        }
-    `,
-
-    UPDATE_PROFILE_PHOTO: `
-        mutation UpdateProfilePhoto($userId: Int!, $filePath: String!, $fileName: String, $contentType: String) {
-            updateProfilePhoto(userId: $userId, filePath: $filePath, fileName: $fileName, contentType: $contentType) {
-                id
-                profilePhotoId
-                profilePhotoUrl
-                profilePhotoSignedUrl
-            }
-        }
-    `,
-
-    UPDATE_COVER_PHOTO: `
-        mutation UpdateCoverPhoto($userId: Int!, $filePath: String!, $fileName: String, $contentType: String) {
-            updateCoverPhoto(userId: $userId, filePath: $filePath, fileName: $fileName, contentType: $contentType) {
-                id
-                coverPhotoId
-                coverPhotoUrl
-                coverPhotoSignedUrl
-            }
-        }
-    `,
-
-    UPDATE_FOLLOW_STATUS: `
-        mutation UpdateFollowStatus($followerId: Int!, $followingId: Int!, $status: String!) {
-            updateFollowStatus(followerId: $followerId, followingId: $followingId, status: $status) {
-                id
-                followerId
-                followingId
-                status
-                followedAt
-            }
-        }
-    `,
-
-    PENDING_FOLLOW_REQUESTS: `
-        query PendingFollowRequests($userId: Int!) {
-            pendingFollowRequests(userId: $userId) {
-                id
-                followerId
-                followingId
-                status
-                followedAt
-            }
-        }
-    `,
-
     GET_USER_RATINGS: `
         query GetUserRatings($userId: Int!) {
             userRatings(userId: $userId) {
@@ -465,7 +398,7 @@ const GRAPHQL_QUERIES = {
         query GetUserFollowers($userId: Int!) {
             userFollowers(userId: $userId) {
                 id
-                followerId
+                userId
                 followingId
                 status
                 followedAt
@@ -477,7 +410,7 @@ const GRAPHQL_QUERIES = {
         query GetUserFollowing($userId: Int!) {
             userFollowing(userId: $userId) {
                 id
-                followerId
+                userId
                 followingId
                 status
                 followedAt
@@ -489,7 +422,7 @@ const GRAPHQL_QUERIES = {
         query CheckFollowingStatus($userId: Int!, $followingId: Int!) {
             checkFollowingStatus(userId: $userId, followingId: $followingId) {
                 id
-                followerId
+                userId
                 followingId
                 status
                 followedAt
@@ -522,7 +455,7 @@ const GRAPHQL_QUERIES = {
         mutation FollowUser($userId: Int!, $followingId: Int!) {
             followUser(userId: $userId, followingId: $followingId) {
                 id
-                followerId
+                userId
                 followingId
                 status
                 followedAt
@@ -554,11 +487,8 @@ const GRAPHQL_QUERIES = {
                     id
                     mediaType
                     mediaUrl
-                    signedUrl
                     mediaOrder
-                    mediaSize
                     caption
-                    uploadedAt
                 }
                 likeCount
                 commentCount
@@ -678,23 +608,20 @@ const GRAPHQL_QUERIES = {
     `,
 };
 
-// Remove these imports as they're not being used yet
-
 const apiService = {
-  async graphqlRequest(query: string, variables: Record<string, any> = {}) {
-    try {
-      console.log('Making GraphQL request:', { query, variables });
-      const response = await fetch('http://localhost:8000/api/v1/graphql', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-        body: JSON.stringify({
-          query,
-          variables
-        }),
-      });
+    async graphqlRequest(query: string, variables: Record<string, any> = {}) {
+        try {
+            console.log('Making GraphQL request:', { query, variables });
+            const response = await fetch('http://localhost:8000/api/v1/graphql', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    query,
+                    variables
+                }),
+            });
 
             console.log('GraphQL response status:', response.status);
 
@@ -742,8 +669,6 @@ const apiService = {
                 email: user.email,
                 phone: user.phone,
                 profilePhoto: user.profilePhoto,
-                profilePhotoSignedUrl: user.profilePhotoSignedUrl,
-                coverPhotoSignedUrl: user.coverPhotoSignedUrl,
                 role: user.role,
                 address: user.address,
                 bio: user.bio,
@@ -863,28 +788,7 @@ const apiService = {
 
     async fetchUserReviews(userId: number): Promise<UserRating[]> {
         const data = await this.graphqlRequest(GRAPHQL_QUERIES.GET_USER_RATINGS, { userId });
-        const list = (data.userRatings || []);
-
-        // Fetch rater info (first/last name, profilePhoto) for each unique ratedByUserId
-        const uniqueRaterIds: number[] = Array.from(
-            new Set<number>(
-                (list as any[])
-                    .map((r: any) => Number(r.ratedByUserId))
-                    .filter((x: number) => Number.isFinite(x) && x > 0)
-            )
-        );
-        const raterEntries = await Promise.all(uniqueRaterIds.map(async (rid) => {
-            try {
-                const u = await this.graphqlRequest(GRAPHQL_QUERIES.GET_USER_PROFILE, { id: rid });
-                const user = u.user;
-                return [rid, { firstName: user?.firstName, lastName: user?.lastName, profilePhoto: user?.profilePhotoSignedUrl || user?.profilePhoto }];
-            } catch {
-                return [rid, null];
-            }
-        }));
-        const raterMap = Object.fromEntries(raterEntries);
-
-        return list.map((rating: any) => ({
+        return (data.userRatings || []).map((rating: any) => ({
             id: rating.id,
             ratedUserId: rating.ratedUserId,
             ratedByUserId: rating.ratedByUserId,
@@ -892,8 +796,7 @@ const apiService = {
             review: rating.review,
             ratingType: rating.ratingType,
             createdAt: rating.createdAt,
-            updatedAt: rating.updatedAt,
-            raterInfo: raterMap[rating.ratedByUserId] || undefined,
+            updatedAt: rating.updatedAt
         }));
     },
 
@@ -1001,7 +904,7 @@ const apiService = {
     },
 };
 
-const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUserId, onOpenProfile }) => {
+const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUserId }) => {
     const [user, setUser] = useState<UserProfile | null>(null);
     const [posts, setPosts] = useState<Post[]>([]);
     const [reviews, setReviews] = useState<UserRating[]>([]);
@@ -1027,45 +930,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
     const [replyingCommentId, setReplyingCommentId] = useState<number | null>(null);
     const [replyText, setReplyText] = useState('');
     const [replying, setReplying] = useState(false);
-    // Followers/Following modal state
-    const [followersOpen, setFollowersOpen] = useState(false);
-    const [followingOpen, setFollowingOpen] = useState(false);
-    const [followersList, setFollowersList] = useState<UserFollower[]>([]);
-    const [followingList, setFollowingList] = useState<UserFollower[]>([]);
-    const [followersDetails, setFollowersDetails] = useState<any[]>([]);
-    const [followingDetails, setFollowingDetails] = useState<any[]>([]);
-    const [loadingFF, setLoadingFF] = useState(false);
-
-    // Pending request from profile user -> current user
-    const [incomingFollowStatus, setIncomingFollowStatus] = useState<UserFollower | null>(null);
-
-    const enrichUsers = async (userIds: number[]) => {
-        const unique = Array.from(new Set(userIds.filter((x) => Number.isFinite(x))));
-        const entries = await Promise.all(unique.map(async (uid) => {
-            try {
-                const res = await apiService.graphqlRequest(GRAPHQL_QUERIES.GET_USER_PROFILE, { id: uid });
-                const u = res.user;
-                return [uid, {
-                    id: u.id,
-                    firstName: u.firstName,
-                    lastName: u.lastName,
-                    role: u.role,
-                    photo: u.profilePhotoSignedUrl || u.profilePhoto,
-                }];
-            } catch {
-                return [uid, null];
-            }
-        }));
-        return Object.fromEntries(entries);
-    };
-    // Rating state
-    const [ratingOpen, setRatingOpen] = useState(false);
-    const [ratingValue, setRatingValue] = useState<number>(5);
-    const [ratingText, setRatingText] = useState('');
-    const [ratingSubmitting, setRatingSubmitting] = useState(false);
-    // Snackbar state
-    const [snack, setSnack] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' | 'warning' }>({ open: false, message: '', severity: 'success' });
-    const handleSnackClose = () => setSnack(prev => ({ ...prev, open: false }));
 
     useEffect(() => {
         const fetchData = async () => {
@@ -1102,17 +966,12 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
 
                 if (currentUserId && currentUserId !== userId) {
                     try {
-                        // Outgoing status (you -> profile user)
                         const followStatus = await apiService.checkFollowingStatus(currentUserId, userId);
                         setFollowingStatus(followStatus);
                         setIsFollowing(followStatus?.status === 'active');
-                        // Incoming status (profile user -> you) for accept/decline
-                        const incoming = await apiService.checkFollowingStatus(userId, currentUserId);
-                        setIncomingFollowStatus(incoming);
                     } catch (err) {
                         console.warn('Error checking following status:', err);
                         setIsFollowing(false);
-                        setIncomingFollowStatus(null);
                     }
                 }
 
@@ -1128,43 +987,32 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
         fetchData();
     }, [userId, currentUserId]);
 
-    const client = useApolloClient();
-
     const loadUserPosts = async () => {
         setPostsLoading(true);
         try {
             console.log('Loading user posts for ID:', userId);
-            
-            const { data } = await client.query({
-                query: GET_POSTS_BY_USER,
-                variables: { userId, page: 1, limit: 100 },
-                fetchPolicy: 'network-only'
-            });
-            
-            console.log('User posts loaded from GraphQL:', data);
-            
-            if (data?.postsByUser) {
-                const postsWithDetails = await Promise.all(
-                    data.postsByUser.map(async (post: any) => {
-                        try {
-                            const comments = await apiService.fetchPostComments(post.id);
-                            return {
-                                ...post,
-                                commentsList: comments
-                            };
-                        } catch (commentError) {
-                            console.warn('Error fetching comments for post:', post.id, commentError);
-                            return {
-                                ...post,
-                                commentsList: []
-                            };
-                        }
-                    })
-                );
-                setPosts(postsWithDetails);
-            } else {
-                setPosts([]);
-            }
+            const userPosts = await apiService.fetchUserPosts(userId);
+            console.log('User posts loaded:', userPosts);
+
+            const postsWithDetails = await Promise.all(
+                userPosts.map(async post => {
+                    try {
+                        const comments = await apiService.fetchPostComments(post.id);
+                        return {
+                            ...post,
+                            commentsList: comments
+                        };
+                    } catch (commentError) {
+                        console.warn('Error fetching comments for post:', post.id, commentError);
+                        return {
+                            ...post,
+                            commentsList: []
+                        };
+                    }
+                })
+            );
+
+            setPosts(postsWithDetails);
         } catch (error) {
             console.error('Failed to load posts:', error);
             setPosts([]);
@@ -1179,105 +1027,19 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
         try {
             setFollowingInProgress(true);
 
-            // Only allow action when not already following or pending
-            if (isFollowing || followingStatus?.status === 'pending') {
-                return;
-            }
-
-            const followResult = await apiService.followUser(currentUserId, userId);
-            setFollowingStatus(followResult);
-            const isActive = followResult?.status === 'active';
-            setIsFollowing(isActive);
-            // Followers count only increases if accepted immediately (shouldn't for users)
-            if (isActive) {
+            if (isFollowing) {
+                setIsFollowing(false);
+                setUser(prev => prev ? { ...prev, followersCount: prev.followersCount - 1 } : null);
+            } else {
+                const followResult = await apiService.followUser(currentUserId, userId);
+                setFollowingStatus(followResult);
+                setIsFollowing(true);
                 setUser(prev => prev ? { ...prev, followersCount: prev.followersCount + 1 } : null);
             }
-            setSnack({ open: true, message: followResult?.status === 'pending' ? 'Follow request sent' : 'Following', severity: 'success' });
         } catch (err) {
-            console.error('Error sending follow request:', err);
-            setSnack({ open: true, message: 'Failed to send follow request', severity: 'error' });
+            console.error('Error following/unfollowing user:', err);
         } finally {
             setFollowingInProgress(false);
-        }
-    };
-
-    // Poll follow status while pending and update followers count upon acceptance
-    const prevStatusRef = useRef<string | null>(null);
-    useEffect(() => {
-        prevStatusRef.current = followingStatus?.status || null;
-    }, [followingStatus]);
-
-    useEffect(() => {
-        if (!currentUserId || currentUserId === userId) return;
-        if (followingStatus?.status !== 'pending') return;
-
-        const interval = setInterval(async () => {
-            try {
-                const latest = await apiService.checkFollowingStatus(currentUserId, userId);
-                if (latest?.status && latest.status !== followingStatus.status) {
-                    setFollowingStatus(latest);
-                    setIsFollowing(latest.status === 'active');
-                    if (prevStatusRef.current === 'pending' && latest.status === 'active') {
-                        setUser(prev => prev ? { ...prev, followersCount: prev.followersCount + 1 } : null);
-                        setSnack({ open: true, message: 'Follow request accepted', severity: 'success' });
-                    }
-                }
-            } catch (e) {
-                // Ignore polling errors
-            }
-        }, 10000); // 10 seconds
-
-        return () => clearInterval(interval);
-    }, [followingStatus, currentUserId, userId]);
-
-    // Photo upload handlers (profile/cover)
-    const fileInputRef = useRef<HTMLInputElement | null>(null);
-    const coverFileInputRef = useRef<HTMLInputElement | null>(null);
-
-    const handleChooseProfilePhoto = () => fileInputRef.current?.click();
-    const handleChooseCoverPhoto = () => coverFileInputRef.current?.click();
-
-    const uploadWithPresign = async (file: File, isCover: boolean) => {
-        try {
-            // Step 1: presign
-            const presignRes = await apiService.graphqlRequest(GRAPHQL_QUERIES.PRESIGN_USER_PHOTO_UPLOAD, {
-                fileName: file.name,
-                contentType: file.type
-            });
-            const { uploadUrl, publicUrl } = presignRes.presignUserPhotoUpload;
-
-            // Step 2: upload to S3
-            const putResp = await fetch(uploadUrl, {
-                method: 'PUT',
-                headers: { 'Content-Type': file.type },
-                body: file,
-            });
-            if (!putResp.ok) throw new Error('Upload failed');
-
-            // Step 3: update profile/cover via GraphQL
-            const mutation = isCover ? GRAPHQL_QUERIES.UPDATE_COVER_PHOTO : GRAPHQL_QUERIES.UPDATE_PROFILE_PHOTO;
-            const updateRes = await apiService.graphqlRequest(mutation, {
-                userId: userId,
-                filePath: publicUrl,
-                fileName: file.name,
-                contentType: file.type,
-            });
-
-            // Update UI with signed URL from response
-            const updated = isCover ? updateRes.updateCoverPhoto : updateRes.updateProfilePhoto;
-            setUser(prev => prev ? {
-                ...prev,
-                profilePhoto: !isCover ? (updated.profilePhotoSignedUrl || prev.profilePhoto) : prev.profilePhoto,
-                // Pass along signed URLs by attaching them on the user object cast
-                ...(isCover ? { coverPhotoSignedUrl: updated.coverPhotoSignedUrl } : { profilePhotoSignedUrl: updated.profilePhotoSignedUrl })
-            } as any : prev);
-
-            setSnack({ open: true, message: isCover ? 'Cover photo updated' : 'Profile photo updated', severity: 'success' });
-
-        } catch (e) {
-            console.error('Photo upload failed:', e);
-            const msg = e instanceof Error ? e.message : 'Photo upload failed';
-            setSnack({ open: true, message: msg, severity: 'error' });
         }
     };
 
@@ -1484,7 +1246,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
             <Box sx={{ pt: 10, px: 2 }}>
                 <Box sx={{ position: 'relative', borderRadius: 2, overflow: 'hidden', mb: 3 }}>
                     <img
-                        src={(user as any).coverPhotoSignedUrl || 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&h=300&fit=crop'}
+                        src={user.profilePhoto || 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&h=300&fit=crop'}
                         alt="Cover"
                         style={{ width: '100%', height: 250, objectFit: 'cover' }}
                         onError={(e) => {
@@ -1503,29 +1265,18 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                 textTransform: 'none',
                                 fontWeight: 600
                             }}
-                            onClick={handleChooseCoverPhoto}
                         >
                             Edit Cover
                         </Button>
                     )}
                 </Box>
 
-                {/* hidden file inputs */}
-                <input ref={coverFileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) uploadWithPresign(f, true);
-                }} />
-                <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) uploadWithPresign(f, false);
-                }} />
-
                 <Box sx={{ bgcolor: '#fff', borderRadius: 3, p: 3, mb: 3, boxShadow: '0 2px 12px rgba(37,99,235,0.08)' }}>
                     <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 3 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                             <Box sx={{ position: 'relative' }}>
                                 <Avatar
-                                    src={(user as any).profilePhotoSignedUrl || user.profilePhoto || 'https://randomuser.me/api/portraits/lego/1.jpg'}
+                                    src={user.profilePhoto || 'https://randomuser.me/api/portraits/lego/1.jpg'}
                                     sx={{ width: 100, height: 100, border: '4px solid white', boxShadow: 2 }}
                                     onError={(e) => {
                                         (e.target as HTMLImageElement).src = 'https://randomuser.me/api/portraits/lego/1.jpg';
@@ -1559,182 +1310,48 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                         </Box>
                         {!isOwnProfile && (
                             <Box sx={{ display: 'flex', gap: 1 }}>
-                                {incomingFollowStatus?.status === 'pending' ? (
-                                    <>
-                                        <Button
-                                            variant="contained"
-                                            sx={{ bgcolor: '#16A34A', '&:hover': { bgcolor: '#15803D' } }}
-                                            onClick={async () => {
-                                                try {
-                                                    const data = await apiService.graphqlRequest(GRAPHQL_QUERIES.UPDATE_FOLLOW_STATUS, {
-                                                        followerId: userId,
-                                                        followingId: currentUserId,
-                                                        status: 'active'
-                                                    });
-                                                    setIncomingFollowStatus(data.updateFollowStatus);
-                                                    setSnack({ open: true, message: 'Request accepted', severity: 'success' });
-                                                } catch (e) {
-                                                    setSnack({ open: true, message: 'Failed to accept request', severity: 'error' });
-                                                }
-                                            }}
-                                        >Accept</Button>
-                                        <Button
-                                            variant="outlined"
-                                            sx={{ borderColor: '#EF4444', color: '#EF4444' }}
-                                            onClick={async () => {
-                                                try {
-                                                    const data = await apiService.graphqlRequest(GRAPHQL_QUERIES.UPDATE_FOLLOW_STATUS, {
-                                                        followerId: userId,
-                                                        followingId: currentUserId,
-                                                        status: 'rejected'
-                                                    });
-                                                    setIncomingFollowStatus(data.updateFollowStatus);
-                                                    setSnack({ open: true, message: 'Request declined', severity: 'success' });
-                                                } catch (e) {
-                                                    setSnack({ open: true, message: 'Failed to decline request', severity: 'error' });
-                                                }
-                                            }}
-                                        >Decline</Button>
-                                    </>
-                                ) : (
-                                    <>
-                                        <Button
-                                            variant={isFollowing ? "outlined" : "contained"}
-                                            startIcon={<PersonAddIcon />}
-                                            onClick={handleFollow}
-                                            disabled={followingInProgress}
-                                            sx={{
-                                                bgcolor: isFollowing ? 'transparent' : '#2563EB',
-                                                borderColor: '#2563EB',
-                                                color: isFollowing ? '#2563EB' : 'white',
-                                                textTransform: 'none',
-                                                fontWeight: 600,
-                                                '&:hover': {
-                                                    bgcolor: isFollowing ? 'rgba(37, 99, 235, 0.1)' : '#1D4ED8'
-                                                }
-                                            }}
-                                        >
-                                            {followingInProgress ? 'Loading...' : (
-                                                followingStatus?.status === 'pending' ? 'Requested' : (
-                                                isFollowing ? 'Following' : 'Follow')
-                                            )}
-                                        </Button>
-                                        <Button
-                                            variant="outlined"
-                                            startIcon={<MessageIcon />}
-                                            sx={{
-                                                borderColor: '#2563EB',
-                                                color: '#2563EB',
-                                                textTransform: 'none',
-                                                fontWeight: 600
-                                            }}
-                                        >
-                                            Message
-                                        </Button>
-                                    </>
-                                )}
-                            </Box>
-                        )}
-                        {isOwnProfile && followingStatus?.status === 'pending' && (
-                            <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
                                 <Button
-                                    variant="contained"
-                                    sx={{ bgcolor: '#16A34A', '&:hover': { bgcolor: '#15803D' } }}
-                                    onClick={async () => {
-                                        try {
-                                            const data = await apiService.graphqlRequest(GRAPHQL_QUERIES.UPDATE_FOLLOW_STATUS, {
-                                                followerId: (followingStatus as any)?.followerId || (followingStatus as any)?.userId || 0,
-                                                followingId: userId,
-                                                status: 'active'
-                                            });
-                                            const updated = data.updateFollowStatus;
-                                            setFollowingStatus(updated);
-                                            setIsFollowing(true);
-                                            setUser(prev => prev ? { ...prev, followersCount: prev.followersCount + 1 } : prev);
-                                            setSnack({ open: true, message: 'Request accepted', severity: 'success' });
-                                        } catch (e) {
-                                            setSnack({ open: true, message: 'Failed to accept request', severity: 'error' });
+                                    variant={isFollowing ? "outlined" : "contained"}
+                                    startIcon={<PersonAddIcon />}
+                                    onClick={handleFollow}
+                                    disabled={followingInProgress}
+                                    sx={{
+                                        bgcolor: isFollowing ? 'transparent' : '#2563EB',
+                                        borderColor: '#2563EB',
+                                        color: isFollowing ? '#2563EB' : 'white',
+                                        textTransform: 'none',
+                                        fontWeight: 600,
+                                        '&:hover': {
+                                            bgcolor: isFollowing ? 'rgba(37, 99, 235, 0.1)' : '#1D4ED8'
                                         }
                                     }}
-                                >Accept</Button>
+                                >
+                                    {followingInProgress ? 'Loading...' : (isFollowing ? 'Following' : 'Follow')}
+                                </Button>
                                 <Button
                                     variant="outlined"
-                                    sx={{ borderColor: '#EF4444', color: '#EF4444' }}
-                                    onClick={async () => {
-                                        try {
-                                            const data = await apiService.graphqlRequest(GRAPHQL_QUERIES.UPDATE_FOLLOW_STATUS, {
-                                                followerId: (followingStatus as any)?.followerId || (followingStatus as any)?.userId || 0,
-                                                followingId: userId,
-                                                status: 'rejected'
-                                            });
-                                            const updated = data.updateFollowStatus;
-                                            setFollowingStatus(updated);
-                                            setIsFollowing(false);
-                                            setSnack({ open: true, message: 'Request declined', severity: 'success' });
-                                        } catch (e) {
-                                            setSnack({ open: true, message: 'Failed to decline request', severity: 'error' });
-                                        }
+                                    startIcon={<MessageIcon />}
+                                    sx={{
+                                        borderColor: '#2563EB',
+                                        color: '#2563EB',
+                                        textTransform: 'none',
+                                        fontWeight: 600
                                     }}
-                                >Decline</Button>
-                            </Box>
-                        )}
-                        {isOwnProfile && (
-                            <Box sx={{ display: 'flex', gap: 1 }}>
-                                <Button variant="outlined" onClick={handleChooseProfilePhoto}>Change Profile Photo</Button>
-                                <Button
-                                    variant="contained"
-                                    sx={{ bgcolor: '#2563EB', '&:hover': { bgcolor: '#1D4ED8' } }}
-                                    onClick={async () => {
-                                        try {
-                                            setLoadingFF(true);
-                                            const data = await apiService.graphqlRequest(GRAPHQL_QUERIES.PENDING_FOLLOW_REQUESTS, { userId });
-                                            const list = (data?.pendingFollowRequests || []);
-                                            const map = await enrichUsers(list.map((p: any) => p.followerId));
-                                            setFollowersDetails(list.map((p: any) => ({ id: p.id, uid: p.followerId, status: p.status, info: map[p.followerId] || null })));
-                                            setFollowersOpen(true);
-                                        } finally { setLoadingFF(false); }
-                                    }}
-                                >Pending requests</Button>
+                                >
+                                    Message
+                                </Button>
                             </Box>
                         )}
                     </Box>
 
                     <Box sx={{ display: 'flex', gap: 4, pt: 2, borderTop: '1px solid #E5E7EB' }}>
-                        <Box sx={{ textAlign: 'center', cursor: 'pointer' }} onClick={async () => {
-                            try {
-                                setLoadingFF(true);
-                                const list = await apiService.fetchUserFollowers(userId);
-                                setFollowersList(list);
-                                const map = await enrichUsers(list.map((f: any) => f.followerId || f.userId));
-                                setFollowersDetails(list.map((f: any) => ({
-                                    id: f.id,
-                                    uid: f.followerId || f.userId,
-                                    status: f.status,
-                                    info: map[f.followerId || f.userId] || null,
-                                })));
-                                setFollowersOpen(true);
-                            } finally { setLoadingFF(false); }
-                        }}>
+                        <Box sx={{ textAlign: 'center' }}>
                             <Typography variant="h5" sx={{ fontWeight: 700, color: '#2563EB' }}>
                                 {user.followersCount.toLocaleString()}
                             </Typography>
                             <Typography sx={{ color: '#6B7280', fontSize: '0.875rem' }}>Followers</Typography>
                         </Box>
-                        <Box sx={{ textAlign: 'center', cursor: 'pointer' }} onClick={async () => {
-                            try {
-                                setLoadingFF(true);
-                                const list = await apiService.fetchUserFollowing(userId);
-                                setFollowingList(list);
-                                const map = await enrichUsers(list.map((f: any) => f.followingId));
-                                setFollowingDetails(list.map((f: any) => ({
-                                    id: f.id,
-                                    uid: f.followingId,
-                                    status: f.status,
-                                    info: map[f.followingId] || null,
-                                })));
-                                setFollowingOpen(true);
-                            } finally { setLoadingFF(false); }
-                        }}>
+                        <Box sx={{ textAlign: 'center' }}>
                             <Typography variant="h5" sx={{ fontWeight: 700, color: '#2563EB' }}>
                                 {user.followingCount}
                             </Typography>
@@ -1755,7 +1372,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                     </Box>
                 </Box>
 
-                {/* User Posts Section */}
                 <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '2fr 1fr' }, gap: 3 }}>
                     <Box>
                         {postsLoading ? (
@@ -1779,103 +1395,30 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                 <Box key={post.id} sx={{ bgcolor: '#fff', borderRadius: 3, p: 3, mb: 3, boxShadow: '0 2px 12px rgba(37,99,235,0.08)' }}>
                                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                                         <Avatar
-                                            src={(post as any).userProfilePhotoSignedUrl || (post as any).profilePhoto || `https://randomuser.me/api/portraits/lego/${(post as any).userId % 10}.jpg`}
-                                            sx={{ width: 44, height: 44, mr: 2, boxShadow: 1, cursor: 'pointer' }}
-                                            onClick={() => onOpenProfile && onOpenProfile((post as any).userId)}
+                                            src={post.user?.profilePhoto}
+                                            sx={{ width: 40, height: 40, mr: 2 }}
                                         />
-                                        <Box
-                                            onClick={() => onOpenProfile && onOpenProfile((post as any).userId)}
-                                            sx={{ cursor: 'pointer' }}
-                                            role="button"
-                                            aria-label={`Open profile of ${(post as any).userFirstName} ${(post as any).userLastName}`}
-                                        >
-                                            <Typography sx={{ fontWeight: 700, fontSize: 18, color: '#2563EB', ...interFont }}>
-                                                {(post as any).userFirstName} {(post as any).userLastName}
+                                        <Box>
+                                            <Typography sx={{ fontWeight: 600 }}>
+                                                {post.user?.firstName} {post.user?.lastName}
                                             </Typography>
-                                            <Typography sx={{ fontSize: 13, color: '#6B7280', fontWeight: 500 }}>
-                                                {(post as any).userRole}
-                                            </Typography>
-                                            <Typography sx={{ fontSize: 13, color: '#6B7280' }}>
+                                            <Typography sx={{ color: '#9CA3AF', fontSize: '0.75rem' }}>
                                                 {new Date(post.createdAt).toLocaleString()}
                                             </Typography>
                                         </Box>
                                     </Box>
 
-                                    <Typography sx={{ color: '#2563EB', fontWeight: 700, fontSize: 17, mb: 1 }}>{(post as any).title}</Typography>
-                                    <Typography sx={{ color: '#374151', lineHeight: 1.6, mb: 2 }}>{(post as any).content}</Typography>
-                                    
-                                    {(post as any).location && (
-                                        <Typography sx={{ color: '#6B7280', fontSize: 14, mb: 2 }}>
-                                            📍 {(post as any).location}
-                                        </Typography>
-                                    )}
-
                                     {post.media && post.media.length > 0 && (
                                         <Box sx={{ mb: 2 }}>
-                                            {post.media.slice(0, 4).map((media, index) => {
-                                                const imageUrl = media.signedUrl || media.mediaUrl;
-                                                console.log(`Post ${post.id} Media ${index}:`, {
-                                                    mediaUrl: media.mediaUrl,
-                                                    signedUrl: media.signedUrl,
-                                                    finalUrl: imageUrl
-                                                });
-                                                return (
-                                                    <img
-                                                        key={media.id}
-                                                        src={imageUrl}
-                                                        alt={media.caption || 'Post media'}
-                                                        style={{ 
-                                                            width: (post.media && post.media.length > 1) ? '48%' : '100%', 
-                                                            borderRadius: 12, 
-                                                            maxHeight: 340, 
-                                                            objectFit: 'cover',
-                                                            marginRight: index % 2 === 0 ? '4%' : '0',
-                                                            marginBottom: '8px',
-                                                            display: 'inline-block'
-                                                        }}
-                                                        onError={(e) => {
-                                                            console.error(`Failed to load image: ${imageUrl}`, e);
-                                                            console.error(`Image element:`, e.currentTarget);
-                                                            console.error(`Error details:`, {
-                                                                naturalWidth: e.currentTarget.naturalWidth,
-                                                                naturalHeight: e.currentTarget.naturalHeight,
-                                                                complete: e.currentTarget.complete
-                                                            });
-                                                            
-                                                            // Try fallback to mediaUrl if signedUrl fails
-                                                            if (media.signedUrl && e.currentTarget.src === media.signedUrl) {
-                                                                console.log(`Trying fallback URL: ${media.mediaUrl}`);
-                                                                e.currentTarget.src = media.mediaUrl;
-                                                            } else {
-                                                                // If even fallback fails, show a placeholder
-                                                                console.error(`Both URLs failed for media ${media.id}`);
-                                                                e.currentTarget.style.display = 'none';
-                                                            }
-                                                        }}
-                                                        onLoad={() => {
-                                                            console.log(`Successfully loaded image: ${imageUrl}`);
-                                                        }}
-                                                    />
-                                                );
-                                            })}
-                                            {post.media && post.media.length > 4 && (
-                                                <Box sx={{ 
-                                                    position: 'relative', 
-                                                    display: 'flex',
-                                                    width: '48%',
-                                                    height: '200px',
-                                                    backgroundColor: 'rgba(0,0,0,0.8)',
-                                                    borderRadius: 3,
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center'
-                                                }}>
-                                                    <Typography sx={{ color: 'white', fontSize: '1.5rem', fontWeight: 'bold' }}>
-                                                        +{(post.media?.length || 0) - 4}
-                                                    </Typography>
-                                                </Box>
-                                            )}
+                                            <img
+                                                src={post.media[0].mediaUrl}
+                                                alt={post.media[0].caption || 'Post media'}
+                                                style={{ width: '100%', borderRadius: 12, maxHeight: 340, objectFit: 'cover' }}
+                                            />
                                         </Box>
                                     )}
+
+                                    <Typography sx={{ mb: 2 }}>{post.content}</Typography>
 
                                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
                                         <Button
@@ -1944,78 +1487,12 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                 <Typography variant="h6" sx={{ fontWeight: 700, color: '#2563EB' }}>
                                     Ratings & Reviews
                                 </Typography>
-                                {!isOwnProfile && currentUserId && (
-                                    <Button onClick={() => setRatingOpen(v => !v)} sx={{ color: '#2563EB', textTransform: 'none', fontWeight: 600 }}>
-                                        {ratingOpen ? 'Close' : 'Rate User'}
+                                {!isOwnProfile && (
+                                    <Button sx={{ color: '#2563EB', textTransform: 'none', fontWeight: 600 }}>
+                                        Rate User
                                     </Button>
                                 )}
                             </Box>
-
-                            {!isOwnProfile && currentUserId && ratingOpen && (
-                                <Box sx={{ mb: 3, p: 2, bgcolor: '#F6F8FB', borderRadius: 2 }}>
-                                    <Typography sx={{ fontWeight: 600, mb: 1 }}>Your rating</Typography>
-                                    <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1 }}>
-                                        <Rating value={ratingValue} onChange={(_, v) => setRatingValue(v || 5)} />
-                                        <Typography sx={{ color: '#6B7280' }}>{ratingValue} / 5</Typography>
-                                    </Stack>
-                                    <InputBase
-                                        placeholder="Write a short review (optional)"
-                                        value={ratingText}
-                                        onChange={(e) => setRatingText(e.target.value)}
-                                        sx={{
-                                            bgcolor: '#fff',
-                                            px: 2,
-                                            py: 1.2,
-                                            borderRadius: 2,
-                                            fontSize: 15,
-                                            flex: 1,
-                                            boxShadow: 1,
-                                            border: '1px solid #E5E7EB',
-                                            mb: 1
-                                        }}
-                                        multiline minRows={2} maxRows={4}
-                                    />
-                                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-                                        <Button disabled={ratingSubmitting} onClick={() => setRatingOpen(false)}>Cancel</Button>
-                                        <Button
-                                            variant="contained"
-                                            disabled={ratingSubmitting}
-                                            sx={{ bgcolor: '#2563EB', '&:hover': { bgcolor: '#1D4ED8' } }}
-                                            onClick={async () => {
-                                                if (!currentUserId) return;
-                                                try {
-                                                    setRatingSubmitting(true);
-                                                    const created = await apiService.createRating(userId, currentUserId, ratingValue, ratingText || undefined, undefined);
-                                                    // Update local reviews and averages
-                                                    setReviews(prev => [{
-                                                        id: created.id,
-                                                        ratedUserId: userId,
-                                                        ratedByUserId: currentUserId,
-                                                        ratingValue,
-                                                        review: ratingText || undefined,
-                                                        ratingType: undefined,
-                                                        createdAt: created.createdAt || new Date().toISOString(),
-                                                        updatedAt: created.updatedAt || new Date().toISOString(),
-                                                        raterInfo: undefined,
-                                                    }, ...prev]);
-                                                    setUser(prev => prev ? { ...prev, averageRating: Number(((prev.averageRating * prev.ratings.length + ratingValue) / (prev.ratings.length + 1)).toFixed(1)), ratings: [{ id: created.id, ratedUserId: userId, ratedByUserId: currentUserId, ratingValue, review: ratingText || undefined, ratingType: undefined, createdAt: created.createdAt || new Date().toISOString(), updatedAt: created.updatedAt || new Date().toISOString() }, ...prev.ratings] } : prev);
-                                                    setSnack({ open: true, message: 'Rating submitted', severity: 'success' });
-                                                    setRatingText('');
-                                                    setRatingValue(5);
-                                                    setRatingOpen(false);
-                                                } catch (e) {
-                                                    console.error('Create rating failed', e);
-                                                    setSnack({ open: true, message: 'Failed to submit rating', severity: 'error' });
-                                                } finally {
-                                                    setRatingSubmitting(false);
-                                                }
-                                            }}
-                                        >
-                                            {ratingSubmitting ? 'Submitting...' : 'Submit'}
-                                        </Button>
-                                    </Box>
-                                </Box>
-                            )}
 
                             <Box sx={{ textAlign: 'center', mb: 3 }}>
                                 <Typography variant="h2" sx={{ fontWeight: 700, color: '#2563EB', mb: 1 }}>
@@ -2238,93 +1715,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                     </Box>
                 );
             })()}
-
-            {/* Followers modal */}
-            {followersOpen && (
-                <Box sx={{ position: 'fixed', inset: 0, bgcolor: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setFollowersOpen(false)}>
-                    <Box sx={{ bgcolor: '#fff', borderRadius: 3, width: 420, maxWidth: '90vw', maxHeight: '70vh', overflowY: 'auto', p: 2 }} onClick={e => e.stopPropagation()}>
-                        <Typography sx={{ fontWeight: 700, color: '#2563EB', mb: 1 }}>Followers</Typography>
-                        {loadingFF ? (
-                            <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress /></Box>
-                        ) : followersDetails.length === 0 ? (
-                            <Typography sx={{ color: '#6B7280' }}>No followers</Typography>
-                        ) : (
-                            <Stack spacing={1.2}>
-                                {followersDetails.map((f) => (
-                                    <Box key={f.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.2, p: 1, borderRadius: 2, '&:hover': { bgcolor: '#F3F4F6' }, cursor: onOpenProfile ? 'pointer' : 'default' }}
-                                         onClick={() => onOpenProfile && onOpenProfile(f.uid)}>
-                                        <Avatar src={f.info?.photo || ''} sx={{ width: 32, height: 32 }}>{(f.info?.firstName || '').charAt(0)}</Avatar>
-                                        <Box sx={{ flex: 1 }}>
-                                            <Typography sx={{ fontWeight: 600 }}>{f.info ? `${f.info.firstName} ${f.info.lastName}` : `User ${f.uid}`}</Typography>
-                                            <Typography sx={{ fontSize: 12, color: '#6B7280' }}>{f.info?.role || f.status}</Typography>
-                                        </Box>
-                                        {isOwnProfile && f.status === 'pending' && (
-                                            <Box sx={{ display: 'flex', gap: 0.5 }} onClick={(e) => e.stopPropagation()}>
-                                                <Button size="small" variant="contained" sx={{ bgcolor: '#16A34A', '&:hover': { bgcolor: '#15803D' } }}
-                                                    onClick={async () => {
-                                                        try {
-                                                            const data = await apiService.graphqlRequest(GRAPHQL_QUERIES.UPDATE_FOLLOW_STATUS, {
-                                                                followerId: f.uid,
-                                                                followingId: userId,
-                                                                status: 'active'
-                                                            });
-                                                            setFollowersDetails(prev => prev.map(x => x.id === f.id ? { ...x, status: 'active' } : x));
-                                                            setUser(prev => prev ? { ...prev, followersCount: prev.followersCount + 1 } : prev);
-                                                            setSnack({ open: true, message: 'Request accepted', severity: 'success' });
-                                                        } catch (e) {
-                                                            setSnack({ open: true, message: 'Failed to accept request', severity: 'error' });
-                                                        }
-                                                    }}>Accept</Button>
-                                                <Button size="small" variant="outlined" sx={{ borderColor: '#EF4444', color: '#EF4444' }}
-                                                    onClick={async () => {
-                                                        try {
-                                                            const data = await apiService.graphqlRequest(GRAPHQL_QUERIES.UPDATE_FOLLOW_STATUS, {
-                                                                followerId: f.uid,
-                                                                followingId: userId,
-                                                                status: 'rejected'
-                                                            });
-                                                            setFollowersDetails(prev => prev.map(x => x.id === f.id ? { ...x, status: 'rejected' } : x));
-                                                            setSnack({ open: true, message: 'Request declined', severity: 'success' });
-                                                        } catch (e) {
-                                                            setSnack({ open: true, message: 'Failed to decline request', severity: 'error' });
-                                                        }
-                                                    }}>Decline</Button>
-                                            </Box>
-                                        )}
-                                    </Box>
-                                ))}
-                            </Stack>
-                        )}
-                    </Box>
-                </Box>
-            )}
-
-            {/* Following modal */}
-            {followingOpen && (
-                <Box sx={{ position: 'fixed', inset: 0, bgcolor: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setFollowingOpen(false)}>
-                    <Box sx={{ bgcolor: '#fff', borderRadius: 3, width: 420, maxWidth: '90vw', maxHeight: '70vh', overflowY: 'auto', p: 2 }} onClick={e => e.stopPropagation()}>
-                        <Typography sx={{ fontWeight: 700, color: '#2563EB', mb: 1 }}>Following</Typography>
-                        {loadingFF ? (
-                            <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress /></Box>
-                        ) : followingDetails.length === 0 ? (
-                            <Typography sx={{ color: '#6B7280' }}>No following</Typography>
-                        ) : (
-                            <Stack spacing={1.2}>
-                                {followingDetails.map((f) => (
-                                    <Box key={f.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.2, p: 1, borderRadius: 2, '&:hover': { bgcolor: '#F3F4F6' }, cursor: onOpenProfile ? 'pointer' : 'default' }}
-                                         onClick={() => onOpenProfile && onOpenProfile(f.uid)}>
-                                        <Avatar src={f.info?.photo || ''} sx={{ width: 32, height: 32 }}>{(f.info?.firstName || '').charAt(0)}</Avatar>
-                                        <Box>
-                                            <Typography sx={{ fontWeight: 600 }}>{f.info ? `${f.info.firstName} ${f.info.lastName}` : `User ${f.uid}`}</Typography>
-                                            <Typography sx={{ fontSize: 12, color: '#6B7280' }}>{f.info?.role || f.status}</Typography>
-                                        </Box>
-                                    </Box>
-                                ))}
-                            </Stack>
-                        )}
-                    </Box>
-                </Box>
-            )}
         </Box>
     );
 };

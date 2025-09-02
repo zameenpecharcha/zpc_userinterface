@@ -1,8 +1,6 @@
 import React, { useState, useMemo, useCallback, memo, useEffect, useRef } from 'react';
-import { gql, useQuery, useMutation, useApolloClient } from '@apollo/client';
-import { SEARCH_POSTS, CREATE_POST } from '../graphql/posts';
-import CreatePost from './CreatePost';
-import { PostService } from '../services/postService';
+import { styled } from '@mui/material/styles';
+import { gql, useQuery, useMutation } from '@apollo/client';
 import {
   AppBar,
   Toolbar,
@@ -17,7 +15,10 @@ import {
   Menu,
   MenuItem,
   CircularProgress,
+  TextField,
 } from '@mui/material';
+import { useApolloClient } from '@apollo/client';
+import { useNavigate } from 'react-router-dom';
 import HomeIcon from '@mui/icons-material/Home';
 import PeopleIcon from '@mui/icons-material/People';
 import GroupIcon from '@mui/icons-material/Group';
@@ -33,9 +34,43 @@ import ShareIcon from '@mui/icons-material/Share';
 import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
 import ProfilePage from './ProfilePage';
+import LocationAutocomplete from './LocationAutocomplete';
+import { PostService } from '../services/postService';
+import CloudUploadIcon from '@mui/icons-material/CloudUpload';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 
-
-
+const SEARCH_POSTS_QUERY = gql`
+query SearchPosts($page: Int, $limit: Int) {
+  searchPosts(page: $page, limit: $limit) {
+    id
+    userId
+    userFirstName
+    userLastName
+    userRole
+    title
+    content
+    visibility
+    propertyType
+    location
+    latitude
+    longitude
+    price
+    status
+    createdAt
+    likeCount
+    commentCount
+    media {
+      id
+      mediaType
+      mediaUrl
+      mediaOrder
+      mediaSize
+      caption
+      uploadedAt
+    }
+  }
+}
+`;
 
 const GET_POST_COMMENTS_QUERY = gql`
 query GetPostComments($postId: Int!, $page: Int, $limit: Int) {
@@ -140,14 +175,14 @@ mutation UnlikePost($postId: Int!, $userId: Int!) {
 // Get user data dynamically to handle login state changes
 const getUserData = () => {
   try {
-    const stored = localStorage.getItem('user') || localStorage.getItem('userInfo');
-    return stored ? JSON.parse(stored) : {};
+    return JSON.parse(localStorage.getItem('userInfo') || '{}');
   } catch {
     return {};
   }
 };
 
 const storedUser = getUserData();
+const userId = storedUser?.id;
 const interFont = {
   fontFamily: 'Inter, Roboto, Arial, sans-serif',
 };
@@ -172,43 +207,7 @@ const trendingTopics = [
 ];
 
 // Memoized Post component to prevent unnecessary re-renders
-interface PostProps {
-  post: {
-    id: number;
-    userId: number;
-    userFirstName: string;
-    userLastName: string;
-    userRole: string;
-    title: string;
-    content: string;
-    visibility: string;
-    propertyType: string;
-    location: string;
-    price: number;
-    status: string;
-    createdAt: string;
-    likeCount: number;
-    commentCount: number;
-    profilePhoto?: string;
-    media?: Array<{
-      id: number;
-      mediaType: string;
-      mediaUrl: string;
-      signedUrl?: string;
-      caption?: string;
-      mediaOrder: number;
-      mediaSize?: number;
-      uploadedAt: string;
-    }>;
-  };
-  onLikeToggle: (postId: number) => void;
-  onCommentClick: (postId: number) => void;
-  onOpenProfile: (userId: number) => void;
-  likedPosts: { [postId: number]: boolean };
-  likeCounts: { [postId: number]: number };
-}
-
-const Post = memo(({ post, onLikeToggle, onCommentClick, onOpenProfile, likedPosts, likeCounts }: PostProps) => {
+const Post = memo(({ post, onLikeToggle, onCommentClick, likedPosts, likeCounts, likingPost, unlikingPost }: any) => {
   const formatDate = useCallback((dateString: string) => {
     return new Date(dateString).toLocaleString();
   }, []);
@@ -226,17 +225,8 @@ const Post = memo(({ post, onLikeToggle, onCommentClick, onOpenProfile, likedPos
       gap: 1.5,
     }}>
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-        <Avatar
-          src={(post as any).userProfilePhotoSignedUrl || post.profilePhoto || `https://randomuser.me/api/portraits/lego/${post.userId % 10}.jpg`}
-          sx={{ mr: 2, width: 44, height: 44, boxShadow: 1, cursor: 'pointer' }}
-          onClick={() => onOpenProfile(post.userId)}
-        />
-        <Box
-          onClick={() => onOpenProfile(post.userId)}
-          sx={{ cursor: 'pointer' }}
-          role="button"
-          aria-label={`Open profile of ${post.userFirstName} ${post.userLastName}`}
-        >
+        <Avatar src={post.profilePhoto || `https://randomuser.me/api/portraits/lego/${post.userId % 10}.jpg`} sx={{ mr: 2, width: 44, height: 44, boxShadow: 1 }} />
+        <Box>
           <Typography sx={{ fontWeight: 700, fontSize: 18, color: '#2563EB', ...interFont }}>
             {post.userFirstName} {post.userLastName}
           </Typography>
@@ -255,61 +245,13 @@ const Post = memo(({ post, onLikeToggle, onCommentClick, onOpenProfile, likedPos
         <Typography sx={{ fontSize: 14, color: '#6B7280', bgcolor: 'rgba(99,102,241,0.06)', px: 1.5, py: 0.5, borderRadius: 2 }}>Type: {post.propertyType}</Typography>
         <Typography sx={{ fontSize: 14, color: '#6B7280', bgcolor: 'rgba(239,68,68,0.06)', px: 1.5, py: 0.5, borderRadius: 2 }}>Price: ₹{post.price}</Typography>
       </Box>
-      {post.media && post.media.length > 0 && (
-        <Box sx={{ mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-          {post.media.map((media, index) => 
-            media.mediaType === 'image' && (
-              <Box key={media.id} sx={{ flex: '1 1 300px', maxWidth: '100%', position: 'relative' }}>
-                <div>
-                  {/* Debug media object */}
-                  {(() => { console.log('Media object:', media); return null; })()}
-                  <img
-                    src={media.signedUrl || media.mediaUrl}
-                    alt={media.caption || `Post media ${index + 1}`}
-                    style={{ 
-                      width: '100%', 
-                      borderRadius: 12, 
-                      maxHeight: 340, 
-                      objectFit: 'cover', 
-                      boxShadow: '0 2px 8px rgba(37,99,235,0.08)'
-                    }}
-                    onError={(e) => {
-                      console.error('Image load error for:', {
-                        mediaId: media.id,
-                        signedUrl: media.signedUrl,
-                        mediaUrl: media.mediaUrl,
-                        currentSrc: e.currentTarget.src,
-                        error: e
-                      });
-                      const img = e.currentTarget;
-                      // If using signedUrl, fallback to mediaUrl
-                      if (img.src === media.signedUrl && media.mediaUrl) {
-                        console.log('Falling back to mediaUrl for media:', media.id);
-                        img.src = media.mediaUrl;
-                      }
-                    }}
-                  />
-                  {media.caption && (
-                    <Typography 
-                      sx={{ 
-                        position: 'absolute',
-                        bottom: 8,
-                        left: 8,
-                        right: 8,
-                        color: '#fff',
-                        backgroundColor: 'rgba(0,0,0,0.6)',
-                        padding: '4px 8px',
-                        borderRadius: 1,
-                        fontSize: 14
-                      }}
-                    >
-                      {media.caption}
-                    </Typography>
-                  )}
-                </div>
-              </Box>
-            )
-          )}
+      {post.media?.length > 0 && post.media[0].mediaType === 'image' && (
+        <Box sx={{ mb: 2 }}>
+          <img
+            src={post.media[0].mediaUrl}
+            alt={post.media[0].caption || 'Post media'}
+            style={{ width: '100%', borderRadius: 12, maxHeight: 340, objectFit: 'cover', boxShadow: '0 2px 8px rgba(37,99,235,0.08)' }}
+          />
         </Box>
       )}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 2 }}>
@@ -331,6 +273,7 @@ const Post = memo(({ post, onLikeToggle, onCommentClick, onOpenProfile, likedPos
               px: 2,
             }}
             onClick={() => onLikeToggle(post.id)}
+            disabled={likingPost || unlikingPost}
           >
             <span style={{ color: '#222', fontWeight: 600 }}>
               {likeCounts[post.id] !== undefined ? likeCounts[post.id] : post.likeCount || 0}
@@ -639,26 +582,17 @@ const CommentsModal = memo(({
 });
 
 const Home = () => {
-  const { data, loading, error, refetch } = useQuery(SEARCH_POSTS, {
+  const { data, loading, error, refetch } = useQuery(SEARCH_POSTS_QUERY, {
     variables: { page: 1, limit: 10 },
     fetchPolicy: 'network-only',
   });
-
-  const client = useApolloClient();
-
-  // Clear cache and refetch on mount
-  useEffect(() => {
-    const clearAndRefetch = async () => {
-      await client.clearStore();
-      await refetch();
-    };
-    clearAndRefetch();
-  }, [client, refetch]);
 
   // Optimized state management
   const [commentsModalOpen, setCommentsModalOpen] = useState<{ open: boolean; postId: number | null }>({ open: false, postId: null });
   const [likedPosts, setLikedPosts] = useState<{ [postId: number]: boolean }>({});
   const [likeCounts, setLikeCounts] = useState<{ [postId: number]: number }>({});
+  const [likingPost, setLikingPost] = useState(false);
+  const [unlikingPost, setUnlikingPost] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState<'home' | 'profile'>('home');
@@ -671,14 +605,13 @@ const Home = () => {
   const [likingComment, setLikingComment] = useState(false);
   const [replyingCommentId, setReplyingCommentId] = useState<number | null>(null);
   const [replyText, setReplyText] = useState('');
+  const [replying, setReplying] = useState(false);
 
   // Auto-refresh state (simplified - always enabled)
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
   const commentsRefreshTimerRef = useRef<NodeJS.Timeout | null>(null);
-  // Authenticated user object (from localStorage) – do not repurpose for viewing profiles
   const [currentUser, setCurrentUser] = useState(getUserData());
-  // The user whose profile we are viewing from the feed
-  const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
 
   const isMobile = useMediaQuery('(max-width:900px)');
 
@@ -687,10 +620,23 @@ const Home = () => {
   const [likeComment] = useMutation(LIKE_COMMENT_MUTATION);
   const [likePost] = useMutation(LIKE_POST_MUTATION);
   const [unlikePost] = useMutation(UNLIKE_POST_MUTATION);
-  const [createPostMutation] = useMutation(CREATE_POST);
+  const client = useApolloClient();
+  const postService = new PostService(client);
 
-  // Create Post form state (simplified for new component)
+  // Create Post form state
+  const [cpTitle, setCpTitle] = useState('');
+  const [cpContent, setCpContent] = useState('');
+  const [cpPropertyType, setCpPropertyType] = useState('listing');
+  const [cpVisibility, setCpVisibility] = useState('public');
+  const [cpStatus, setCpStatus] = useState('active');
+  const [cpPrice, setCpPrice] = useState<string>('');
+  const [cpLocationText, setCpLocationText] = useState('');
+  const [cpLat, setCpLat] = useState<number | undefined>(undefined);
+  const [cpLng, setCpLng] = useState<number | undefined>(undefined);
   const [cpSubmitting, setCpSubmitting] = useState(false);
+  const [cpError, setCpError] = useState<string | null>(null);
+  const [cpFiles, setCpFiles] = useState<File[]>([]);
+  const [cpUploaded, setCpUploaded] = useState<{ name: string; url: string; contentType: string }[]>([]);
 
   // Check for user data updates
   useEffect(() => {
@@ -713,16 +659,19 @@ const Home = () => {
     };
   }, [currentUser]);
 
-  // Auto-refresh functionality (every 5 minutes)
+  // Auto-refresh functionality (always enabled, simplified)
   useEffect(() => {
     if (!loading) {
       refreshTimerRef.current = setInterval(async () => {
         try {
+          setIsRefreshing(true);
           await refetch();
         } catch (error) {
           console.error('Auto-refresh failed:', error);
+        } finally {
+          setIsRefreshing(false);
         }
-      }, 300000); // 5 minutes
+      }, 1000); // 1 second
 
       return () => {
         if (refreshTimerRef.current) {
@@ -752,7 +701,7 @@ const Home = () => {
       title: currentUser.role || 'User',
       location: currentUser.address || 'No location',
       coverImage: 'https://images.unsplash.com/photo-1519904981063-b0cf448d479e?w=800&h=300&fit=crop',
-      profileImage: (currentUser as any).profilePhotoSignedUrl || currentUser.profilePhoto || 'https://randomuser.me/api/portraits/lego/1.jpg',
+      profileImage: currentUser.profilePhoto || 'https://randomuser.me/api/portraits/lego/1.jpg',
       friendsCount: 0,
       postsCount: 0,
       rating: 0,
@@ -771,133 +720,13 @@ const Home = () => {
   }, []);
 
   const handleProfileClick = useCallback(() => {
-    // Open own profile explicitly
-    setSelectedProfileId(storedUser?.id || currentUser?.id || null);
     setCurrentPage('profile');
     handleClose();
-  }, [handleClose, currentUser?.id]);
+  }, [handleClose]);
 
   const handleGoHome = useCallback(() => {
     setCurrentPage('home');
   }, []);
-
-  const handleOpenProfile = useCallback((uid: number) => {
-    setSelectedProfileId(uid);
-    setCurrentPage('profile');
-  }, []);
-
-  const handleCreatePost = useCallback(async (postData: any) => {
-    if (!currentUser || !currentUser.id) {
-      console.error('User not logged in');
-      return;
-    }
-
-    try {
-      setCpSubmitting(true);
-      
-      // Get the authorization token
-      const token = localStorage.getItem('token');
-      if (!token) {
-        throw new Error('No authorization token found');
-      }
-      
-      // Upload media files to S3 using presigned URLs
-      const uploadedMedia: { name: string; url: string; contentType: string }[] = [];
-      
-      if (postData.media && postData.media.length > 0) {
-        for (const file of postData.media) {
-          console.log('=== Starting file upload ===');
-          console.log('File:', file.name, 'Type:', file.type);
-          
-          const qs = new URLSearchParams({ 
-            fileName: file.name, 
-            contentType: file.type 
-          }).toString();
-          
-          console.log('Requesting presigned URL with params:', qs);
-          
-          const presignRes = await fetch(`http://localhost:8000/api/v1/uploads/presign-post-media?${qs}`, {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            }
-          });
-          
-          if (!presignRes.ok) {
-            const errorText = await presignRes.text();
-            console.error('Presigned URL request failed:', presignRes.status, errorText);
-            throw new Error(`Failed to get upload URL: ${presignRes.status} ${errorText}`);
-          }
-          
-          const presignData = await presignRes.json();
-          console.log('Presigned URL response:', presignData);
-          
-          const { url, publicUrl } = presignData;
-          
-          console.log('Using presigned URL for PUT:', url);
-          console.log('Public URL:', publicUrl);
-          
-          const putRes = await fetch(url, { 
-            method: 'PUT', 
-            headers: { 
-              'Content-Type': file.type,
-              // Don't add Authorization header to S3 PUT request
-            }, 
-            body: file 
-          });
-          
-          if (!putRes.ok) {
-            const errorText = await putRes.text();
-            console.error('S3 PUT request failed:', putRes.status, errorText);
-            throw new Error(`Failed to upload media: ${putRes.status} ${errorText}`);
-          }
-          
-          console.log('File uploaded successfully');
-          uploadedMedia.push({ 
-            name: file.name, 
-            url: publicUrl, 
-            contentType: file.type 
-          });
-        }
-      }
-
-      // Create post using GraphQL mutation with proper authorization
-      const { data } = await createPostMutation({
-        variables: {
-          userId: parseInt(currentUser.id.toString()),
-          title: postData.title,
-          content: postData.content,
-          visibility: postData.visibility,
-          propertyType: postData.type,
-          location: postData.location || '',
-          price: 0, // Default price, can be extended later
-          status: 'active',
-          latitude: postData.latitude || null,
-          longitude: postData.longitude || null,
-          media: uploadedMedia.map((media, index) => ({
-            mediaType: media.contentType.startsWith('video/') ? 'video' : 'image',
-            mediaOrder: index + 1,
-            filePath: media.url,
-            fileName: media.name,
-            contentType: media.contentType
-          })),
-        }
-      });
-
-      if (data?.createPost?.success) {
-        setCreateOpen(false);
-        // Refresh posts
-        await refetch();
-      } else {
-        throw new Error(data?.createPost?.message || 'Failed to create post');
-      }
-    } catch (error: any) {
-      console.error('Error creating post:', error);
-      // You can add error handling here (snackbar, alert, etc.)
-    } finally {
-      setCpSubmitting(false);
-    }
-  }, [currentUser, createPostMutation, refetch]);
 
   const handleLikeToggle = useCallback(async (postId: number) => {
     if (!currentUser?.id) return;
@@ -1071,7 +900,17 @@ const Home = () => {
     }
   }, [currentUser, likeComment]);
 
-
+  // Manual refresh handler
+  const handleManualRefresh = useCallback(async () => {
+    try {
+      setIsRefreshing(true);
+      await refetch();
+    } catch (error) {
+      console.error('Manual refresh failed:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [refetch]);
 
   // Memoized current post for modal
   const currentPost = useMemo(() => {
@@ -1081,22 +920,16 @@ const Home = () => {
 
   // Render Profile Page
   if (currentPage === 'profile') {
-    const authUserId = currentUser?.id || storedUser?.id;
-    if (!authUserId) {
+    const currentUserId = currentUser?.id;
+    if (!currentUserId) {
       return <Typography sx={{ m: 4, color: 'red' }}>User not logged in. Please log in again.</Typography>;
     }
-    if (!selectedProfileId) {
-      return <Typography sx={{ m: 4 }}>No profile selected.</Typography>;
-    }
 
-    return (
-      <ProfilePage
+    return <ProfilePage
       onGoBack={handleGoHome}
-        userId={selectedProfileId}
-        currentUserId={authUserId}
-        onOpenProfile={handleOpenProfile}
-      />
-    );
+      userId={currentUserId}
+      currentUserId={currentUserId}
+    />;
   }
 
   // Render Home Page
@@ -1142,15 +975,10 @@ const Home = () => {
             </IconButton>
             <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleClose}>
               <MenuItem onClick={handleProfileClick}>Profile</MenuItem>
-              <MenuItem onClick={() => { handleClose(); window.location.href = '/create-property'; }}>Create Property</MenuItem>
-              <MenuItem onClick={() => { handleClose(); window.location.href = '/my-properties'; }}>My Properties</MenuItem>
               <MenuItem onClick={handleClose}>Settings</MenuItem>
               <MenuItem
                 onClick={() => {
-                  localStorage.removeItem('user');
                   localStorage.removeItem('userInfo');
-                  localStorage.removeItem('token');
-                  localStorage.removeItem('refreshToken');
                   window.location.href = '/';
                 }}
               >
@@ -1214,7 +1042,7 @@ const Home = () => {
           {/* Create Post Card */}
           <Box sx={{ mb: 4, p: 3, bgcolor: '#fff', borderRadius: 4, boxShadow: '0 2px 12px rgba(37,99,235,0.08)', display: 'flex', flexDirection: 'column', gap: 2, position: 'relative' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Avatar src={currentUserData?.profileImage || ''} sx={{ width: 44, height: 44 }} />
+              <Avatar src={currentUserData?.profileImage} sx={{ width: 44, height: 44 }} />
               <InputBase
                 placeholder="What's on your mind?"
                 sx={{
@@ -1260,9 +1088,10 @@ const Home = () => {
                   post={post}
                   onLikeToggle={handleLikeToggle}
                   onCommentClick={handleCommentClick}
-                  onOpenProfile={handleOpenProfile}
                   likedPosts={likedPosts}
                   likeCounts={likeCounts}
+                  likingPost={likingPost}
+                  unlikingPost={unlikingPost}
                 />
               ))}
             </Stack>
@@ -1319,16 +1148,192 @@ const Home = () => {
         replyText={replyText}
         setReplyText={setReplyText}
         setReplyingCommentId={setReplyingCommentId}
-        replying={false}
+        replying={replying}
       />
 
       {/* Create Post Modal */}
-      <CreatePost
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        onSubmit={handleCreatePost}
-        loading={cpSubmitting}
-      />
+      {createOpen && (
+        <Box
+          sx={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            bgcolor: 'rgba(37,99,235,0.25)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            p: 2,
+          }}
+          onClick={() => !cpSubmitting && setCreateOpen(false)}
+        >
+          <Box
+            sx={{
+              bgcolor: '#fff',
+              borderRadius: 4,
+              p: 4,
+              width: { xs: '100%', sm: 560 },
+              boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.18)',
+              textAlign: 'left',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <Typography variant="h6" sx={{ mb: 2, fontWeight: 700, color: '#2563EB' }}>Create Post</Typography>
+            <Stack spacing={2}>
+              <InputBase
+                placeholder="Title"
+                value={cpTitle}
+                onChange={(e) => setCpTitle(e.target.value)}
+                sx={{
+                  bgcolor: '#F3F4F6', px: 2, py: 1.2, borderRadius: 2, boxShadow: 1,
+                  border: '1px solid #E5E7EB'
+                }}
+              />
+              <InputBase
+                placeholder="What's on your mind?"
+                value={cpContent}
+                onChange={(e) => setCpContent(e.target.value)}
+                multiline minRows={3}
+                sx={{
+                  bgcolor: '#F3F4F6', px: 2, py: 1.2, borderRadius: 2, boxShadow: 1,
+                  border: '1px solid #E5E7EB'
+                }}
+              />
+              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', flex: 1 }}>
+                  {['listing','building','land','commercial','industrial'].map(opt => (
+                    <Button key={opt}
+                      variant={cpPropertyType === opt ? 'contained' : 'outlined'}
+                      onClick={() => setCpPropertyType(opt)}
+                      sx={{ textTransform: 'none' }}
+                    >{opt}</Button>
+                  ))}
+                </Box>
+                <TextField
+                  select
+                  label="Visibility"
+                  value={cpVisibility}
+                  onChange={(e) => setCpVisibility(e.target.value)}
+                  sx={{ minWidth: 180 }}
+                >
+                  <MenuItem value="public">Public</MenuItem>
+                  <MenuItem value="private">Private</MenuItem>
+                </TextField>
+              </Box>
+              <Box sx={{ p: 2, border: '1px dashed #CBD5E1', borderRadius: 2 }}>
+                <Stack direction="row" spacing={2} alignItems="center">
+                  <Button component="label" variant="outlined" startIcon={<CloudUploadIcon />}>
+                    Select media
+                    <input type="file" hidden multiple accept="image/*,video/*" onChange={(e) => {
+                      if (!e.target.files) return;
+                      setCpFiles(Array.from(e.target.files));
+                    }} />
+                  </Button>
+                  <Typography variant="body2" color="text.secondary">Images or videos. They will be uploaded directly to S3.</Typography>
+                </Stack>
+                {cpFiles.length > 0 && (
+                  <Stack spacing={1} sx={{ mt: 2 }}>
+                    {cpFiles.map(f => (
+                      <Typography key={f.name} variant="body2">
+                        {f.name} {cpUploaded.find(u => u.name === f.name) && <CheckCircleIcon sx={{ color: 'success.main', fontSize: 16, ml: 1 }} />}
+                      </Typography>
+                    ))}
+                  </Stack>
+                )}
+              </Box>
+              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                <InputBase
+                  placeholder="Price"
+                  value={cpPrice}
+                  onChange={(e) => setCpPrice(e.target.value)}
+                  type="number"
+                  sx={{ flex: 1, minWidth: 180, bgcolor: '#F3F4F6', px: 2, py: 1.2, borderRadius: 2, boxShadow: 1, border: '1px solid #E5E7EB' }}
+                />
+                <InputBase
+                  placeholder="Status (active/inactive)"
+                  value={cpStatus}
+                  onChange={(e) => setCpStatus(e.target.value)}
+                  sx={{ flex: 1, minWidth: 180, bgcolor: '#F3F4F6', px: 2, py: 1.2, borderRadius: 2, boxShadow: 1, border: '1px solid #E5E7EB' }}
+                />
+              </Box>
+              <LocationAutocomplete
+                value={cpLocationText}
+                onChange={setCpLocationText}
+                onLocationSelect={({ address, latitude, longitude }) => {
+                  setCpLocationText(address);
+                  setCpLat(latitude);
+                  setCpLng(longitude);
+                }}
+              />
+              {cpError && (
+                <Typography color="error" variant="body2">{cpError}</Typography>
+              )}
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mt: 1 }}>
+                <Button onClick={() => setCreateOpen(false)} disabled={cpSubmitting}>Cancel</Button>
+                <Button
+                  variant="contained"
+                  sx={{ bgcolor: '#2563EB', fontWeight: 600, '&:hover': { bgcolor: '#1D4ED8' } }}
+                  disabled={cpSubmitting || !cpTitle.trim() || !cpContent.trim() || !cpLocationText.trim() || !cpPrice}
+                  onClick={async () => {
+                    try {
+                      setCpError(null);
+                      setCpSubmitting(true);
+                      // Upload selected files to S3 using presigned URLs from gateway
+                      const uploaded: { name: string; url: string; contentType: string }[] = [];
+                      for (const file of cpFiles) {
+                        const qs = new URLSearchParams({ fileName: file.name, contentType: file.type }).toString();
+                        const presignRes = await fetch(`http://localhost:8000/api/v1/uploads/presign-post-media?${qs}`);
+                        if (!presignRes.ok) throw new Error('Failed to get upload URL');
+                        const { url, publicUrl } = await presignRes.json();
+                        const putRes = await fetch(url, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
+                        if (!putRes.ok) throw new Error('Failed to upload media');
+                        uploaded.push({ name: file.name, url: publicUrl, contentType: file.type });
+                      }
+                      setCpUploaded(uploaded);
+                      if (!currentUser || !currentUser.id) {
+                        setCpError('User not logged in');
+                        setCpSubmitting(false);
+                        return;
+                      }
+                      const priceNum = parseFloat(cpPrice);
+                      const resp = await postService.createPost({
+                        userId: parseInt(currentUser.id.toString()),
+                        title: cpTitle.trim(),
+                        content: cpContent.trim(),
+                        visibility: cpVisibility.trim(),
+                        propertyType: cpPropertyType.trim(),
+                        location: cpLocationText.trim(),
+                        price: priceNum,
+                        status: cpStatus.trim(),
+                        latitude: cpLat,
+                        longitude: cpLng,
+                        media: uploaded.map(u => ({ mediaType: u.contentType.startsWith('video/') ? 'video' : 'image', mediaOrder: 1, filePath: u.url, fileName: u.name, contentType: u.contentType })),
+                      });
+                      if (!resp.success) {
+                        setCpError(resp.message || 'Failed to create post');
+                      } else {
+                        // Reset and close
+                        setCpTitle(''); setCpContent(''); setCpPropertyType('listing'); setCpVisibility('public'); setCpStatus('active'); setCpPrice(''); setCpLocationText(''); setCpLat(undefined); setCpLng(undefined); setCpFiles([]); setCpUploaded([]);
+                        setCreateOpen(false);
+                        // Refresh list
+                        await refetch();
+                      }
+                    } catch (e: any) {
+                      setCpError(e.message || 'Error creating post');
+                    } finally {
+                      setCpSubmitting(false);
+                    }
+                  }}
+                >
+                  {cpSubmitting ? 'Posting...' : 'Post'}
+                </Button>
+              </Box>
+            </Stack>
+          </Box>
+        </Box>
+      )}
     </Box>
   );
 };
