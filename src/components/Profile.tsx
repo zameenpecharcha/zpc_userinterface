@@ -10,7 +10,7 @@ interface ProfileProps {}
 
 const Profile: React.FC<ProfileProps> = () => {
   const navigate = useNavigate();
-  const { user, isAuthenticated, token, loading: authLoading } = useAuth();
+  const { user, isAuthenticated, token } = useAuth();
   const client = useApolloClient();
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -18,7 +18,6 @@ const Profile: React.FC<ProfileProps> = () => {
   React.useEffect(() => {
     const checkAuth = async () => {
       console.log('Profile component auth check', {
-        authLoading,
         isAuthenticated,
         hasUser: !!user,
         hasToken: !!token,
@@ -28,14 +27,8 @@ const Profile: React.FC<ProfileProps> = () => {
         storedUser: localStorage.getItem('user')
       });
 
-      // Wait for auth loading to complete before checking authentication
-      if (authLoading) {
-        console.log('Auth still loading, waiting...');
-        return;
-      }
-
       if (!isAuthenticated || !user || !token) {
-        console.log('Not authenticated after loading complete, redirecting to login');
+        console.log('Not authenticated, redirecting to login');
         navigate('/');
         return;
       }
@@ -54,7 +47,7 @@ const Profile: React.FC<ProfileProps> = () => {
     };
 
     checkAuth();
-  }, [authLoading, isAuthenticated, user, token, client, navigate]);
+  }, [isAuthenticated, user, token, client, navigate]);
 
   if (error) {
     return (

@@ -154,8 +154,8 @@ const interFont = {
 
 const leftNav = [
   { icon: <HomeIcon />, label: 'Home' },
-  { icon: <PeopleIcon />, label: 'Friends' },
-  { icon: <GroupIcon />, label: 'Groups' },
+  { icon: <PeopleIcon />, label: 'Site Visits' },
+  { icon: <GroupIcon />, label: 'Properties' },
   { icon: <StorefrontIcon />, label: 'Marketplace' },
   { icon: <EventIcon />, label: 'Events' },
 ];
@@ -786,6 +786,13 @@ const Home = () => {
     setCurrentPage('profile');
   }, []);
 
+  // Helper function to check if user has property management permissions
+  const canManageProperties = useCallback(() => {
+    if (!currentUser || !currentUser.role) return false;
+    const userRole = currentUser.role.toLowerCase();
+    return userRole === 'builder' || userRole === 'admin';
+  }, [currentUser]);
+
   const handleCreatePost = useCallback(async (postData: any) => {
     if (!currentUser || !currentUser.id) {
       console.error('User not logged in');
@@ -1142,8 +1149,16 @@ const Home = () => {
             </IconButton>
             <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleClose}>
               <MenuItem onClick={handleProfileClick}>Profile</MenuItem>
-              <MenuItem onClick={() => { handleClose(); window.location.href = '/create-property'; }}>Create Property</MenuItem>
-              <MenuItem onClick={() => { handleClose(); window.location.href = '/my-properties'; }}>My Properties</MenuItem>
+              {canManageProperties() && (
+                <MenuItem onClick={() => { handleClose(); window.location.href = '/create-property'; }}>
+                  Create Property
+                </MenuItem>
+              )}
+              {canManageProperties() && (
+                <MenuItem onClick={() => { handleClose(); window.location.href = '/my-properties'; }}>
+                  My Properties
+                </MenuItem>
+              )}
               <MenuItem onClick={handleClose}>Settings</MenuItem>
               <MenuItem
                 onClick={() => {

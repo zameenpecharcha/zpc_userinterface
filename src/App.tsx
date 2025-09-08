@@ -129,6 +129,82 @@ const PublicRoute: React.FC<PublicRouteProps> = ({ children }) => {
   return <>{children}</>;
 };
 
+interface RoleProtectedRouteProps {
+  children: React.ReactNode;
+  allowedRoles: string[];
+}
+
+const RoleProtectedRoute: React.FC<RoleProtectedRouteProps> = ({ children, allowedRoles }) => {
+  const { isAuthenticated, user, loading } = useAuth();
+  const location = useLocation();
+
+  // Show loading state while auth is being checked
+  if (loading) {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100vh',
+        backgroundColor: '#F6F8FB'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ 
+            width: '40px', 
+            height: '40px', 
+            border: '4px solid #e0e0e0', 
+            borderTop: '4px solid #2563EB',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite',
+            margin: '0 auto 16px'
+          }}></div>
+          <p style={{ color: '#6B7280', fontSize: '14px' }}>Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/" state={{ from: location }} replace />;
+  }
+
+  // Check if user has required role
+  if (!user || !user.role || !allowedRoles.includes(user.role.toLowerCase())) {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100vh',
+        backgroundColor: '#F6F8FB'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <h2 style={{ color: '#EF4444', marginBottom: '16px' }}>Access Denied</h2>
+          <p style={{ color: '#6B7280', fontSize: '16px' }}>
+            You don't have permission to access this page.
+          </p>
+          <button 
+            onClick={() => window.location.href = '/home'}
+            style={{
+              marginTop: '16px',
+              padding: '8px 16px',
+              backgroundColor: '#2563EB',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+          >
+            Go to Home
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+};
+
 function AppRoutes() {
   return (
     <Routes>
@@ -186,17 +262,17 @@ function AppRoutes() {
       <Route
         path="/create-property"
         element={
-          <ProtectedRoute>
+          <RoleProtectedRoute allowedRoles={['builder', 'admin']}>
             <CreateProperty />
-          </ProtectedRoute>
+          </RoleProtectedRoute>
         }
       />
       <Route
         path="/my-properties"
         element={
-          <ProtectedRoute>
+          <RoleProtectedRoute allowedRoles={['builder', 'admin']}>
             <MyProperties />
-          </ProtectedRoute>
+          </RoleProtectedRoute>
         }
       />
       <Route
