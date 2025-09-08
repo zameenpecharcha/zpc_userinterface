@@ -3,6 +3,7 @@ import { gql, useQuery, useMutation, useApolloClient } from '@apollo/client';
 import { SEARCH_POSTS, CREATE_POST } from '../graphql/posts';
 import CreatePost from './CreatePost';
 import { PostService } from '../services/postService';
+import { useAuth } from '../contexts/AuthContext';
 import {
   AppBar,
   Toolbar,
@@ -137,12 +138,40 @@ mutation UnlikePost($postId: Int!, $userId: Int!) {
 }
 `;
 
+const GET_USER_QUERY = gql`
+query GetUser($id: Int!) {
+  user(id: $id) {
+    id
+    firstName
+    lastName
+    email
+    phone
+    profilePhoto
+    role
+    address
+    profilePhotoSignedUrl
+    coverPhotoSignedUrl
+    latitude
+    longitude
+    bio
+    isactive
+    emailVerified
+    phoneVerified
+    createdAt
+  }
+}
+`;
+
 // Get user data dynamically to handle login state changes
 const getUserData = () => {
   try {
     const stored = localStorage.getItem('user') || localStorage.getItem('userInfo');
-    return stored ? JSON.parse(stored) : {};
-  } catch {
+    console.log('getUserData - stored from localStorage:', stored);
+    const parsed = stored ? JSON.parse(stored) : {};
+    console.log('getUserData - parsed user data:', parsed);
+    return parsed;
+  } catch (error) {
+    console.error('getUserData - error parsing user data:', error);
     return {};
   }
 };
@@ -639,6 +668,7 @@ const CommentsModal = memo(({
 });
 
 const Home = () => {
+  const { user: authUser, isAuthenticated } = useAuth();
   const { data, loading, error, refetch } = useQuery(SEARCH_POSTS, {
     variables: { page: 1, limit: 10 },
     fetchPolicy: 'network-only',
@@ -692,14 +722,98 @@ const Home = () => {
   // Create Post form state (simplified for new component)
   const [cpSubmitting, setCpSubmitting] = useState(false);
 
+  // Function to fetch fresh user data from backend
+  const fetchAndUpdateUserData = useCallback(async () => {
+    const userData = getUserData();
+    if (userData && userData.id) {
+      try {
+        console.log('Fetching fresh user data from backend for user ID:', userData.id);
+        
+        // Get the authorization token
+        const token = localStorage.getItem('token');
+        console.log('Authorization token found:', token ? 'Yes' : 'No');
+        console.log('Token preview:', token ? token.substring(0, 20) + '...' : 'None');
+        
+        if (!token) {
+          console.error('No authorization token found');
+          return;
+        }
+        
+        // Use direct fetch instead of Apollo Client to avoid the invariant violation
+        console.log('Making direct GraphQL request...');
+        const response = await fetch('http://localhost:8000/api/v1/graphql', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            query: `
+              query GetUser($id: Int!) {
+                user(id: $id) {
+                  id
+                  firstName
+                  lastName
+                  email
+                  phone
+                  profilePhoto
+                  role
+                  address
+                  profilePhotoSignedUrl
+                  coverPhotoSignedUrl
+                  latitude
+                  longitude
+                  bio
+                  isactive
+                  emailVerified
+                  phoneVerified
+                  createdAt
+                }
+              }
+            `,
+            variables: { id: userData.id }
+          })
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log('GraphQL response:', result);
+        
+        if (result.data?.user) {
+          console.log('Fresh user data from backend:', result.data.user);
+          // Update localStorage with fresh data
+          localStorage.setItem('user', JSON.stringify(result.data.user));
+          localStorage.setItem('userInfo', JSON.stringify(result.data.user));
+          // Update current user state
+          setCurrentUser(result.data.user);
+          console.log('Updated user data in localStorage and state');
+        } else if (result.errors) {
+          console.error('GraphQL errors:', result.errors);
+        }
+      } catch (error) {
+        console.error('Error fetching fresh user data:', error);
+        console.error('Error details:', error instanceof Error ? error.message : String(error));
+      }
+    }
+  }, []);
+
   // Check for user data updates
   useEffect(() => {
     const checkUserData = () => {
       const userData = getUserData();
+      console.log('checkUserData - userData:', userData);
+      console.log('checkUserData - currentUser:', currentUser);
       if (JSON.stringify(userData) !== JSON.stringify(currentUser)) {
+        console.log('checkUserData - updating currentUser with new data');
         setCurrentUser(userData);
       }
     };
+
+    // Fetch fresh user data on mount
+    fetchAndUpdateUserData();
 
     // Check user data on focus (when user comes back to the tab)
     window.addEventListener('focus', checkUserData);
@@ -711,7 +825,7 @@ const Home = () => {
       window.removeEventListener('focus', checkUserData);
       clearInterval(userCheckInterval);
     };
-  }, [currentUser]);
+  }, [currentUser, fetchAndUpdateUserData]);
 
   // Auto-refresh functionality (every 5 minutes)
   useEffect(() => {
@@ -788,10 +902,43 @@ const Home = () => {
 
   // Helper function to check if user has property management permissions
   const canManageProperties = useCallback(() => {
-    if (!currentUser || !currentUser.role) return false;
-    const userRole = currentUser.role.toLowerCase();
-    return userRole === 'builder' || userRole === 'admin';
-  }, [currentUser]);
+    console.log('=== DEBUGGING ROLE CHECK ===');
+    console.log('authUser:', authUser);
+    console.log('authUser.role:', authUser?.role);
+    console.log('currentUser:', currentUser);
+    console.log('currentUser.role:', currentUser?.role);
+    console.log('storedUser:', storedUser);
+    console.log('storedUser.role:', storedUser?.role);
+    
+    // Try authUser first, then currentUser, then storedUser
+    const user = authUser || currentUser || storedUser;
+    console.log('Using user:', user);
+    console.log('User role:', user?.role);
+    console.log('User role type:', typeof user?.role);
+    console.log('User role length:', user?.role?.length);
+    
+    if (!user) {
+      console.log('No user found - returning false');
+      return false;
+    }
+    
+    // Check if role exists and is not empty
+    if (!user.role || user.role.trim() === '') {
+      console.log('No role or empty role found - returning false');
+      console.log('User email:', user.email);
+      console.log('This user needs to have their role set to "builder" or "admin"');
+      return false;
+    }
+    
+    const userRole = user.role.toLowerCase().trim();
+    console.log('User role (lowercase, trimmed):', userRole);
+    
+    const canManage = userRole === 'builder' || userRole === 'admin';
+    console.log('Can manage properties:', canManage);
+    console.log('=== END DEBUGGING ===');
+    
+    return canManage;
+  }, [authUser, currentUser]);
 
   const handleCreatePost = useCallback(async (postData: any) => {
     if (!currentUser || !currentUser.id) {
@@ -1132,6 +1279,17 @@ const Home = () => {
                 fontSize: 16,
               }}
             />
+          </Box>
+          {/* Debug info - remove after testing */}
+          <Box sx={{ mr: 2, fontSize: 12, color: '#666', bgcolor: '#f0f0f0', px: 1, py: 0.5, borderRadius: 1 }}>
+            Auth: {authUser?.role || 'None'} | Current: {currentUser?.role || 'None'} | Stored: {storedUser?.role || 'None'} | Can Manage: {canManageProperties() ? 'Yes' : 'No'}
+            <Button 
+              size="small" 
+              onClick={fetchAndUpdateUserData}
+              sx={{ ml: 1, fontSize: 10, minWidth: 'auto', px: 1 }}
+            >
+              Refresh User Data
+            </Button>
           </Box>
           {/* Notification & Profile */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
