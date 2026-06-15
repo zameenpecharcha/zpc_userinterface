@@ -49,7 +49,7 @@ const ChatPage: React.FC = () => {
         </Box>
 
         <Grid container spacing={2} direction="column">
-          <Grid item>
+          <Grid>
             <TextField
               label="Your User ID"
               value={userId}
@@ -59,7 +59,7 @@ const ChatPage: React.FC = () => {
               placeholder="e.g. user123"
             />
           </Grid>
-          <Grid item>
+          <Grid>
             <TextField
               label="Room ID"
               value={roomIdInput}
@@ -70,7 +70,7 @@ const ChatPage: React.FC = () => {
               onKeyDown={e => e.key === 'Enter' && joinRoom()}
             />
           </Grid>
-          <Grid item>
+          <Grid>
             <Button
               variant="contained"
               fullWidth
