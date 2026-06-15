@@ -155,7 +155,7 @@ const Chat: React.FC<ChatProps> = ({ roomId, userId, displayName }) => {
         </List>
         {typingUsers.size > 0 && (
           <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-            {[...typingUsers].filter(u => u !== userId).join(', ')} typing...
+            {Array.from(typingUsers).filter(u => u !== userId).join(', ')} typing...
           </Typography>
         )}
         <div ref={bottomRef} />
