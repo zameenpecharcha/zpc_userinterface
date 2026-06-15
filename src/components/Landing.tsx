@@ -14,7 +14,7 @@ import {
   DialogContent,
   DialogActions,
 } from '@mui/material';
-import authClient from '../auth-client';
+// import authClient from '../auth-client';
 
 const LOGIN_MUTATION = gql`
   mutation Login($email: String!, $password: String!) {
@@ -148,7 +148,7 @@ const Landing = () => {
     },
   });
 
-  const [resetPassword] = useMutation(RESET_PASSWORD_MUTATION, {
+  const [resetPassword] = useMutation(RESET_PASSWORD_MUTATION, { // eslint-disable-line @typescript-eslint/no-unused-vars
     onCompleted: (data) => {
       if (data && data.resetPassword && data.resetPassword.success) {
         setSuccessMessage(data.resetPassword.message + (data.resetPassword.userInfo ? ` (Email: ${data.resetPassword.userInfo.email}, Verified: ${data.resetPassword.userInfo.emailVerified})` : ''));

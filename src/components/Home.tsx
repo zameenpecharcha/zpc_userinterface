@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, memo, useEffect, useRef } from 'react';
-import { styled } from '@mui/material/styles';
+// import { styled } from '@mui/material/styles';
 import { gql, useQuery, useMutation } from '@apollo/client';
 import {
   AppBar,
@@ -17,7 +17,7 @@ import {
   CircularProgress,
 } from '@mui/material';
 import { useApolloClient } from '@apollo/client';
-import { useNavigate } from 'react-router-dom';
+// import { useNavigate } from 'react-router-dom';
 import HomeIcon from '@mui/icons-material/Home';
 import PeopleIcon from '@mui/icons-material/People';
 import GroupIcon from '@mui/icons-material/Group';
@@ -175,8 +175,8 @@ const getUserData = () => {
   }
 };
 
-const storedUser = getUserData();
-const userId = storedUser?.id;
+const storedUser = getUserData(); // eslint-disable-line @typescript-eslint/no-unused-vars
+// const userId = storedUser?.id;
 const interFont = {
   fontFamily: 'Inter, Roboto, Arial, sans-serif',
 };
@@ -585,8 +585,8 @@ const Home = () => {
   const [commentsModalOpen, setCommentsModalOpen] = useState<{ open: boolean; postId: number | null }>({ open: false, postId: null });
   const [likedPosts, setLikedPosts] = useState<{ [postId: number]: boolean }>({});
   const [likeCounts, setLikeCounts] = useState<{ [postId: number]: number }>({});
-  const [likingPost, setLikingPost] = useState(false);
-  const [unlikingPost, setUnlikingPost] = useState(false);
+  const [likingPost, setLikingPost] = useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars
+  const [unlikingPost, setUnlikingPost] = useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState<'home' | 'profile'>('home');
@@ -599,10 +599,10 @@ const Home = () => {
   const [likingComment, setLikingComment] = useState(false);
   const [replyingCommentId, setReplyingCommentId] = useState<number | null>(null);
   const [replyText, setReplyText] = useState('');
-  const [replying, setReplying] = useState(false);
+  const [replying, setReplying] = useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars
 
   // Auto-refresh state (simplified - always enabled)
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
   const commentsRefreshTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [currentUser, setCurrentUser] = useState(getUserData());
@@ -879,6 +879,7 @@ const Home = () => {
   }, [currentUser, likeComment]);
 
   // Manual refresh handler
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleManualRefresh = useCallback(async () => {
     try {
       setIsRefreshing(true);

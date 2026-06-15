@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Box, Typography, TextField, IconButton, Avatar, InputAdornment,
-  Divider, List, ListItemButton, ListItemAvatar, ListItemText, Badge,
+  Divider, List, ListItemButton, ListItemAvatar, ListItemText,
 } from '@mui/material';
 import AddCommentOutlinedIcon from '@mui/icons-material/AddCommentOutlined';
 import SearchIcon from '@mui/icons-material/Search';

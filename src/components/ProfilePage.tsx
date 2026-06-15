@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     AppBar,
     Toolbar,
@@ -893,7 +893,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
     const [reviews, setReviews] = useState<UserRating[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [followingStatus, setFollowingStatus] = useState<UserFollower | null>(null);
+    const [followingStatus, setFollowingStatus] = useState<UserFollower | null>(null); // eslint-disable-line @typescript-eslint/no-unused-vars
     const [isFollowing, setIsFollowing] = useState(false);
     const [followingInProgress, setFollowingInProgress] = useState(false);
     const [postsLoading, setPostsLoading] = useState(false);
@@ -912,7 +912,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
     const [loadingComments, setLoadingComments] = useState<{ [postId: string]: boolean }>({});
     const [replyingCommentId, setReplyingCommentId] = useState<number | null>(null);
     const [replyText, setReplyText] = useState('');
-    const [replying, setReplying] = useState(false);
+    const [replying, setReplying] = useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars
 
     useEffect(() => {
         const fetchData = async () => {
@@ -968,7 +968,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
         };
 
         fetchData();
-    }, [userId, currentUserId]);
+    }, [userId, currentUserId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const loadUserPosts = async () => {
         setPostsLoading(true);

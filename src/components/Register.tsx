@@ -24,10 +24,10 @@ import {
 import {
   ArrowBack,
   LocationOn,
-  Engineering,         // instead of Build
+  // Engineering,      // unused
   BusinessCenter,      // instead of Person
   Home,
-  Gavel,
+  // Gavel,             // unused
   MapOutlined,         // instead of BarChart
   AccountCircle,
 } from '@mui/icons-material';
