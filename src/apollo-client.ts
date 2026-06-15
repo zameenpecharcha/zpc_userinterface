@@ -1,14 +1,7 @@
-import { ApolloClient, InMemoryCache, split, HttpLink } from '@apollo/client';
-import { GraphQLWsLink } from '@apollo/client/link/subscriptions';
-import { createClient } from 'graphql-ws';
-import { getMainDefinition } from '@apollo/client/utilities';
-
-const GRAPHQL_URL = process.env.REACT_APP_GRAPHQL_URL || 'http://localhost:8000/api/v1/graphql';
-
-const httpLink = new HttpLink({ uri: GRAPHQL_URL });
+import { ApolloClient, InMemoryCache } from '@apollo/client';
 
 const client = new ApolloClient({
-  link: httpLink,
+  uri: process.env.REACT_APP_GRAPHQL_URL || 'http://localhost:8000/api/v1/graphql',
   cache: new InMemoryCache(),
 });
 
