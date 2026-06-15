@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  Box, Container, Typography, TextField, Button, Paper, Grid, Chip,
+  Box, Container, Typography, TextField, Button, Paper, Stack, Chip,
 } from '@mui/material';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import Chat from './Chat';
@@ -48,8 +48,7 @@ const ChatPage: React.FC = () => {
           </Typography>
         </Box>
 
-        <Grid container spacing={2} direction="column">
-          <Grid>
+        <Stack spacing={2}>
             <TextField
               label="Your User ID"
               value={userId}
@@ -58,8 +57,6 @@ const ChatPage: React.FC = () => {
               size="small"
               placeholder="e.g. user123"
             />
-          </Grid>
-          <Grid>
             <TextField
               label="Room ID"
               value={roomIdInput}
@@ -69,8 +66,6 @@ const ChatPage: React.FC = () => {
               placeholder="e.g. general"
               onKeyDown={e => e.key === 'Enter' && joinRoom()}
             />
-          </Grid>
-          <Grid>
             <Button
               variant="contained"
               fullWidth
@@ -80,8 +75,7 @@ const ChatPage: React.FC = () => {
             >
               Join Room
             </Button>
-          </Grid>
-        </Grid>
+        </Stack>
       </Paper>
     </Container>
   );
