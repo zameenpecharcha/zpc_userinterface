@@ -11,6 +11,7 @@ import Profile from './components/Profile';
 import CreateProperty from './components/CreateProperty';
 import MyProperties from './components/MyProperties';
 import PropertyPage from './components/PropertyPage';
+import ChatPage from './components/ChatPage';
 import client from './apollo-client';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 
@@ -300,6 +301,16 @@ function App() {
             <AppRoutes />
           </Router>
         </AuthProvider>
+        <Router>
+          <Routes>
+            <Route path="/" element={<Landing />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/home" element={<Home />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/chat" element={<ChatPage />} />
+          </Routes>
+        </Router>
       </ThemeProvider>
     </ApolloProvider>
   );

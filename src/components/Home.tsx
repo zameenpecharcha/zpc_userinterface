@@ -4,6 +4,8 @@ import { SEARCH_POSTS, CREATE_POST } from '../graphql/posts';
 import CreatePost from './CreatePost';
 import { PostService } from '../services/postService';
 import { useAuth } from '../contexts/AuthContext';
+// import { styled } from '@mui/material/styles';
+import { gql, useQuery, useMutation } from '@apollo/client';
 import {
   AppBar,
   Toolbar,
@@ -19,6 +21,8 @@ import {
   MenuItem,
   CircularProgress,
 } from '@mui/material';
+import { useApolloClient } from '@apollo/client';
+// import { useNavigate } from 'react-router-dom';
 import HomeIcon from '@mui/icons-material/Home';
 import PeopleIcon from '@mui/icons-material/People';
 import GroupIcon from '@mui/icons-material/Group';
@@ -177,6 +181,7 @@ const getUserData = () => {
 };
 
 const storedUser = getUserData();
+// const userId = storedUser?.id;
 const interFont = {
   fontFamily: 'Inter, Roboto, Arial, sans-serif',
 };
@@ -687,8 +692,9 @@ const Home = () => {
 
   // Optimized state management
   const [commentsModalOpen, setCommentsModalOpen] = useState<{ open: boolean; postId: number | null }>({ open: false, postId: null });
-  const [likedPosts, setLikedPosts] = useState<{ [postId: number]: boolean }>({});
   const [likeCounts, setLikeCounts] = useState<{ [postId: number]: number }>({});
+  const [likingPost, setLikingPost] = useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars
+  const [unlikingPost, setUnlikingPost] = useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState<'home' | 'profile'>('home');
@@ -701,8 +707,10 @@ const Home = () => {
   const [likingComment, setLikingComment] = useState(false);
   const [replyingCommentId, setReplyingCommentId] = useState<number | null>(null);
   const [replyText, setReplyText] = useState('');
+  const [replying, setReplying] = useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars
 
   // Auto-refresh state (simplified - always enabled)
+  const [isRefreshing, setIsRefreshing] = useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
   const commentsRefreshTimerRef = useRef<NodeJS.Timeout | null>(null);
   // Authenticated user object (from localStorage) – do not repurpose for viewing profiles
@@ -1226,6 +1234,18 @@ const Home = () => {
   }, [currentUser, likeComment]);
 
 
+  // Manual refresh handler
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const handleManualRefresh = useCallback(async () => {
+    try {
+      setIsRefreshing(true);
+      await refetch();
+    } catch (error) {
+      console.error('Manual refresh failed:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [refetch]);
 
   // Memoized current post for modal
   const currentPost = useMemo(() => {

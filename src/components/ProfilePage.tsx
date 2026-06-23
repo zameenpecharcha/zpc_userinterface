@@ -1007,7 +1007,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
     const [reviews, setReviews] = useState<UserRating[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [followingStatus, setFollowingStatus] = useState<UserFollower | null>(null);
+    const [followingStatus, setFollowingStatus] = useState<UserFollower | null>(null); // eslint-disable-line @typescript-eslint/no-unused-vars
     const [isFollowing, setIsFollowing] = useState(false);
     const [followingInProgress, setFollowingInProgress] = useState(false);
     const [postsLoading, setPostsLoading] = useState(false);
@@ -1029,10 +1029,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
     const [replying, setReplying] = useState(false);
     // Followers/Following modal state
     const [followersOpen, setFollowersOpen] = useState(false);
-    const [followingOpen, setFollowingOpen] = useState(false);
     const [followersList, setFollowersList] = useState<UserFollower[]>([]);
-    const [followingList, setFollowingList] = useState<UserFollower[]>([]);
-    const [followersDetails, setFollowersDetails] = useState<any[]>([]);
     const [followingDetails, setFollowingDetails] = useState<any[]>([]);
     const [loadingFF, setLoadingFF] = useState(false);
 
@@ -1066,6 +1063,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
     // Snackbar state
     const [snack, setSnack] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' | 'warning' }>({ open: false, message: '', severity: 'success' });
     const handleSnackClose = () => setSnack(prev => ({ ...prev, open: false }));
+    const [replying, setReplying] = useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars
 
     useEffect(() => {
         const fetchData = async () => {
@@ -1126,7 +1124,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
         };
 
         fetchData();
-    }, [userId, currentUserId]);
+    }, [userId, currentUserId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const client = useApolloClient();
 

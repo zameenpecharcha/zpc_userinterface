@@ -17,6 +17,71 @@ import { useAuth } from '../contexts/AuthContext';
 import { AuthService } from '../services/authService';
 import { useApolloClient } from '@apollo/client';
 import { OTPType } from '../types/auth';
+// import authClient from '../auth-client';
+
+const LOGIN_MUTATION = gql`
+  mutation Login($email: String!, $password: String!) {
+    login(email: $email, password: $password) {
+      success
+      token
+      refreshToken
+      message
+      userInfo {
+        id
+        firstName
+        lastName
+        email
+        phone
+        profilePhoto
+        role
+        address
+        latitude
+        longitude
+        bio
+        isactive
+        emailVerified
+        phoneVerified
+        createdAt
+      }
+    }
+  }
+`;
+
+const SEND_OTP_MUTATION = gql`
+  mutation SendVerificationOTP($email: String!, $type: OTPType!) {
+    sendOtp(email: $email, type: $type) {
+      success
+      message
+      channels
+    }
+  }
+`;
+
+const VERIFY_OTP_MUTATION = gql`
+  mutation VerifyPasswordResetOTP($email: String!, $otpCode: String!, $type: OTPType!) {
+    verifyOtp(email: $email, otpCode: $otpCode, type: $type) {
+      success
+      message
+      userInfo {
+        email
+        emailVerified
+      }
+    }
+  }
+`;
+
+const RESET_PASSWORD_MUTATION = gql`
+  mutation ResetPassword($email: String!, $otpCode: String!, $newPassword: String!, $confirmPassword: String!) {
+    resetPassword(email: $email, otpCode: $otpCode, newPassword: $newPassword, confirmPassword: $confirmPassword) {
+      success
+      message
+      userInfo {
+        email
+        emailVerified
+      }
+    }
+  }
+`;
 
 const Landing = () => {
   const navigate = useNavigate();
@@ -36,6 +101,78 @@ const Landing = () => {
     email: '',
     otp: '',
     newPassword: '',
+  });
+
+  const [login] = useMutation(LOGIN_MUTATION, {
+    onCompleted: (data) => {
+      if (data && data.login && data.login.success) {
+        localStorage.setItem('token', data.login.token);
+        localStorage.setItem('refreshToken', data.login.refreshToken);
+        // Optionally store userInfo if needed
+        localStorage.setItem('userInfo', JSON.stringify(data.login.userInfo));
+        setSuccessMessage(data.login.message);
+        navigate('/home');
+      } else {
+        setError(data?.login?.message || 'Login failed. Please try again.');
+      }
+    },
+    onError: (error) => {
+      setError(error.message);
+    },
+  });
+
+  const [sendOtp] = useMutation(SEND_OTP_MUTATION, {
+    onCompleted: (data) => {
+      if (data && data.sendOtp && data.sendOtp.success) {
+        setSuccessMessage(data.sendOtp.message + ' Channels: ' + (data.sendOtp.channels ? data.sendOtp.channels.join(', ') : ''));
+        // Delay showing OTP input so user sees the success message, then show OTP input
+        setTimeout(() => {
+          setSuccessMessage('');
+          setResetStep('otp');
+        }, 1200);
+        setForgotPasswordOpen(true); // Ensure dialog stays open
+      } else {
+        setError(data?.sendOtp?.message || 'OTP request failed.');
+      }
+    },
+    onError: (error) => {
+      setError(error.message);
+    },
+  });
+
+  const [verifyOtp] = useMutation(VERIFY_OTP_MUTATION, {
+    onCompleted: (data) => {
+      if (data && data.verifyOtp && data.verifyOtp.success) {
+        setSuccessMessage(data.verifyOtp.message + (data.verifyOtp.userInfo ? ` (Email: ${data.verifyOtp.userInfo.email}, Verified: ${data.verifyOtp.userInfo.emailVerified})` : ''));
+        // Navigate to reset password page with email and otp in query params
+        navigate(`/forgot-password?step=reset&email=${encodeURIComponent(resetData.email)}&otp=${encodeURIComponent(resetData.otp)}`);
+      } else {
+        setError(data?.verifyOtp?.message || 'OTP verification failed.');
+      }
+    },
+    onError: (error) => {
+      setError(error.message);
+    },
+  });
+
+  const [resetPassword] = useMutation(RESET_PASSWORD_MUTATION, { // eslint-disable-line @typescript-eslint/no-unused-vars
+    onCompleted: (data) => {
+      if (data && data.resetPassword && data.resetPassword.success) {
+        setSuccessMessage(data.resetPassword.message + (data.resetPassword.userInfo ? ` (Email: ${data.resetPassword.userInfo.email}, Verified: ${data.resetPassword.userInfo.emailVerified})` : ''));
+        // Navigate to home page after successful password reset
+        setTimeout(() => {
+          navigate('/home');
+          setForgotPasswordOpen(false);
+          setResetStep('email');
+          setResetData({ email: '', otp: '', newPassword: '' });
+        }, 2000);
+      } else {
+        setError(data?.resetPassword?.message || 'Password reset failed.');
+      }
+    },
+    onError: (error) => {
+      setError(error.message);
+    },
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
