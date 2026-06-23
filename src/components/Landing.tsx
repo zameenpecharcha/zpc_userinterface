@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { gql, useMutation } from '@apollo/client';
 import { useNavigate } from 'react-router-dom';
 import {
   Container,
@@ -14,6 +13,10 @@ import {
   DialogContent,
   DialogActions,
 } from '@mui/material';
+import { useAuth } from '../contexts/AuthContext';
+import { AuthService } from '../services/authService';
+import { useApolloClient } from '@apollo/client';
+import { OTPType } from '../types/auth';
 // import authClient from '../auth-client';
 
 const LOGIN_MUTATION = gql`
@@ -82,6 +85,10 @@ const RESET_PASSWORD_MUTATION = gql`
 
 const Landing = () => {
   const navigate = useNavigate();
+  const { setAuth } = useAuth();
+  const client = useApolloClient();
+  const authService = new AuthService(client);
+
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -173,14 +180,25 @@ const Landing = () => {
     setError('');
     setSuccessMessage('');
     try {
-      await login({
-        variables: {
-          email: formData.email,
-          password: formData.password,
-        },
+      const response = await authService.login({
+        email: formData.email,
+        password: formData.password,
       });
-    } catch (err) {
+
+      if (response.success && response.token && response.userInfo) {
+        setAuth(
+          response.token,
+          response.refreshToken || '',
+          response.userInfo
+        );
+        setSuccessMessage(response.message || 'Login successful');
+        navigate('/home');
+      } else {
+        setError(response.message || 'Login failed. Please try again.');
+      }
+    } catch (err: any) {
       console.error('Login error:', err);
+      setError(err.message || 'An error occurred during login');
     }
   };
 
@@ -189,15 +207,56 @@ const Landing = () => {
     setSuccessMessage('');
     try {
       if (resetStep === 'email') {
-        await sendOtp({
-          variables: { email: resetData.email, type: 'PASSWORD_RESET' },
+        const response = await authService.forgotPassword({
+          email: resetData.email,
         });
-        // After sending OTP, show OTP input (handled by sendOtp onCompleted)
+
+        if (response.success) {
+          setSuccessMessage(
+            response.message +
+            ' Channels: ' +
+            (response.channels ? response.channels.join(', ') : '')
+          );
+          setTimeout(() => {
+            setSuccessMessage('');
+            setResetStep('otp');
+          }, 1200);
+        } else {
+          setError(response.message || 'Failed to send OTP');
+        }
       }
-      // For OTP step, verifyOtp is triggered only when user clicks VERIFY OTP
-      // For newPassword step, resetPassword is triggered only when user clicks RESET PASSWORD (if implemented)
     } catch (err: any) {
       console.error('Error:', err);
+      setError(err.message);
+    }
+  };
+
+  const handleVerifyOTP = async () => {
+    setError('');
+    setSuccessMessage('');
+    try {
+      const response = await authService.verifyOTP({
+        email: resetData.email,
+        otpCode: resetData.otp,
+        type: OTPType.PASSWORD_RESET,
+      });
+
+      if (response.success) {
+        setSuccessMessage(
+          response.message +
+          (response.userInfo
+            ? ` (Email: ${response.userInfo.email}, Verified: ${response.userInfo.emailVerified})`
+            : '')
+        );
+        navigate(
+          `/forgot-password?step=reset&email=${encodeURIComponent(
+            resetData.email
+          )}&otp=${encodeURIComponent(resetData.otp)}`
+        );
+      } else {
+        setError(response.message || 'OTP verification failed');
+      }
+    } catch (err: any) {
       setError(err.message);
     }
   };
@@ -300,7 +359,7 @@ const Landing = () => {
               <Link
                 component="button"
                 type="button"
-                onClick={() => navigate('/forgot-password')}
+                onClick={() => setForgotPasswordOpen(true)}
                 sx={{ color: '#6366F1', textDecoration: 'none' }}
               >
                 Forgot password?
@@ -338,7 +397,6 @@ const Landing = () => {
         </Box>
       </Box>
 
-      {/* Forgot Password Dialog - Styled to match your screenshot */}
       <Dialog
         open={forgotPasswordOpen}
         onClose={() => {
@@ -395,32 +453,29 @@ const Landing = () => {
               <Button
                 fullWidth
                 variant="contained"
-                sx={{ bgcolor: '#7C3AED', color: '#fff', fontWeight: 500, mb: 2, mt: 1, '&:hover': { bgcolor: '#6D28D9' } }}
-                onClick={async () => {
-                  setError('');
-                  setSuccessMessage('');
-                  try {
-                    await verifyOtp({
-                      variables: {
-                        email: resetData.email,
-                        otpCode: resetData.otp,
-                        type: 'PASSWORD_RESET',
-                      },
-                    });
-                  } catch (err: any) {
-                    setError(err.message);
-                  }
+                sx={{
+                  bgcolor: '#7C3AED',
+                  color: '#fff',
+                  fontWeight: 500,
+                  mb: 2,
+                  mt: 1,
+                  '&:hover': { bgcolor: '#6D28D9' },
                 }}
+                onClick={handleVerifyOTP}
               >
                 VERIFY OTP
               </Button>
             </>
           )}
           {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error}
+            </Alert>
           )}
           {successMessage && (
-            <Alert severity="success" sx={{ mb: 2 }}>{successMessage}</Alert>
+            <Alert severity="success" sx={{ mb: 2 }}>
+              {successMessage}
+            </Alert>
           )}
         </DialogContent>
         <DialogActions sx={{ justifyContent: 'center', pb: 2 }}>
@@ -444,11 +499,10 @@ const Landing = () => {
               SEND OTP
             </Button>
           )}
-          {/* VERIFY OTP button is now inside the OTP input above */}
         </DialogActions>
       </Dialog>
     </Container>
   );
 };
 
-export default Landing; 
+export default Landing;

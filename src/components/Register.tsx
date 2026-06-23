@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { gql, useMutation } from '@apollo/client';
 import { useNavigate } from 'react-router-dom';
 import {
   Container,
@@ -11,73 +10,22 @@ import {
   Alert,
   IconButton,
 } from '@mui/material';
-// import {
-//   ArrowBack,
-//   LocationOn,
-//   Build,
-//   Person,
-//   Home,
-//   Gavel,
-//   BarChart,
-//   AccountCircle,
-// } from '@mui/icons-material';
 import {
   ArrowBack,
+  BusinessCenter,
+  Home,
+  MapOutlined,
   LocationOn,
   // Engineering,      // unused
   BusinessCenter,      // instead of Person
-  Home,
-  // Gavel,             // unused
-  MapOutlined,         // instead of BarChart
   AccountCircle,
 } from '@mui/icons-material';
 import ApartmentIcon from '@mui/icons-material/Apartment';
 import BalanceIcon from '@mui/icons-material/Balance';
-
-
-const CREATE_USER = gql`
-  mutation CreateUser(
-    $firstName: String!
-    $lastName: String!
-    $email: String!
-    $phone: String!
-    $password: String!
-    $role: String!
-    $address: String!
-    $latitude: Float!
-    $longitude: Float!
-    $bio: String!
-  ) {
-    createUser(
-      firstName: $firstName
-      lastName: $lastName
-      email: $email
-      phone: $phone
-      password: $password
-      role: $role
-      address: $address
-      latitude: $latitude
-      longitude: $longitude
-      bio: $bio
-    ) {
-      id
-      firstName
-      lastName
-      email
-      phone
-      profilePhoto
-      role
-      address
-      latitude
-      longitude
-      bio
-      isactive
-      emailVerified
-      phoneVerified
-      createdAt
-    }
-  }
-`;
+import { useAuth } from '../contexts/AuthContext';
+import { AuthService } from '../services/authService';
+import { useApolloClient } from '@apollo/client';
+import LocationAutocomplete from './LocationAutocomplete';
 
 const professionOptions = [
   { id: 'builder', label: 'Builder', icon: ApartmentIcon, color: '#6366F1' },
@@ -90,6 +38,10 @@ const professionOptions = [
 
 const Register = () => {
   const navigate = useNavigate();
+  const { setAuth } = useAuth();
+  const client = useApolloClient();
+  const authService = new AuthService(client);
+
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState({
     firstName: '',
@@ -105,23 +57,19 @@ const Register = () => {
   });
   const [selectedProfession, setSelectedProfession] = useState<string>('');
   const [error, setError] = useState('');
-
-  const [createUser] = useMutation(CREATE_USER, {
-    onCompleted: (data) => {
-      if (data && data.createUser) {
-        localStorage.setItem('userInfo', JSON.stringify(data.createUser));
-        navigate('/home');
-      } else {
-        setError('Registration failed. Please try again.');
-      }
-    },
-    onError: (error) => {
-      setError(error.message);
-    },
-  });
+  const [successMessage, setSuccessMessage] = useState('');
 
   const handleProfessionSelect = (professionId: string) => {
     setSelectedProfession(professionId);
+  };
+
+  const handleLocationSelect = (location: { address: string; latitude: number; longitude: number }) => {
+    setFormData(prev => ({
+      ...prev,
+      address: location.address,
+      latitude: location.latitude.toString(),
+      longitude: location.longitude.toString(),
+    }));
   };
 
   const handleContinueFromStep1 = () => {
@@ -131,6 +79,10 @@ const Register = () => {
     }
     if (!formData.address.trim()) {
       setError('Please enter your location');
+      return;
+    }
+    if (!formData.latitude || !formData.longitude) {
+      setError('Please select a location from the suggestions');
       return;
     }
     setError('');
@@ -143,28 +95,51 @@ const Register = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
+    setSuccessMessage('');
+
     try {
       // Validate latitude and longitude
       const latitude = parseFloat(formData.latitude);
       const longitude = parseFloat(formData.longitude);
       if (isNaN(latitude) || isNaN(longitude)) {
-        setError('Please enter valid latitude and longitude');
+        setError('Please select a valid location from the suggestions');
         return;
       }
-      await createUser({
-        variables: {
-          firstName: formData.firstName,
-          lastName: formData.lastName,
-          email: formData.email,
-          phone: formData.phone,
-          password: formData.password,
-          role: formData.role,
-          address: formData.address,
-          latitude,
-          longitude,
-          bio: formData.bio,
-        },
+
+      const response = await authService.register({
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email,
+        phone: formData.phone,
+        password: formData.password,
+        role: formData.role,
+        address: formData.address,
+        latitude,
+        longitude,
+        bio: formData.bio,
       });
+
+      if (response) {
+        // After successful registration, login the user
+        const loginResponse = await authService.login({
+          email: formData.email,
+          password: formData.password,
+        });
+
+        if (loginResponse.success && loginResponse.token && loginResponse.userInfo) {
+          setAuth(
+            loginResponse.token,
+            loginResponse.refreshToken || '',
+            loginResponse.userInfo
+          );
+          setSuccessMessage('Registration successful! Redirecting...');
+          setTimeout(() => navigate('/home'), 1500);
+        } else {
+          setError('Registration successful but login failed. Please try logging in.');
+          setTimeout(() => navigate('/'), 1500);
+        }
+      }
     } catch (err: any) {
       setError('Registration error: ' + (err && err.message ? err.message : 'Unknown error'));
       console.error('Registration error:', err);
@@ -266,23 +241,12 @@ const Register = () => {
             })}
           </Box>
 
-          <TextField
-            fullWidth
-            placeholder="Enter your location"
-            name="address"
+          <LocationAutocomplete
             value={formData.address}
-            onChange={handleChange}
-            InputProps={{
-              startAdornment: <LocationOn sx={{ color: '#9CA3AF', mr: 1 }} />,
-              sx: {
-                bgcolor: '#F9FAFB',
-                '&:hover': { bgcolor: '#F3F4F6' },
-                borderRadius: 2,
-                px: 1,
-                height: 56,
-              },
-            }}
-            sx={{ width: '100%', maxWidth: 500, mb: 6 }}
+            onChange={(value) => setFormData(prev => ({ ...prev, address: value }))}
+            onLocationSelect={handleLocationSelect}
+            error={Boolean(error && !formData.address.trim())}
+            helperText={error && !formData.address.trim() ? 'Please enter your location' : undefined}
           />
 
           <Box sx={{ position: 'fixed', bottom: 16, left: 0, right: 0, px: 2 }}>
@@ -308,7 +272,6 @@ const Register = () => {
       </Container>
     );
   }
-
 
   // Step 2: Personal Details Form
   return (
@@ -350,6 +313,11 @@ const Register = () => {
           {error && (
             <Alert severity="error" sx={{ width: '100%', mb: 2 }}>
               {error}
+            </Alert>
+          )}
+          {successMessage && (
+            <Alert severity="success" sx={{ width: '100%', mb: 2 }}>
+              {successMessage}
             </Alert>
           )}
 
@@ -450,48 +418,6 @@ const Register = () => {
               type="password"
               placeholder="Enter your password"
               value={formData.password}
-              onChange={handleChange}
-              sx={{ mb: 3 }}
-              InputProps={{
-                sx: {
-                  bgcolor: '#F9FAFB',
-                  '&:hover': {
-                    bgcolor: '#F3F4F6',
-                  },
-                },
-              }}
-            />
-
-            <Typography variant="subtitle1" sx={{ mb: 2 }}>
-              Latitude
-            </Typography>
-            <TextField
-              required
-              fullWidth
-              name="latitude"
-              placeholder="Enter latitude"
-              value={formData.latitude}
-              onChange={handleChange}
-              sx={{ mb: 3 }}
-              InputProps={{
-                sx: {
-                  bgcolor: '#F9FAFB',
-                  '&:hover': {
-                    bgcolor: '#F3F4F6',
-                  },
-                },
-              }}
-            />
-
-            <Typography variant="subtitle1" sx={{ mb: 2 }}>
-              Longitude
-            </Typography>
-            <TextField
-              required
-              fullWidth
-              name="longitude"
-              placeholder="Enter longitude"
-              value={formData.longitude}
               onChange={handleChange}
               sx={{ mb: 3 }}
               InputProps={{

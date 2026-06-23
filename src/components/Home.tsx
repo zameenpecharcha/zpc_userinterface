@@ -1,4 +1,9 @@
 import React, { useState, useMemo, useCallback, memo, useEffect, useRef } from 'react';
+import { gql, useQuery, useMutation, useApolloClient } from '@apollo/client';
+import { SEARCH_POSTS, CREATE_POST } from '../graphql/posts';
+import CreatePost from './CreatePost';
+import { PostService } from '../services/postService';
+import { useAuth } from '../contexts/AuthContext';
 // import { styled } from '@mui/material/styles';
 import { gql, useQuery, useMutation } from '@apollo/client';
 import {
@@ -34,37 +39,8 @@ import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
 import ProfilePage from './ProfilePage';
 
-const SEARCH_POSTS_QUERY = gql`
-query SearchPosts($page: Int, $limit: Int) {
-  searchPosts(page: $page, limit: $limit) {
-    id
-    userId
-    userFirstName
-    userLastName
-    userRole
-    title
-    content
-    visibility
-    propertyType
-    location
-    mapLocation
-    price
-    status
-    createdAt
-    likeCount
-    commentCount
-    media {
-      id
-      mediaType
-      mediaUrl
-      mediaOrder
-      mediaSize
-      caption
-      uploadedAt
-    }
-  }
-}
-`;
+
+
 
 const GET_POST_COMMENTS_QUERY = gql`
 query GetPostComments($postId: Int!, $page: Int, $limit: Int) {
@@ -166,16 +142,45 @@ mutation UnlikePost($postId: Int!, $userId: Int!) {
 }
 `;
 
+const GET_USER_QUERY = gql`
+query GetUser($id: Int!) {
+  user(id: $id) {
+    id
+    firstName
+    lastName
+    email
+    phone
+    profilePhoto
+    role
+    address
+    profilePhotoSignedUrl
+    coverPhotoSignedUrl
+    latitude
+    longitude
+    bio
+    isactive
+    emailVerified
+    phoneVerified
+    createdAt
+  }
+}
+`;
+
 // Get user data dynamically to handle login state changes
 const getUserData = () => {
   try {
-    return JSON.parse(localStorage.getItem('userInfo') || '{}');
-  } catch {
+    const stored = localStorage.getItem('user') || localStorage.getItem('userInfo');
+    console.log('getUserData - stored from localStorage:', stored);
+    const parsed = stored ? JSON.parse(stored) : {};
+    console.log('getUserData - parsed user data:', parsed);
+    return parsed;
+  } catch (error) {
+    console.error('getUserData - error parsing user data:', error);
     return {};
   }
 };
 
-const storedUser = getUserData(); // eslint-disable-line @typescript-eslint/no-unused-vars
+const storedUser = getUserData();
 // const userId = storedUser?.id;
 const interFont = {
   fontFamily: 'Inter, Roboto, Arial, sans-serif',
@@ -183,8 +188,8 @@ const interFont = {
 
 const leftNav = [
   { icon: <HomeIcon />, label: 'Home' },
-  { icon: <PeopleIcon />, label: 'Friends' },
-  { icon: <GroupIcon />, label: 'Groups' },
+  { icon: <PeopleIcon />, label: 'Site Visits' },
+  { icon: <GroupIcon />, label: 'Properties' },
   { icon: <StorefrontIcon />, label: 'Marketplace' },
   { icon: <EventIcon />, label: 'Events' },
 ];
@@ -201,7 +206,43 @@ const trendingTopics = [
 ];
 
 // Memoized Post component to prevent unnecessary re-renders
-const Post = memo(({ post, onLikeToggle, onCommentClick, likedPosts, likeCounts, likingPost, unlikingPost }: any) => {
+interface PostProps {
+  post: {
+    id: number;
+    userId: number;
+    userFirstName: string;
+    userLastName: string;
+    userRole: string;
+    title: string;
+    content: string;
+    visibility: string;
+    propertyType: string;
+    location: string;
+    price: number;
+    status: string;
+    createdAt: string;
+    likeCount: number;
+    commentCount: number;
+    profilePhoto?: string;
+    media?: Array<{
+      id: number;
+      mediaType: string;
+      mediaUrl: string;
+      signedUrl?: string;
+      caption?: string;
+      mediaOrder: number;
+      mediaSize?: number;
+      uploadedAt: string;
+    }>;
+  };
+  onLikeToggle: (postId: number) => void;
+  onCommentClick: (postId: number) => void;
+  onOpenProfile: (userId: number) => void;
+  likedPosts: { [postId: number]: boolean };
+  likeCounts: { [postId: number]: number };
+}
+
+const Post = memo(({ post, onLikeToggle, onCommentClick, onOpenProfile, likedPosts, likeCounts }: PostProps) => {
   const formatDate = useCallback((dateString: string) => {
     return new Date(dateString).toLocaleString();
   }, []);
@@ -219,8 +260,17 @@ const Post = memo(({ post, onLikeToggle, onCommentClick, likedPosts, likeCounts,
       gap: 1.5,
     }}>
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-        <Avatar src={post.profilePhoto || `https://randomuser.me/api/portraits/lego/${post.userId % 10}.jpg`} sx={{ mr: 2, width: 44, height: 44, boxShadow: 1 }} />
-        <Box>
+        <Avatar
+          src={(post as any).userProfilePhotoSignedUrl || post.profilePhoto || `https://randomuser.me/api/portraits/lego/${post.userId % 10}.jpg`}
+          sx={{ mr: 2, width: 44, height: 44, boxShadow: 1, cursor: 'pointer' }}
+          onClick={() => onOpenProfile(post.userId)}
+        />
+        <Box
+          onClick={() => onOpenProfile(post.userId)}
+          sx={{ cursor: 'pointer' }}
+          role="button"
+          aria-label={`Open profile of ${post.userFirstName} ${post.userLastName}`}
+        >
           <Typography sx={{ fontWeight: 700, fontSize: 18, color: '#2563EB', ...interFont }}>
             {post.userFirstName} {post.userLastName}
           </Typography>
@@ -239,13 +289,61 @@ const Post = memo(({ post, onLikeToggle, onCommentClick, likedPosts, likeCounts,
         <Typography sx={{ fontSize: 14, color: '#6B7280', bgcolor: 'rgba(99,102,241,0.06)', px: 1.5, py: 0.5, borderRadius: 2 }}>Type: {post.propertyType}</Typography>
         <Typography sx={{ fontSize: 14, color: '#6B7280', bgcolor: 'rgba(239,68,68,0.06)', px: 1.5, py: 0.5, borderRadius: 2 }}>Price: ₹{post.price}</Typography>
       </Box>
-      {post.media?.length > 0 && post.media[0].mediaType === 'image' && (
-        <Box sx={{ mb: 2 }}>
-          <img
-            src={post.media[0].mediaUrl}
-            alt={post.media[0].caption || 'Post media'}
-            style={{ width: '100%', borderRadius: 12, maxHeight: 340, objectFit: 'cover', boxShadow: '0 2px 8px rgba(37,99,235,0.08)' }}
-          />
+      {post.media && post.media.length > 0 && (
+        <Box sx={{ mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+          {post.media.map((media, index) => 
+            media.mediaType === 'image' && (
+              <Box key={media.id} sx={{ flex: '1 1 300px', maxWidth: '100%', position: 'relative' }}>
+                <div>
+                  {/* Debug media object */}
+                  {(() => { console.log('Media object:', media); return null; })()}
+                  <img
+                    src={media.signedUrl || media.mediaUrl}
+                    alt={media.caption || `Post media ${index + 1}`}
+                    style={{ 
+                      width: '100%', 
+                      borderRadius: 12, 
+                      maxHeight: 340, 
+                      objectFit: 'cover', 
+                      boxShadow: '0 2px 8px rgba(37,99,235,0.08)'
+                    }}
+                    onError={(e) => {
+                      console.error('Image load error for:', {
+                        mediaId: media.id,
+                        signedUrl: media.signedUrl,
+                        mediaUrl: media.mediaUrl,
+                        currentSrc: e.currentTarget.src,
+                        error: e
+                      });
+                      const img = e.currentTarget;
+                      // If using signedUrl, fallback to mediaUrl
+                      if (img.src === media.signedUrl && media.mediaUrl) {
+                        console.log('Falling back to mediaUrl for media:', media.id);
+                        img.src = media.mediaUrl;
+                      }
+                    }}
+                  />
+                  {media.caption && (
+                    <Typography 
+                      sx={{ 
+                        position: 'absolute',
+                        bottom: 8,
+                        left: 8,
+                        right: 8,
+                        color: '#fff',
+                        backgroundColor: 'rgba(0,0,0,0.6)',
+                        padding: '4px 8px',
+                        borderRadius: 1,
+                        fontSize: 14
+                      }}
+                    >
+                      {media.caption}
+                    </Typography>
+                  )}
+                </div>
+              </Box>
+            )
+          )}
         </Box>
       )}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 2 }}>
@@ -267,7 +365,6 @@ const Post = memo(({ post, onLikeToggle, onCommentClick, likedPosts, likeCounts,
               px: 2,
             }}
             onClick={() => onLikeToggle(post.id)}
-            disabled={likingPost || unlikingPost}
           >
             <span style={{ color: '#222', fontWeight: 600 }}>
               {likeCounts[post.id] !== undefined ? likeCounts[post.id] : post.likeCount || 0}
@@ -576,14 +673,25 @@ const CommentsModal = memo(({
 });
 
 const Home = () => {
-  const { data, loading, error, refetch } = useQuery(SEARCH_POSTS_QUERY, {
+  const { user: authUser, isAuthenticated } = useAuth();
+  const { data, loading, error, refetch } = useQuery(SEARCH_POSTS, {
     variables: { page: 1, limit: 10 },
     fetchPolicy: 'network-only',
   });
 
+  const client = useApolloClient();
+
+  // Clear cache and refetch on mount
+  useEffect(() => {
+    const clearAndRefetch = async () => {
+      await client.clearStore();
+      await refetch();
+    };
+    clearAndRefetch();
+  }, [client, refetch]);
+
   // Optimized state management
   const [commentsModalOpen, setCommentsModalOpen] = useState<{ open: boolean; postId: number | null }>({ open: false, postId: null });
-  const [likedPosts, setLikedPosts] = useState<{ [postId: number]: boolean }>({});
   const [likeCounts, setLikeCounts] = useState<{ [postId: number]: number }>({});
   const [likingPost, setLikingPost] = useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars
   const [unlikingPost, setUnlikingPost] = useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars
@@ -605,7 +713,10 @@ const Home = () => {
   const [isRefreshing, setIsRefreshing] = useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
   const commentsRefreshTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Authenticated user object (from localStorage) – do not repurpose for viewing profiles
   const [currentUser, setCurrentUser] = useState(getUserData());
+  // The user whose profile we are viewing from the feed
+  const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
 
   const isMobile = useMediaQuery('(max-width:900px)');
 
@@ -614,16 +725,103 @@ const Home = () => {
   const [likeComment] = useMutation(LIKE_COMMENT_MUTATION);
   const [likePost] = useMutation(LIKE_POST_MUTATION);
   const [unlikePost] = useMutation(UNLIKE_POST_MUTATION);
-  const client = useApolloClient();
+  const [createPostMutation] = useMutation(CREATE_POST);
+
+  // Create Post form state (simplified for new component)
+  const [cpSubmitting, setCpSubmitting] = useState(false);
+
+  // Function to fetch fresh user data from backend
+  const fetchAndUpdateUserData = useCallback(async () => {
+    const userData = getUserData();
+    if (userData && userData.id) {
+      try {
+        console.log('Fetching fresh user data from backend for user ID:', userData.id);
+        
+        // Get the authorization token
+        const token = localStorage.getItem('token');
+        console.log('Authorization token found:', token ? 'Yes' : 'No');
+        console.log('Token preview:', token ? token.substring(0, 20) + '...' : 'None');
+        
+        if (!token) {
+          console.error('No authorization token found');
+          return;
+        }
+        
+        // Use direct fetch instead of Apollo Client to avoid the invariant violation
+        console.log('Making direct GraphQL request...');
+        const response = await fetch('http://localhost:8000/api/v1/graphql', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            query: `
+              query GetUser($id: Int!) {
+                user(id: $id) {
+                  id
+                  firstName
+                  lastName
+                  email
+                  phone
+                  profilePhoto
+                  role
+                  address
+                  profilePhotoSignedUrl
+                  coverPhotoSignedUrl
+                  latitude
+                  longitude
+                  bio
+                  isactive
+                  emailVerified
+                  phoneVerified
+                  createdAt
+                }
+              }
+            `,
+            variables: { id: userData.id }
+          })
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log('GraphQL response:', result);
+        
+        if (result.data?.user) {
+          console.log('Fresh user data from backend:', result.data.user);
+          // Update localStorage with fresh data
+          localStorage.setItem('user', JSON.stringify(result.data.user));
+          localStorage.setItem('userInfo', JSON.stringify(result.data.user));
+          // Update current user state
+          setCurrentUser(result.data.user);
+          console.log('Updated user data in localStorage and state');
+        } else if (result.errors) {
+          console.error('GraphQL errors:', result.errors);
+        }
+      } catch (error) {
+        console.error('Error fetching fresh user data:', error);
+        console.error('Error details:', error instanceof Error ? error.message : String(error));
+      }
+    }
+  }, []);
 
   // Check for user data updates
   useEffect(() => {
     const checkUserData = () => {
       const userData = getUserData();
+      console.log('checkUserData - userData:', userData);
+      console.log('checkUserData - currentUser:', currentUser);
       if (JSON.stringify(userData) !== JSON.stringify(currentUser)) {
+        console.log('checkUserData - updating currentUser with new data');
         setCurrentUser(userData);
       }
     };
+
+    // Fetch fresh user data on mount
+    fetchAndUpdateUserData();
 
     // Check user data on focus (when user comes back to the tab)
     window.addEventListener('focus', checkUserData);
@@ -635,21 +833,18 @@ const Home = () => {
       window.removeEventListener('focus', checkUserData);
       clearInterval(userCheckInterval);
     };
-  }, [currentUser]);
+  }, [currentUser, fetchAndUpdateUserData]);
 
-  // Auto-refresh functionality (always enabled, simplified)
+  // Auto-refresh functionality (every 5 minutes)
   useEffect(() => {
     if (!loading) {
       refreshTimerRef.current = setInterval(async () => {
         try {
-          setIsRefreshing(true);
           await refetch();
         } catch (error) {
           console.error('Auto-refresh failed:', error);
-        } finally {
-          setIsRefreshing(false);
         }
-      }, 1000); // 1 second
+      }, 300000); // 5 minutes
 
       return () => {
         if (refreshTimerRef.current) {
@@ -679,7 +874,7 @@ const Home = () => {
       title: currentUser.role || 'User',
       location: currentUser.address || 'No location',
       coverImage: 'https://images.unsplash.com/photo-1519904981063-b0cf448d479e?w=800&h=300&fit=crop',
-      profileImage: currentUser.profilePhoto || 'https://randomuser.me/api/portraits/lego/1.jpg',
+      profileImage: (currentUser as any).profilePhotoSignedUrl || currentUser.profilePhoto || 'https://randomuser.me/api/portraits/lego/1.jpg',
       friendsCount: 0,
       postsCount: 0,
       rating: 0,
@@ -698,13 +893,173 @@ const Home = () => {
   }, []);
 
   const handleProfileClick = useCallback(() => {
+    // Open own profile explicitly
+    setSelectedProfileId(storedUser?.id || currentUser?.id || null);
     setCurrentPage('profile');
     handleClose();
-  }, [handleClose]);
+  }, [handleClose, currentUser?.id]);
 
   const handleGoHome = useCallback(() => {
     setCurrentPage('home');
   }, []);
+
+  const handleOpenProfile = useCallback((uid: number) => {
+    setSelectedProfileId(uid);
+    setCurrentPage('profile');
+  }, []);
+
+  // Helper function to check if user has property management permissions
+  const canManageProperties = useCallback(() => {
+    console.log('=== DEBUGGING ROLE CHECK ===');
+    console.log('authUser:', authUser);
+    console.log('authUser.role:', authUser?.role);
+    console.log('currentUser:', currentUser);
+    console.log('currentUser.role:', currentUser?.role);
+    console.log('storedUser:', storedUser);
+    console.log('storedUser.role:', storedUser?.role);
+    
+    // Try authUser first, then currentUser, then storedUser
+    const user = authUser || currentUser || storedUser;
+    console.log('Using user:', user);
+    console.log('User role:', user?.role);
+    console.log('User role type:', typeof user?.role);
+    console.log('User role length:', user?.role?.length);
+    
+    if (!user) {
+      console.log('No user found - returning false');
+      return false;
+    }
+    
+    // Check if role exists and is not empty
+    if (!user.role || user.role.trim() === '') {
+      console.log('No role or empty role found - returning false');
+      console.log('User email:', user.email);
+      console.log('This user needs to have their role set to "builder" or "admin"');
+      return false;
+    }
+    
+    const userRole = user.role.toLowerCase().trim();
+    console.log('User role (lowercase, trimmed):', userRole);
+    
+    const canManage = userRole === 'builder' || userRole === 'admin';
+    console.log('Can manage properties:', canManage);
+    console.log('=== END DEBUGGING ===');
+    
+    return canManage;
+  }, [authUser, currentUser]);
+
+  const handleCreatePost = useCallback(async (postData: any) => {
+    if (!currentUser || !currentUser.id) {
+      console.error('User not logged in');
+      return;
+    }
+
+    try {
+      setCpSubmitting(true);
+      
+      // Get the authorization token
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('No authorization token found');
+      }
+      
+      // Upload media files to S3 using presigned URLs
+      const uploadedMedia: { name: string; url: string; contentType: string }[] = [];
+      
+      if (postData.media && postData.media.length > 0) {
+        for (const file of postData.media) {
+          console.log('=== Starting file upload ===');
+          console.log('File:', file.name, 'Type:', file.type);
+          
+          const qs = new URLSearchParams({ 
+            fileName: file.name, 
+            contentType: file.type 
+          }).toString();
+          
+          console.log('Requesting presigned URL with params:', qs);
+          
+          const presignRes = await fetch(`http://localhost:8000/api/v1/uploads/presign-post-media?${qs}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          if (!presignRes.ok) {
+            const errorText = await presignRes.text();
+            console.error('Presigned URL request failed:', presignRes.status, errorText);
+            throw new Error(`Failed to get upload URL: ${presignRes.status} ${errorText}`);
+          }
+          
+          const presignData = await presignRes.json();
+          console.log('Presigned URL response:', presignData);
+          
+          const { url, publicUrl } = presignData;
+          
+          console.log('Using presigned URL for PUT:', url);
+          console.log('Public URL:', publicUrl);
+          
+          const putRes = await fetch(url, { 
+            method: 'PUT', 
+            headers: { 
+              'Content-Type': file.type,
+              // Don't add Authorization header to S3 PUT request
+            }, 
+            body: file 
+          });
+          
+          if (!putRes.ok) {
+            const errorText = await putRes.text();
+            console.error('S3 PUT request failed:', putRes.status, errorText);
+            throw new Error(`Failed to upload media: ${putRes.status} ${errorText}`);
+          }
+          
+          console.log('File uploaded successfully');
+          uploadedMedia.push({ 
+            name: file.name, 
+            url: publicUrl, 
+            contentType: file.type 
+          });
+        }
+      }
+
+      // Create post using GraphQL mutation with proper authorization
+      const { data } = await createPostMutation({
+        variables: {
+          userId: parseInt(currentUser.id.toString()),
+          title: postData.title,
+          content: postData.content,
+          visibility: postData.visibility,
+          propertyType: postData.type,
+          location: postData.location || '',
+          price: 0, // Default price, can be extended later
+          status: 'active',
+          latitude: postData.latitude || null,
+          longitude: postData.longitude || null,
+          media: uploadedMedia.map((media, index) => ({
+            mediaType: media.contentType.startsWith('video/') ? 'video' : 'image',
+            mediaOrder: index + 1,
+            filePath: media.url,
+            fileName: media.name,
+            contentType: media.contentType
+          })),
+        }
+      });
+
+      if (data?.createPost?.success) {
+        setCreateOpen(false);
+        // Refresh posts
+        await refetch();
+      } else {
+        throw new Error(data?.createPost?.message || 'Failed to create post');
+      }
+    } catch (error: any) {
+      console.error('Error creating post:', error);
+      // You can add error handling here (snackbar, alert, etc.)
+    } finally {
+      setCpSubmitting(false);
+    }
+  }, [currentUser, createPostMutation, refetch]);
 
   const handleLikeToggle = useCallback(async (postId: number) => {
     if (!currentUser?.id) return;
@@ -878,6 +1233,7 @@ const Home = () => {
     }
   }, [currentUser, likeComment]);
 
+
   // Manual refresh handler
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleManualRefresh = useCallback(async () => {
@@ -899,16 +1255,22 @@ const Home = () => {
 
   // Render Profile Page
   if (currentPage === 'profile') {
-    const currentUserId = currentUser?.id;
-    if (!currentUserId) {
+    const authUserId = currentUser?.id || storedUser?.id;
+    if (!authUserId) {
       return <Typography sx={{ m: 4, color: 'red' }}>User not logged in. Please log in again.</Typography>;
     }
+    if (!selectedProfileId) {
+      return <Typography sx={{ m: 4 }}>No profile selected.</Typography>;
+    }
 
-    return <ProfilePage
+    return (
+      <ProfilePage
       onGoBack={handleGoHome}
-      userId={currentUserId}
-      currentUserId={currentUserId}
-    />;
+        userId={selectedProfileId}
+        currentUserId={authUserId}
+        onOpenProfile={handleOpenProfile}
+      />
+    );
   }
 
   // Render Home Page
@@ -938,6 +1300,17 @@ const Home = () => {
               }}
             />
           </Box>
+          {/* Debug info - remove after testing */}
+          <Box sx={{ mr: 2, fontSize: 12, color: '#666', bgcolor: '#f0f0f0', px: 1, py: 0.5, borderRadius: 1 }}>
+            Auth: {authUser?.role || 'None'} | Current: {currentUser?.role || 'None'} | Stored: {storedUser?.role || 'None'} | Can Manage: {canManageProperties() ? 'Yes' : 'No'}
+            <Button 
+              size="small" 
+              onClick={fetchAndUpdateUserData}
+              sx={{ ml: 1, fontSize: 10, minWidth: 'auto', px: 1 }}
+            >
+              Refresh User Data
+            </Button>
+          </Box>
           {/* Notification & Profile */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <IconButton title="Messages" sx={{ transition: 'background 0.2s', '&:hover': { bgcolor: '#EEF2FB' } }}>
@@ -954,10 +1327,23 @@ const Home = () => {
             </IconButton>
             <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleClose}>
               <MenuItem onClick={handleProfileClick}>Profile</MenuItem>
+              {canManageProperties() && (
+                <MenuItem onClick={() => { handleClose(); window.location.href = '/create-property'; }}>
+                  Create Property
+                </MenuItem>
+              )}
+              {canManageProperties() && (
+                <MenuItem onClick={() => { handleClose(); window.location.href = '/my-properties'; }}>
+                  My Properties
+                </MenuItem>
+              )}
               <MenuItem onClick={handleClose}>Settings</MenuItem>
               <MenuItem
                 onClick={() => {
+                  localStorage.removeItem('user');
                   localStorage.removeItem('userInfo');
+                  localStorage.removeItem('token');
+                  localStorage.removeItem('refreshToken');
                   window.location.href = '/';
                 }}
               >
@@ -1021,7 +1407,7 @@ const Home = () => {
           {/* Create Post Card */}
           <Box sx={{ mb: 4, p: 3, bgcolor: '#fff', borderRadius: 4, boxShadow: '0 2px 12px rgba(37,99,235,0.08)', display: 'flex', flexDirection: 'column', gap: 2, position: 'relative' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Avatar src={currentUserData?.profileImage} sx={{ width: 44, height: 44 }} />
+              <Avatar src={currentUserData?.profileImage || ''} sx={{ width: 44, height: 44 }} />
               <InputBase
                 placeholder="What's on your mind?"
                 sx={{
@@ -1067,10 +1453,9 @@ const Home = () => {
                   post={post}
                   onLikeToggle={handleLikeToggle}
                   onCommentClick={handleCommentClick}
+                  onOpenProfile={handleOpenProfile}
                   likedPosts={likedPosts}
                   likeCounts={likeCounts}
-                  likingPost={likingPost}
-                  unlikingPost={unlikingPost}
                 />
               ))}
             </Stack>
@@ -1127,45 +1512,16 @@ const Home = () => {
         replyText={replyText}
         setReplyText={setReplyText}
         setReplyingCommentId={setReplyingCommentId}
-        replying={replying}
+        replying={false}
       />
 
-      {/* Create Post Modal (placeholder) */}
-      {createOpen && (
-        <Box
-          sx={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            width: '100vw',
-            height: '100vh',
-            bgcolor: 'rgba(37,99,235,0.10)',
-            zIndex: 9999,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-          onClick={() => setCreateOpen(false)}
-        >
-          <Box
-            sx={{
-              bgcolor: '#fff',
-              borderRadius: 4,
-              p: 5,
-              minWidth: 360,
-              boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.18)',
-              textAlign: 'center',
-            }}
-            onClick={e => e.stopPropagation()}
-          >
-            <Typography variant="h6" sx={{ mb: 2, fontWeight: 700, color: '#2563EB' }}>Create Post</Typography>
-            <Typography sx={{ mb: 2, color: '#374151' }}>Post creation form coming soon.</Typography>
-            <Button variant="contained" sx={{ bgcolor: '#2563EB', fontWeight: 600, '&:hover': { bgcolor: '#1D4ED8' } }} onClick={() => setCreateOpen(false)}>
-              Close
-            </Button>
-          </Box>
-        </Box>
-      )}
+      {/* Create Post Modal */}
+      <CreatePost
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onSubmit={handleCreatePost}
+        loading={cpSubmitting}
+      />
     </Box>
   );
 };

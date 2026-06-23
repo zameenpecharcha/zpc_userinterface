@@ -46,7 +46,8 @@ query SearchPosts($page: Int, $limit: Int) {
     visibility
     propertyType
     location
-    mapLocation
+    latitude
+    longitude
     price
     status
     createdAt
