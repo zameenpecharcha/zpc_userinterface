@@ -2,9 +2,11 @@ import { ApolloClient, InMemoryCache, createHttpLink, from } from '@apollo/clien
 import { setContext } from '@apollo/client/link/context';
 import { onError } from '@apollo/client/link/error';
 
+const GRAPHQL_URL = process.env.REACT_APP_GRAPHQL_URL || 'http://localhost:8000/api/v1/graphql';
+
 // Create HTTP link
 const httpLink = createHttpLink({
-  uri: 'http://localhost:8000/api/v1/graphql',
+  uri: GRAPHQL_URL,
   credentials: 'include', // This enables sending cookies
 });
 
@@ -63,8 +65,6 @@ const authLink = setContext((_, { headers }) => {
 // Create Apollo Client
 const client = new ApolloClient({
   link: from([errorLink, authLink, httpLink]),
-const client = new ApolloClient({
-  uri: process.env.REACT_APP_GRAPHQL_URL || 'http://localhost:8000/api/v1/graphql',
   cache: new InMemoryCache(),
   defaultOptions: {
     watchQuery: {

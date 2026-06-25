@@ -15,7 +15,7 @@ import {
 } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
 import { AuthService } from '../services/authService';
-import { useApolloClient } from '@apollo/client';
+import { gql, useApolloClient, useMutation } from '@apollo/client';
 import { OTPType } from '../types/auth';
 // import authClient from '../auth-client';
 

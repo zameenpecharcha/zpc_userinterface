@@ -17,7 +17,6 @@ import {
   MapOutlined,
   LocationOn,
   // Engineering,      // unused
-  BusinessCenter,      // instead of Person
   AccountCircle,
 } from '@mui/icons-material';
 import ApartmentIcon from '@mui/icons-material/Apartment';

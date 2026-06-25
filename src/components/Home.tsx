@@ -5,7 +5,6 @@ import CreatePost from './CreatePost';
 import { PostService } from '../services/postService';
 import { useAuth } from '../contexts/AuthContext';
 // import { styled } from '@mui/material/styles';
-import { gql, useQuery, useMutation } from '@apollo/client';
 import {
   AppBar,
   Toolbar,
@@ -21,7 +20,6 @@ import {
   MenuItem,
   CircularProgress,
 } from '@mui/material';
-import { useApolloClient } from '@apollo/client';
 // import { useNavigate } from 'react-router-dom';
 import HomeIcon from '@mui/icons-material/Home';
 import PeopleIcon from '@mui/icons-material/People';
@@ -692,6 +690,7 @@ const Home = () => {
 
   // Optimized state management
   const [commentsModalOpen, setCommentsModalOpen] = useState<{ open: boolean; postId: number | null }>({ open: false, postId: null });
+  const [likedPosts, setLikedPosts] = useState<{ [postId: number]: boolean }>({});
   const [likeCounts, setLikeCounts] = useState<{ [postId: number]: number }>({});
   const [likingPost, setLikingPost] = useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars
   const [unlikingPost, setUnlikingPost] = useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars
