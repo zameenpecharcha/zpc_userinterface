@@ -301,16 +301,6 @@ function App() {
             <AppRoutes />
           </Router>
         </AuthProvider>
-        <Router>
-          <Routes>
-            <Route path="/" element={<Landing />} />
-            <Route path="/register" element={<Register />} />
-            <Route path="/home" element={<Home />} />
-            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/chat" element={<ChatPage />} />
-          </Routes>
-        </Router>
       </ThemeProvider>
     </ApolloProvider>
   );

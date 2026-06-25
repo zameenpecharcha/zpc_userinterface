@@ -1030,6 +1030,9 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
     // Followers/Following modal state
     const [followersOpen, setFollowersOpen] = useState(false);
     const [followersList, setFollowersList] = useState<UserFollower[]>([]);
+    const [followersDetails, setFollowersDetails] = useState<any[]>([]);
+    const [followingOpen, setFollowingOpen] = useState(false);
+    const [followingList, setFollowingList] = useState<UserFollower[]>([]);
     const [followingDetails, setFollowingDetails] = useState<any[]>([]);
     const [loadingFF, setLoadingFF] = useState(false);
 
@@ -1063,7 +1066,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
     // Snackbar state
     const [snack, setSnack] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' | 'warning' }>({ open: false, message: '', severity: 'success' });
     const handleSnackClose = () => setSnack(prev => ({ ...prev, open: false }));
-    const [replying, setReplying] = useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars
 
     useEffect(() => {
         const fetchData = async () => {
