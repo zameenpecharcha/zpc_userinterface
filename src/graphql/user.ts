@@ -1,5 +1,19 @@
 import { gql } from '@apollo/client';
 
+export const GET_USERS = gql`
+  query GetUsers($search: String, $page: Int, $limit: Int) {
+    users(search: $search, page: $page, limit: $limit) {
+      id
+      firstName
+      lastName
+      email
+      role
+      profilePhotoSignedUrl
+      profilePhoto
+    }
+  }
+`;
+
 export const GET_USER_PROFILE = gql`
   query GetUserProfile($id: Int!) {
     user(id: $id) {

@@ -1,115 +1,307 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   Box, Typography, TextField, IconButton, Avatar, InputAdornment,
   Divider, List, ListItemButton, ListItemAvatar, ListItemText,
+  Badge, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions,
+  Button, ToggleButton, ToggleButtonGroup, Chip, CircularProgress,
 } from '@mui/material';
-import AddCommentOutlinedIcon from '@mui/icons-material/AddCommentOutlined';
 import SearchIcon from '@mui/icons-material/Search';
+import EditIcon from '@mui/icons-material/Edit';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import VideoCallOutlinedIcon from '@mui/icons-material/VideoCallOutlined';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
+import GroupAddOutlinedIcon from '@mui/icons-material/GroupAddOutlined';
+import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
+import AddIcon from '@mui/icons-material/Add';
+import CloseIcon from '@mui/icons-material/Close';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { useQuery } from '@apollo/client';
+import { GET_USERS } from '../graphql/user';
 import Chat from './Chat';
 
-// ── Types ────────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
-interface Room {
+type ConvType = 'direct' | 'group';
+
+interface Conversation {
   id: string;
+  type: ConvType;
   label: string;
+  participants: string[];
+  lastMessage?: string;
+  lastTime?: number;
+  unread: number;
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 const stringToColor = (s: string) => {
   let h = 0;
-  for (let i = 0; i < s.length; i++) h = s.charCodeAt(i) + ((h << 5) - h);
-  return `hsl(${Math.abs(h) % 360},55%,40%)`;
+  for (let i = 0; i < s.length; i++) h = s.codePointAt(i)! + ((h << 5) - h);
+  return `hsl(${Math.abs(h) % 360},50%,38%)`;
 };
 
-const SIDEBAR_W = 340;
+const initials = (label: string) =>
+  label.split(' ').slice(0, 2).map(w => w[0] ?? '').join('').toUpperCase() || '?';
 
-// ── Main component ───────────────────────────────────────────────────────────
+const fmtTime = (ms?: number) => {
+  if (!ms) return '';
+  const d = new Date(ms);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString())
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+};
+
+const SIDEBAR_W = 360;
+const LI_BLUE   = '#0A66C2';
+const LI_BG     = '#F3F6F8';
+
+// ── ConvItem ──────────────────────────────────────────────────────────────────
+
+const ConvItem: React.FC<{
+  conv: Conversation;
+  active: boolean;
+  onClick: () => void;
+}> = ({ conv, active, onClick }) => (
+  <>
+    <ListItemButton
+      onClick={onClick}
+      sx={{
+        py: 1.5, px: 2,
+        bgcolor: active ? '#EAF0F8' : 'transparent',
+        borderLeft: active ? `3px solid ${LI_BLUE}` : '3px solid transparent',
+        '&:hover': { bgcolor: active ? '#EAF0F8' : LI_BG },
+        transition: 'background 0.15s',
+      }}
+    >
+      <ListItemAvatar sx={{ minWidth: 52 }}>
+        <Badge
+          overlap="circular"
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+          badgeContent={
+            conv.type === 'group'
+              ? <Box sx={{ width: 14, height: 14, bgcolor: '#fff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <GroupAddOutlinedIcon sx={{ fontSize: 10, color: LI_BLUE }} />
+                </Box>
+              : null
+          }
+        >
+          <Avatar sx={{ bgcolor: stringToColor(conv.label), width: 46, height: 46, fontSize: 16, fontWeight: 700 }}>
+            {initials(conv.label)}
+          </Avatar>
+        </Badge>
+      </ListItemAvatar>
+      <ListItemText
+        primary={
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <Typography variant="subtitle2" fontWeight={conv.unread > 0 ? 700 : 500} noWrap sx={{ fontSize: 14, color: '#000', maxWidth: 160 }}>
+              {conv.label}
+            </Typography>
+            <Typography variant="caption" sx={{ color: conv.unread > 0 ? LI_BLUE : '#777', fontSize: 11, flexShrink: 0, ml: 1 }}>
+              {fmtTime(conv.lastTime)}
+            </Typography>
+          </Box>
+        }
+        secondary={
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 0.25 }}>
+            <Typography variant="caption" noWrap sx={{ color: conv.unread > 0 ? '#333' : '#777', fontSize: 12, fontWeight: conv.unread > 0 ? 600 : 400, maxWidth: 175 }}>
+              {conv.lastMessage ?? 'Start a conversation'}
+            </Typography>
+            {conv.unread > 0 && (
+              <Box sx={{ bgcolor: LI_BLUE, borderRadius: '50%', width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, ml: 0.5 }}>
+                <Typography sx={{ color: '#fff', fontSize: 10, fontWeight: 700, lineHeight: 1 }}>{conv.unread}</Typography>
+              </Box>
+            )}
+          </Box>
+        }
+      />
+    </ListItemButton>
+    <Divider sx={{ ml: 8 }} />
+  </>
+);
+
+// ── New Conversation Dialog ───────────────────────────────────────────────────
+
+const NewConvDialog: React.FC<{
+  open: boolean;
+  onClose: () => void;
+  onStart: (conv: Conversation) => void;
+  myUserId: string;
+}> = ({ open, onClose, onStart, myUserId }) => {
+  const [type, setType]             = useState<ConvType>('direct');
+  const [userSearch, setUserSearch] = useState('');
+  const [groupName, setGroupName]   = useState('');
+  const [members, setMembers]       = useState<Array<{ id: string; label: string }>>([]);
+
+  const { data, loading } = useQuery(GET_USERS, {
+    variables: { search: userSearch, page: 1, limit: 30 },
+    skip: !open,
+    fetchPolicy: 'network-only',
+  });
+
+  const apiUsers: Array<{ id: number; firstName: string; lastName: string; email: string; role?: string; profilePhotoSignedUrl?: string }> =
+    data?.users ?? [];
+
+  const reset = () => { setType('direct'); setUserSearch(''); setGroupName(''); setMembers([]); };
+  const handleClose = () => { reset(); onClose(); };
+
+  const startDirect = (u: { id: number; firstName: string; lastName: string }) => {
+    const otherId = String(u.id);
+    const [a, b] = [myUserId, otherId].sort((x, y) => x.localeCompare(y));
+    onStart({ id: `dm-${a}-${b}`, type: 'direct', label: `${u.firstName} ${u.lastName}`.trim(), participants: [myUserId, otherId], unread: 0 });
+    handleClose();
+  };
+
+  const toggleMember = (u: { id: number; firstName: string; lastName: string }) => {
+    const id = String(u.id);
+    const label = `${u.firstName} ${u.lastName}`.trim();
+    setMembers(prev => prev.some(m => m.id === id) ? prev.filter(m => m.id !== id) : [...prev, { id, label }]);
+  };
+
+  const startGroup = () => {
+    const name = groupName.trim();
+    if (!name || members.length === 0) return;
+    onStart({
+      id: `group-${name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
+      type: 'group', label: name,
+      participants: [myUserId, ...members.map(m => m.id)],
+      unread: 0,
+    });
+    handleClose();
+  };
+
+  return (
+    <Dialog open={open} onClose={handleClose} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+      <DialogTitle sx={{ pb: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Typography fontWeight={700} fontSize={18}>New message</Typography>
+        <IconButton size="small" onClick={handleClose}><CloseIcon fontSize="small" /></IconButton>
+      </DialogTitle>
+
+      <DialogContent sx={{ pt: 2 }}>
+        <ToggleButtonGroup value={type} exclusive onChange={(_, v) => v && setType(v)} size="small" fullWidth sx={{ mb: 2 }}>
+          <ToggleButton value="direct" sx={{ textTransform: 'none', fontWeight: 600, gap: 0.5 }}>
+            <PersonOutlineIcon fontSize="small" /> Direct message
+          </ToggleButton>
+          <ToggleButton value="group" sx={{ textTransform: 'none', fontWeight: 600, gap: 0.5 }}>
+            <GroupAddOutlinedIcon fontSize="small" /> Group chat
+          </ToggleButton>
+        </ToggleButtonGroup>
+
+        {type === 'group' && (
+          <TextField fullWidth size="small" label="Group name" placeholder="e.g. ZPC Team"
+            value={groupName} onChange={e => setGroupName(e.target.value)} sx={{ mb: 1.5 }} />
+        )}
+
+        <TextField autoFocus fullWidth size="small"
+          placeholder={type === 'direct' ? 'Search people…' : 'Search members to add…'}
+          value={userSearch} onChange={e => setUserSearch(e.target.value)}
+          InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ fontSize: 16, color: '#aaa' }} /></InputAdornment> }}
+        />
+
+        {type === 'group' && members.length > 0 && (
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 1 }}>
+            {members.map(m => (
+              <Chip key={m.id} label={m.label} size="small"
+                onDelete={() => setMembers(prev => prev.filter(x => x.id !== m.id))} sx={{ fontSize: 12 }} />
+            ))}
+          </Box>
+        )}
+
+        <Box sx={{ mt: 1.5, maxHeight: 260, overflowY: 'auto', borderRadius: 2, border: '1px solid #E0E0E0' }}>
+          {loading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={24} /></Box>
+          ) : apiUsers.filter(u => String(u.id) !== myUserId).length === 0 ? (
+            <Typography variant="caption" color="#999" sx={{ display: 'block', textAlign: 'center', py: 3 }}>No users found</Typography>
+          ) : (
+            <List disablePadding>
+              {apiUsers.filter(u => String(u.id) !== myUserId).map(u => {
+                const isMember = members.some(m => m.id === String(u.id));
+                return (
+                  <ListItemButton key={u.id}
+                    onClick={() => type === 'direct' ? startDirect(u) : toggleMember(u)}
+                    selected={isMember}
+                    sx={{ py: 1, px: 1.5, '&.Mui-selected': { bgcolor: '#EAF0F8' } }}
+                  >
+                    <ListItemAvatar sx={{ minWidth: 44 }}>
+                      <Avatar src={u.profilePhotoSignedUrl} sx={{ width: 34, height: 34, bgcolor: stringToColor(`${u.firstName} ${u.lastName}`), fontSize: 13 }}>
+                        {initials(`${u.firstName} ${u.lastName}`)}
+                      </Avatar>
+                    </ListItemAvatar>
+                    <ListItemText
+                      primary={<Typography variant="body2" fontWeight={600} fontSize={13}>{u.firstName} {u.lastName}</Typography>}
+                      secondary={<Typography variant="caption" color="#888" fontSize={11}>{u.role ?? u.email}</Typography>}
+                    />
+                    {type === 'group' && isMember && (
+                      <Box sx={{ width: 18, height: 18, bgcolor: LI_BLUE, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <CloseIcon sx={{ fontSize: 11, color: '#fff' }} />
+                      </Box>
+                    )}
+                  </ListItemButton>
+                );
+              })}
+            </List>
+          )}
+        </Box>
+      </DialogContent>
+
+      {type === 'group' && (
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={handleClose} sx={{ textTransform: 'none', color: '#555' }}>Cancel</Button>
+          <Button variant="contained" onClick={startGroup}
+            disabled={!groupName.trim() || members.length === 0}
+            sx={{ textTransform: 'none', fontWeight: 700, bgcolor: LI_BLUE, borderRadius: 5, px: 3, '&:hover': { bgcolor: '#004aad' } }}
+          >
+            Create group ({members.length})
+          </Button>
+        </DialogActions>
+      )}
+    </Dialog>
+  );
+};
+
+// ── Main ChatPage ─────────────────────────────────────────────────────────────
 
 const ChatPage: React.FC = () => {
-  const storedUser = localStorage.getItem('userId') || localStorage.getItem('user_id') || '';
+  const { user }  = useAuth();
+  const navigate  = useNavigate();
 
-  const [userId, setUserId]         = useState(storedUser);
-  const [userInput, setUserInput]   = useState(storedUser);
-  const [userSet, setUserSet]       = useState(!!storedUser);
-  const [rooms, setRooms]           = useState<Room[]>([]);
-  const [activeRoom, setActiveRoom] = useState<Room | null>(null);
-  const [newRoom, setNewRoom]       = useState('');
-  const [search, setSearch]         = useState('');
-  const [mobileView, setMobileView] = useState<'sidebar' | 'chat'>('sidebar');
+  const userId      = user ? String(user.id) : '';
 
-  // ── Step 1: set user identity ──────────────────────────────────────────────
-  if (!userSet) {
-    return (
-      <Box sx={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', bgcolor: '#f0f2f5' }}>
-        <Box sx={{
-          bgcolor: '#fff', borderRadius: 3, p: 4, width: 340,
-          boxShadow: '0 4px 24px rgba(0,0,0,0.10)',
-          display: 'flex', flexDirection: 'column', gap: 2,
-        }}>
-          <Typography variant="h6" fontWeight={700} textAlign="center">Welcome to ZPC Chat</Typography>
-          <Typography variant="body2" color="text.secondary" textAlign="center">
-            Enter your user ID to start chatting
-          </Typography>
-          <TextField
-            label="Your User ID"
-            value={userInput}
-            onChange={e => setUserInput(e.target.value)}
-            fullWidth size="small"
-            placeholder="e.g. rohit123"
-            onKeyDown={e => {
-              if (e.key === 'Enter' && userInput.trim()) {
-                setUserId(userInput.trim());
-                localStorage.setItem('userId', userInput.trim());
-                setUserSet(true);
-              }
-            }}
-          />
-          <Box
-            component="button"
-            onClick={() => {
-              if (!userInput.trim()) return;
-              setUserId(userInput.trim());
-              localStorage.setItem('userId', userInput.trim());
-              setUserSet(true);
-            }}
-            sx={{
-              bgcolor: '#25D366', color: '#fff', border: 'none', borderRadius: 2,
-              py: 1.2, fontSize: 15, fontWeight: 600, cursor: 'pointer',
-              '&:hover': { bgcolor: '#1ebe5d' },
-            }}
-          >
-            Continue →
-          </Box>
-        </Box>
-      </Box>
-    );
-  }
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeId, setActiveId]           = useState<string | null>(null);
+  const [search, setSearch]               = useState('');
+  const [filter, setFilter]               = useState<'all' | 'groups'>('all');
+  const [newDlgOpen, setNewDlgOpen]       = useState(false);
+  const [mobileView, setMobileView]       = useState<'sidebar' | 'chat'>('sidebar');
 
-  // ── Join / create room ──────────────────────────────────────────────────────
-  const joinRoom = () => {
-    const id = newRoom.trim();
-    if (!id) return;
-    const room: Room = { id, label: id };
-    if (!rooms.find(r => r.id === id)) setRooms(prev => [room, ...prev]);
-    setActiveRoom(room);
-    setNewRoom('');
+  const activeConv = conversations.find(c => c.id === activeId) ?? null;
+
+  const openConversation = (conv: Conversation) => {
+    setActiveId(conv.id);
+    setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unread: 0 } : c));
     setMobileView('chat');
   };
 
-  const openRoom = (room: Room) => {
-    setActiveRoom(room);
+  const handleNewConv = useCallback((conv: Conversation) => {
+    setConversations(prev => {
+      if (prev.some(c => c.id === conv.id)) return prev;
+      return [conv, ...prev];
+    });
+    setActiveId(conv.id);
     setMobileView('chat');
-  };
+  }, []);
 
-  const filteredRooms = rooms.filter(r =>
-    r.label.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = conversations.filter(c => {
+    const matchFilter = filter === 'all' || c.type === 'group';
+    const matchSearch = c.label.toLowerCase().includes(search.toLowerCase());
+    return matchFilter && matchSearch;
+  });
 
-  // ── Layout ─────────────────────────────────────────────────────────────────
   return (
-    <Box sx={{ display: 'flex', height: '100vh', bgcolor: '#f0f2f5', overflow: 'hidden' }}>
+    <Box sx={{ display: 'flex', height: '100vh', bgcolor: LI_BG, overflow: 'hidden', fontFamily: 'Inter, Roboto, Arial, sans-serif' }}>
 
       {/* ── Sidebar ── */}
       <Box sx={{
@@ -117,152 +309,142 @@ const ChatPage: React.FC = () => {
         display: { xs: mobileView === 'sidebar' ? 'flex' : 'none', md: 'flex' },
         flexDirection: 'column',
         bgcolor: '#fff',
-        borderRight: '1px solid #e0e0e0',
+        borderRight: '1px solid #E0E0E0',
         flexShrink: 0,
       }}>
-        {/* Sidebar header */}
-        <Box sx={{ bgcolor: '#128C7E', px: 2, py: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <Avatar sx={{ width: 36, height: 36, bgcolor: stringToColor(userId), fontSize: 14 }}>
-              {userId.slice(0, 2).toUpperCase()}
-            </Avatar>
-            <Typography variant="subtitle2" fontWeight={700} color="#fff">{userId}</Typography>
+        {/* Header */}
+        <Box sx={{ px: 2, pt: 2, pb: 1.5, borderBottom: '1px solid #E8E8E8' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Tooltip title="Back to Home">
+                <IconButton size="small" onClick={() => navigate('/home')} sx={{ color: '#555' }}>
+                  <ArrowBackIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <Typography variant="h6" fontWeight={700} fontSize={20} color="#000">Messaging</Typography>
+            </Box>
+            <Tooltip title="New message">
+              <IconButton size="small" onClick={() => setNewDlgOpen(true)} sx={{ color: '#555', '&:hover': { bgcolor: LI_BG, color: LI_BLUE } }}>
+                <EditIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
           </Box>
-          <IconButton size="small" title="New chat" onClick={() => document.getElementById('new-room-input')?.focus()}>
-            <AddCommentOutlinedIcon sx={{ color: '#fff', fontSize: 20 }} />
-          </IconButton>
-        </Box>
 
-        {/* Search bar */}
-        <Box sx={{ px: 1.5, py: 1, bgcolor: '#f0f2f5' }}>
           <TextField
-            fullWidth size="small"
-            placeholder="Search rooms"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon sx={{ fontSize: 18, color: '#aaa' }} />
-                </InputAdornment>
-              ),
-            }}
+            fullWidth size="small" placeholder="Search messages"
+            value={search} onChange={e => setSearch(e.target.value)}
+            InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ fontSize: 18, color: '#aaa' }} /></InputAdornment> }}
             sx={{
-              bgcolor: '#fff', borderRadius: 5,
-              '& .MuiOutlinedInput-root': { borderRadius: 5, fontSize: 13 },
-              '& fieldset': { border: 'none' },
+              '& .MuiOutlinedInput-root': {
+                borderRadius: 2, bgcolor: LI_BG, fontSize: 13,
+                '& fieldset': { border: '1px solid #E0E0E0' },
+                '&:hover fieldset': { borderColor: '#aaa' },
+                '&.Mui-focused fieldset': { borderColor: LI_BLUE },
+              },
             }}
           />
+
+          <Box sx={{ display: 'flex', gap: 0.5, mt: 1.5 }}>
+            {(['all', 'groups'] as const).map(f => (
+              <Box key={f} onClick={() => setFilter(f)} sx={{
+                px: 1.5, py: 0.5, borderRadius: 5, cursor: 'pointer', fontSize: 13, fontWeight: 600, userSelect: 'none',
+                bgcolor: filter === f ? '#EAF0F8' : 'transparent',
+                color: filter === f ? LI_BLUE : '#666',
+                border: `1px solid ${filter === f ? LI_BLUE : 'transparent'}`,
+                '&:hover': { bgcolor: LI_BG },
+              }}>
+                {f === 'all' ? 'All' : 'Groups'}
+              </Box>
+            ))}
+          </Box>
         </Box>
 
-        {/* New room input */}
-        <Box sx={{ px: 1.5, pb: 1, bgcolor: '#f0f2f5' }}>
-          <TextField
-            id="new-room-input"
-            fullWidth size="small"
-            placeholder="Enter room ID and press Enter"
-            value={newRoom}
-            onChange={e => setNewRoom(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && joinRoom()}
-            InputProps={{
-              endAdornment: newRoom.trim() ? (
-                <InputAdornment position="end">
-                  <IconButton size="small" onClick={joinRoom}>
-                    <AddCommentOutlinedIcon sx={{ fontSize: 16, color: '#128C7E' }} />
-                  </IconButton>
-                </InputAdornment>
-              ) : undefined,
-            }}
-            sx={{
-              bgcolor: '#fff', borderRadius: 5,
-              '& .MuiOutlinedInput-root': { borderRadius: 5, fontSize: 13 },
-              '& fieldset': { border: 'none' },
-            }}
-          />
-        </Box>
-
-        <Divider />
-
-        {/* Room list */}
+        {/* List */}
         <Box sx={{ flex: 1, overflowY: 'auto' }}>
-          {filteredRooms.length === 0 ? (
-            <Box sx={{ textAlign: 'center', mt: 6, px: 3, color: '#aaa' }}>
-              <Typography variant="body2">No rooms yet.</Typography>
-              <Typography variant="caption">Type a room ID above and press Enter to join.</Typography>
+          {filtered.length === 0 ? (
+            <Box sx={{ textAlign: 'center', mt: 8, px: 4 }}>
+              <Box sx={{ fontSize: 48, mb: 1 }}>💬</Box>
+              <Typography variant="body2" fontWeight={600} color="#333" mb={0.5}>No conversations yet</Typography>
+              <Typography variant="caption" color="#888" lineHeight={1.5}>
+                Click the <b>pencil icon</b> to start a direct message or create a group.
+              </Typography>
             </Box>
           ) : (
             <List disablePadding>
-              {filteredRooms.map(room => (
-                <React.Fragment key={room.id}>
-                  <ListItemButton
-                    selected={activeRoom?.id === room.id}
-                    onClick={() => openRoom(room)}
-                    sx={{
-                      py: 1.5, px: 2,
-                      '&.Mui-selected': { bgcolor: '#f0f2f5' },
-                      '&:hover': { bgcolor: '#f5f5f5' },
-                    }}
-                  >
-                    <ListItemAvatar>
-                      <Avatar sx={{ bgcolor: stringToColor(room.id), width: 46, height: 46, fontSize: 16 }}>
-                        {room.id.slice(0, 2).toUpperCase()}
-                      </Avatar>
-                    </ListItemAvatar>
-                    <ListItemText
-                      primary={<Typography variant="subtitle2" fontWeight={600} noWrap>{room.label}</Typography>}
-                      secondary={<Typography variant="caption" color="text.secondary">Tap to open</Typography>}
-                    />
-                  </ListItemButton>
-                  <Divider variant="inset" component="li" />
-                </React.Fragment>
+              {filtered.map(conv => (
+                <ConvItem key={conv.id} conv={conv} active={conv.id === activeId} onClick={() => openConversation(conv)} />
               ))}
             </List>
           )}
         </Box>
       </Box>
 
-      {/* ── Chat panel ── */}
+      {/* ── Conversation Panel ── */}
       <Box sx={{
         flex: 1,
         display: { xs: mobileView === 'chat' ? 'flex' : 'none', md: 'flex' },
         flexDirection: 'column',
         overflow: 'hidden',
+        bgcolor: '#fff',
       }}>
-        {activeRoom ? (
+        {activeConv ? (
           <>
-            {/* Chat header */}
-            <Box sx={{ bgcolor: '#128C7E', px: 2, py: 1, display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
-              <IconButton
-                size="small"
-                sx={{ display: { xs: 'inline-flex', md: 'none' }, color: '#fff' }}
-                onClick={() => setMobileView('sidebar')}
-              >
-                <ArrowBackIcon />
-              </IconButton>
-              <Avatar sx={{ bgcolor: stringToColor(activeRoom.id), width: 38, height: 38, fontSize: 14 }}>
-                {activeRoom.id.slice(0, 2).toUpperCase()}
-              </Avatar>
-              <Box>
-                <Typography variant="subtitle2" fontWeight={700} color="#fff">{activeRoom.label}</Typography>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.75)', fontSize: 11 }}>
-                  room · {userId}
-                </Typography>
+            {/* Header */}
+            <Box sx={{ px: 2, py: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #E8E8E8', flexShrink: 0 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <IconButton size="small" sx={{ display: { xs: 'inline-flex', md: 'none' }, color: '#555' }} onClick={() => setMobileView('sidebar')}>
+                  <ArrowBackIcon />
+                </IconButton>
+                <Box sx={{ position: 'relative' }}>
+                  <Avatar sx={{ bgcolor: stringToColor(activeConv.label), width: 44, height: 44, fontWeight: 700, fontSize: 16 }}>
+                    {initials(activeConv.label)}
+                  </Avatar>
+                  <Box sx={{ position: 'absolute', bottom: 1, right: 1, width: 11, height: 11, borderRadius: '50%', bgcolor: '#2ECC71', border: '2px solid #fff' }} />
+                </Box>
+                <Box>
+                  <Typography fontWeight={700} fontSize={15} color="#000">{activeConv.label}</Typography>
+                  <Typography fontSize={12} color="#777">
+                    {activeConv.type === 'group' ? `${activeConv.participants.length} members` : 'Connected'}
+                  </Typography>
+                </Box>
+              </Box>
+              <Box sx={{ display: 'flex', gap: 0.5 }}>
+                <Tooltip title="Video call">
+                  <IconButton size="small" sx={{ color: '#555', '&:hover': { color: LI_BLUE } }}><VideoCallOutlinedIcon /></IconButton>
+                </Tooltip>
+                <Tooltip title="Conversation info">
+                  <IconButton size="small" sx={{ color: '#555', '&:hover': { color: LI_BLUE } }}><InfoOutlinedIcon /></IconButton>
+                </Tooltip>
+                <Tooltip title="More options">
+                  <IconButton size="small" sx={{ color: '#555', '&:hover': { color: LI_BLUE } }}><MoreHorizIcon /></IconButton>
+                </Tooltip>
               </Box>
             </Box>
 
-            {/* Chat messages + input */}
+            {/* Messages */}
             <Box sx={{ flex: 1, overflow: 'hidden' }}>
-              <Chat roomId={activeRoom.id} userId={userId} />
+              <Chat roomId={activeConv.id} userId={userId} />
             </Box>
           </>
         ) : (
-          <Box sx={{ m: 'auto', textAlign: 'center', color: '#aaa', userSelect: 'none' }}>
-            <Box sx={{ fontSize: 80, mb: 2 }}>💬</Box>
-            <Typography variant="h6" fontWeight={600} color="#666">ZPC Chat</Typography>
-            <Typography variant="body2">Select a room or enter a room ID to start chatting</Typography>
+          <Box sx={{ m: 'auto', textAlign: 'center', maxWidth: 380, px: 3 }}>
+            <Box sx={{ width: 96, height: 96, borderRadius: '50%', bgcolor: LI_BG, display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 2 }}>
+              <Box sx={{ fontSize: 44 }}>💬</Box>
+            </Box>
+            <Typography variant="h6" fontWeight={700} color="#000" mb={1}>Your inbox</Typography>
+            <Typography variant="body2" color="#666" lineHeight={1.6} mb={2.5}>
+              Select a conversation or start a new one to connect with other ZPC members.
+            </Typography>
+            <Button variant="outlined" startIcon={<EditIcon />} onClick={() => setNewDlgOpen(true)}
+              sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 5, px: 3, borderColor: LI_BLUE, color: LI_BLUE, '&:hover': { bgcolor: '#EAF0F8', borderColor: LI_BLUE } }}
+            >
+              New message
+            </Button>
           </Box>
         )}
       </Box>
+
+      <NewConvDialog open={newDlgOpen} onClose={() => setNewDlgOpen(false)} onStart={handleNewConv} myUserId={userId} />
     </Box>
   );
 };

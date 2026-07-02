@@ -20,7 +20,7 @@ import {
   MenuItem,
   CircularProgress,
 } from '@mui/material';
-// import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import HomeIcon from '@mui/icons-material/Home';
 import PeopleIcon from '@mui/icons-material/People';
 import GroupIcon from '@mui/icons-material/Group';
@@ -36,6 +36,9 @@ import ShareIcon from '@mui/icons-material/Share';
 import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
 import ProfilePage from './ProfilePage';
+
+const GRAPHQL_URL = process.env.REACT_APP_GRAPHQL_URL || 'http://localhost:8080/api/v1/graphql';
+const API_GATEWAY_URL = (process.env.REACT_APP_API_GATEWAY_URL || 'http://localhost:8080').replace(/\/$/, '');
 
 
 
@@ -671,6 +674,7 @@ const CommentsModal = memo(({
 });
 
 const Home = () => {
+  const navigate = useNavigate();
   const { user: authUser, isAuthenticated } = useAuth();
   const { data, loading, error, refetch } = useQuery(SEARCH_POSTS, {
     variables: { page: 1, limit: 10 },
@@ -714,6 +718,9 @@ const Home = () => {
   const commentsRefreshTimerRef = useRef<NodeJS.Timeout | null>(null);
   // Authenticated user object (from localStorage) – do not repurpose for viewing profiles
   const [currentUser, setCurrentUser] = useState(getUserData());
+  // Ref to track currentUser without causing effect re-runs
+  const currentUserRef = useRef(currentUser);
+  useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
   // The user whose profile we are viewing from the feed
   const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
 
@@ -748,7 +755,7 @@ const Home = () => {
         
         // Use direct fetch instead of Apollo Client to avoid the invariant violation
         console.log('Making direct GraphQL request...');
-        const response = await fetch('http://localhost:8000/api/v1/graphql', {
+        const response = await fetch(GRAPHQL_URL, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -811,15 +818,13 @@ const Home = () => {
   useEffect(() => {
     const checkUserData = () => {
       const userData = getUserData();
-      console.log('checkUserData - userData:', userData);
-      console.log('checkUserData - currentUser:', currentUser);
-      if (JSON.stringify(userData) !== JSON.stringify(currentUser)) {
+      if (JSON.stringify(userData) !== JSON.stringify(currentUserRef.current)) {
         console.log('checkUserData - updating currentUser with new data');
         setCurrentUser(userData);
       }
     };
 
-    // Fetch fresh user data on mount
+    // Fetch fresh user data once on mount
     fetchAndUpdateUserData();
 
     // Check user data on focus (when user comes back to the tab)
@@ -832,7 +837,7 @@ const Home = () => {
       window.removeEventListener('focus', checkUserData);
       clearInterval(userCheckInterval);
     };
-  }, [currentUser, fetchAndUpdateUserData]);
+  }, [fetchAndUpdateUserData]); // removed currentUser – use currentUserRef to avoid infinite loop
 
   // Auto-refresh functionality (every 5 minutes)
   useEffect(() => {
@@ -977,7 +982,7 @@ const Home = () => {
           
           console.log('Requesting presigned URL with params:', qs);
           
-          const presignRes = await fetch(`http://localhost:8000/api/v1/uploads/presign-post-media?${qs}`, {
+          const presignRes = await fetch(`${API_GATEWAY_URL}/api/v1/uploads/presign-post-media?${qs}`, {
             headers: {
               'Authorization': `Bearer ${token}`,
               'Content-Type': 'application/json'
@@ -1312,7 +1317,7 @@ const Home = () => {
           </Box>
           {/* Notification & Profile */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <IconButton title="Messages" sx={{ transition: 'background 0.2s', '&:hover': { bgcolor: '#EEF2FB' } }}>
+            <IconButton title="Messages" onClick={() => navigate('/chat')} sx={{ transition: 'background 0.2s', '&:hover': { bgcolor: '#EEF2FB' } }}>
               <MessageIcon sx={{ color: '#2563EB' }} />
             </IconButton>
             <IconButton title="Notifications" sx={{ transition: 'background 0.2s', '&:hover': { bgcolor: '#EEF2FB' } }}>

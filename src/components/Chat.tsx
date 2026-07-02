@@ -82,7 +82,13 @@ const Chat: React.FC<ChatProps> = ({ roomId, userId }) => {
           setMessages(prev => prev.map(m =>
             m.messageId === msg.messageId ? { ...m, reactionEmoji: msg.reactionEmoji } : m));
         } else if (msg.eventType === 0 && msg.text) {
-          setMessages(prev => [...prev, msg]);
+          setMessages(prev => {
+            // Update existing optimistic message or add new one
+            if (prev.some(m => m.messageId === msg.messageId)) {
+              return prev.map(m => m.messageId === msg.messageId ? { ...m, ...msg } : m);
+            }
+            return [...prev, msg];
+          });
         }
       } catch { /* ignore malformed frames */ }
     };
@@ -119,7 +125,14 @@ const Chat: React.FC<ChatProps> = ({ roomId, userId }) => {
   const send = () => {
     const text = input.trim();
     if (!text || wsRef.current?.readyState !== WebSocket.OPEN) return;
-    wsRef.current.send(JSON.stringify({ text }));
+    const messageId = crypto.randomUUID();
+    const now = Date.now();
+    // Show message immediately (optimistic)
+    setMessages(prev => [...prev, {
+      messageId, userId, text, sentAt: now,
+      eventType: 0, status: 0, isDeleted: false,
+    }]);
+    wsRef.current.send(JSON.stringify({ text, messageId }));
     setInput('');
     if (typingTimer.current) clearTimeout(typingTimer.current);
     sendEvent(2);
