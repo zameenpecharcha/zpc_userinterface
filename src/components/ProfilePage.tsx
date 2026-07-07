@@ -25,6 +25,7 @@ import MessageIcon from '@mui/icons-material/Message';
 import CloseIcon from '@mui/icons-material/Close';
 import { useApolloClient } from '@apollo/client';
 import { GET_POSTS_BY_USER } from '../graphql/posts';
+import { GRAPHQL_URL } from '../config/api';
 
 const interFont = {
     fontFamily: 'Inter, Roboto, Arial, sans-serif',
@@ -684,7 +685,7 @@ const apiService = {
   async graphqlRequest(query: string, variables: Record<string, any> = {}) {
     try {
       console.log('Making GraphQL request:', { query, variables });
-      const response = await fetch('http://localhost:8000/api/v1/graphql', {
+      const response = await fetch(GRAPHQL_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

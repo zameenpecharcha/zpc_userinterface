@@ -1,7 +1,8 @@
 import { ApolloClient, InMemoryCache } from '@apollo/client';
+import { GRAPHQL_URL } from './config/api';
 
 const authClient = new ApolloClient({
-  uri: 'http://localhost:8000/api/v1/auth/graphql',
+  uri: GRAPHQL_URL,
   cache: new InMemoryCache(),
 });
 

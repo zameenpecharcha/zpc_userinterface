@@ -2,6 +2,29 @@
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
+## Environment variables
+
+API URLs are configured via `REACT_APP_*` variables (see `.env.example`):
+
+| Variable | Purpose |
+|----------|---------|
+| `REACT_APP_API_GATEWAY_URL` | Base gateway URL |
+| `REACT_APP_GRAPHQL_URL` | GraphQL endpoint (optional; derived from gateway URL) |
+| `REACT_APP_WS_URL` | WebSocket chat URL (optional; derived from gateway URL) |
+| `REACT_APP_UPLOAD_PRESIGN_URL` | S3 presign endpoint (optional) |
+
+**Local dev:** copy `.env.example` to `.env` and use `http://localhost:8000`.
+
+**Docker cloud build:**
+
+```bash
+docker build -t zpc-ui \
+  --build-arg REACT_APP_API_GATEWAY_URL=https://api-gateway-7j51.onrender.com \
+  --build-arg REACT_APP_GRAPHQL_URL=https://api-gateway-7j51.onrender.com/api/v1/graphql \
+  --build-arg REACT_APP_WS_URL=wss://api-gateway-7j51.onrender.com/api/v1/ws/chat \
+  .
+```
+
 ## Available Scripts
 
 In the project directory, you can run:

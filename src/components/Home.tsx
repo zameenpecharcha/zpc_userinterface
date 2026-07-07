@@ -4,6 +4,7 @@ import { SEARCH_POSTS, CREATE_POST } from '../graphql/posts';
 import CreatePost from './CreatePost';
 import { PostService } from '../services/postService';
 import { useAuth } from '../contexts/AuthContext';
+import { GRAPHQL_URL, UPLOAD_PRESIGN_URL } from '../config/api';
 // import { styled } from '@mui/material/styles';
 import {
   AppBar,
@@ -748,7 +749,7 @@ const Home = () => {
         
         // Use direct fetch instead of Apollo Client to avoid the invariant violation
         console.log('Making direct GraphQL request...');
-        const response = await fetch('http://localhost:8000/api/v1/graphql', {
+        const response = await fetch(GRAPHQL_URL, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -977,7 +978,7 @@ const Home = () => {
           
           console.log('Requesting presigned URL with params:', qs);
           
-          const presignRes = await fetch(`http://localhost:8000/api/v1/uploads/presign-post-media?${qs}`, {
+          const presignRes = await fetch(`${UPLOAD_PRESIGN_URL}?${qs}`, {
             headers: {
               'Authorization': `Bearer ${token}`,
               'Content-Type': 'application/json'

@@ -1,8 +1,9 @@
 import { ApolloClient, InMemoryCache, createHttpLink, from } from '@apollo/client';
 import { setContext } from '@apollo/client/link/context';
 import { onError } from '@apollo/client/link/error';
+import { GRAPHQL_URL } from './config/api';
 
-const GRAPHQL_URL = process.env.REACT_APP_GRAPHQL_URL || 'http://localhost:8000/api/v1/graphql';
+export { WS_CHAT_URL } from './config/api';
 
 // Create HTTP link
 const httpLink = createHttpLink({
@@ -77,7 +78,5 @@ const client = new ApolloClient({
     },
   },
 });
-
-export const WS_CHAT_URL = process.env.REACT_APP_WS_URL || 'ws://localhost:8000/api/v1/ws/chat';
 
 export default client;
