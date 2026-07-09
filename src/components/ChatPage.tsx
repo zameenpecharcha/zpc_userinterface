@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   Box, Typography, TextField, IconButton, Avatar, InputAdornment,
   Divider, List, ListItemButton, ListItemAvatar, ListItemText,
@@ -13,7 +13,6 @@ import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
 import GroupAddOutlinedIcon from '@mui/icons-material/GroupAddOutlined';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
-import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -133,13 +132,22 @@ const NewConvDialog: React.FC<{
 }> = ({ open, onClose, onStart, myUserId }) => {
   const [type, setType]             = useState<ConvType>('direct');
   const [userSearch, setUserSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [groupName, setGroupName]   = useState('');
   const [members, setMembers]       = useState<Array<{ id: string; label: string }>>([]);
 
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(userSearch.trim()), 350);
+    return () => clearTimeout(timer);
+  }, [userSearch]);
+
+  const shouldSearch = !open ? false : (debouncedSearch.length === 0 || debouncedSearch.length >= 2);
+
   const { data, loading } = useQuery(GET_USERS, {
-    variables: { search: userSearch, page: 1, limit: 30 },
-    skip: !open,
-    fetchPolicy: 'network-only',
+    variables: { search: debouncedSearch, page: 1, limit: 30 },
+    skip: !shouldSearch,
+    fetchPolicy: 'cache-first',
+    notifyOnNetworkStatusChange: true,
   });
 
   const apiUsers: Array<{ id: number; firstName: string; lastName: string; email: string; role?: string; profilePhotoSignedUrl?: string }> =

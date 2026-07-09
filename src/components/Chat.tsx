@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useApolloClient } from '@apollo/client';
 import {
   Box, Typography, TextField, IconButton, Avatar,
 } from '@mui/material';
@@ -6,6 +7,7 @@ import SendIcon from '@mui/icons-material/Send';
 import DoneAllIcon from '@mui/icons-material/DoneAll';
 import DoneIcon from '@mui/icons-material/Done';
 import { WS_CHAT_URL } from '../apollo-client';
+import { GET_CHAT_MESSAGES } from '../graphql/chat';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -42,28 +44,127 @@ const stringToColor = (s: string) => {
 
 const initials = (id: string) => id.slice(0, 2).toUpperCase();
 
+const toAlternateDmRoomId = (id: string): string | null => {
+  if (id.startsWith('dm-')) {
+    const parts = id.split('-');
+    if (parts.length === 3 && parts[1] && parts[2]) return `dm:${parts[1]}:${parts[2]}`;
+  }
+  if (id.startsWith('dm:')) {
+    const parts = id.split(':');
+    if (parts.length === 3 && parts[1] && parts[2]) return `dm-${parts[1]}-${parts[2]}`;
+  }
+  return null;
+};
+
+const mapHistory = (rows: any[]): ChatMessage[] => (
+  [...rows]
+    .sort((a, b) => a.sentAt - b.sentAt)
+    .map((m) => ({
+      messageId: m.messageId,
+      userId: m.userId,
+      text: m.text,
+      sentAt: m.sentAt,
+      eventType: m.eventType,
+      status: m.status,
+      isDeleted: m.isDeleted,
+      reactionEmoji: m.reactionEmoji,
+      replyToMessageId: m.replyToMessageId,
+      mediaUrl: m.mediaUrl,
+      mediaName: m.mediaName,
+    }))
+);
+
 // ── Chat component ───────────────────────────────────────────────────────────
 
 const Chat: React.FC<ChatProps> = ({ roomId, userId }) => {
+  const apollo = useApolloClient();
   const [messages, setMessages]   = useState<ChatMessage[]>([]);
   const [input, setInput]         = useState('');
   const [connected, setConnected] = useState(false);
+  const [resolvedRoomId, setResolvedRoomId] = useState(roomId);
   const [typingSet, setTypingSet] = useState<Set<string>>(new Set());
   const wsRef          = useRef<WebSocket | null>(null);
   const bottomRef      = useRef<HTMLDivElement | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const typingTimer    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shouldReconnectRef = useRef(true);
+
+  useEffect(() => {
+    setResolvedRoomId(roomId);
+  }, [roomId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadHistory = async () => {
+      if (!roomId || !userId) {
+        setMessages([]);
+        return;
+      }
+
+      const candidates = [roomId];
+      const alternate = toAlternateDmRoomId(roomId);
+      if (alternate && alternate !== roomId) candidates.push(alternate);
+
+      let matchedRoomId = roomId;
+      let matchedMessages: ChatMessage[] = [];
+
+      for (const candidate of candidates) {
+        try {
+          const result = await apollo.query({
+            query: GET_CHAT_MESSAGES,
+            variables: { roomId: candidate, userId, limit: 50, beforeUnixMs: 0 },
+            fetchPolicy: 'network-only',
+          });
+
+          const rows = result.data?.getMessages?.messages ?? [];
+          const mapped = mapHistory(rows);
+          if (mapped.length > 0) {
+            matchedRoomId = candidate;
+            matchedMessages = mapped;
+            break;
+          }
+          if (candidate === roomId) {
+            matchedMessages = mapped;
+          }
+        } catch (err) {
+          // Ignore per-candidate errors and try the fallback ID.
+          console.error('Chat history load failed', { candidate, roomId, userId, err });
+        }
+      }
+
+      if (cancelled) return;
+      setResolvedRoomId(matchedRoomId);
+      setMessages(matchedMessages);
+    };
+
+    loadHistory();
+    return () => {
+      cancelled = true;
+    };
+  }, [apollo, roomId, userId]);
+
+  useEffect(() => {
+    if (!roomId || !userId) {
+      setMessages([]);
+    }
+  }, [roomId, userId]);
 
   // ── WebSocket ──────────────────────────────────────────────────────────────
 
   const connect = useCallback(() => {
-    const url = `${WS_CHAT_URL}/${roomId}/${userId}`;
+    shouldReconnectRef.current = true;
+    const token = localStorage.getItem('token') || '';
+    const url = token
+      ? `${WS_CHAT_URL}/${resolvedRoomId}/${userId}?token=${encodeURIComponent(token)}`
+      : `${WS_CHAT_URL}/${resolvedRoomId}/${userId}`;
     const ws = new WebSocket(url);
     wsRef.current = ws;
 
     ws.onopen  = () => setConnected(true);
-    ws.onclose = () => {
+    ws.onclose = (ev) => {
       setConnected(false);
+      if (ev.code === 1008) return;
+      if (!shouldReconnectRef.current) return;
       reconnectTimer.current = setTimeout(connect, 3000);
     };
     ws.onerror = () => ws.close();
@@ -92,11 +193,12 @@ const Chat: React.FC<ChatProps> = ({ roomId, userId }) => {
         }
       } catch { /* ignore malformed frames */ }
     };
-  }, [roomId, userId]);
+  }, [resolvedRoomId, userId]);
 
   useEffect(() => {
     connect();
     return () => {
+      shouldReconnectRef.current = false;
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
       wsRef.current?.close();
     };
@@ -106,18 +208,10 @@ const Chat: React.FC<ChatProps> = ({ roomId, userId }) => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, typingSet]);
 
-  // ── Typing ─────────────────────────────────────────────────────────────────
-
-  const sendEvent = (eventType: number) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN)
-      wsRef.current.send(JSON.stringify({ eventType }));
-  };
+  // Input is local-only while typing; websocket is used only on send.
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInput(e.target.value);
-    sendEvent(1);
-    if (typingTimer.current) clearTimeout(typingTimer.current);
-    typingTimer.current = setTimeout(() => sendEvent(2), 1500);
   };
 
   // ── Send ───────────────────────────────────────────────────────────────────
@@ -134,8 +228,6 @@ const Chat: React.FC<ChatProps> = ({ roomId, userId }) => {
     }]);
     wsRef.current.send(JSON.stringify({ text, messageId }));
     setInput('');
-    if (typingTimer.current) clearTimeout(typingTimer.current);
-    sendEvent(2);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
