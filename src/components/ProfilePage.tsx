@@ -11,6 +11,7 @@ import {
     Stack,
     CircularProgress,
     Alert,
+    Skeleton,
 } from '@mui/material';
 import Rating from '@mui/material/Rating';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -31,6 +32,25 @@ const GRAPHQL_URL = process.env.REACT_APP_GRAPHQL_URL || 'http://localhost:8080/
 const interFont = {
     fontFamily: 'Inter, Roboto, Arial, sans-serif',
 };
+
+const PostSkeleton = () => (
+  <Box sx={{ bgcolor: '#fff', borderRadius: 3, p: 3, mb: 3, boxShadow: '0 2px 12px rgba(37,99,235,0.08)' }}>
+    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+      <Skeleton variant="circular" width={44} height={44} sx={{ mr: 2 }} />
+      <Box sx={{ flex: 1 }}>
+        <Skeleton variant="text" width="30%" height={24} />
+        <Skeleton variant="text" width="20%" height={16} />
+      </Box>
+    </Box>
+    <Skeleton variant="text" width="60%" height={28} sx={{ mb: 1 }} />
+    <Skeleton variant="rectangular" height={160} sx={{ borderRadius: 2, mb: 2 }} />
+    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+      <Skeleton variant="rectangular" width={80} height={32} sx={{ borderRadius: 1 }} />
+      <Skeleton variant="rectangular" width={80} height={32} sx={{ borderRadius: 1 }} />
+      <Skeleton variant="rectangular" width={80} height={32} sx={{ borderRadius: 1 }} />
+    </Box>
+  </Box>
+);
 
 // Utility function to safely format dates
 const formatDate = (dateValue: any): string => {
@@ -142,6 +162,16 @@ const CommentItem: React.FC<{
     setReplyText,
     replying
 }) => {
+    const [animatingComments, setAnimatingComments] = useState<{ [id: number]: boolean }>({});
+
+    const handleLikeClick = (id: number) => {
+        setAnimatingComments(prev => ({ ...prev, [id]: true }));
+        setTimeout(() => {
+            setAnimatingComments(prev => ({ ...prev, [id]: false }));
+        }, 600);
+        onLikeComment(id);
+    };
+
         return (
             <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, bgcolor: '#F6F8FB', borderRadius: 3, p: 1.5, boxShadow: 1 }}>
                 <Avatar src={`https://randomuser.me/api/portraits/lego/${comment.userId % 10}.jpg`} sx={{ width: 32, height: 32 }} />
@@ -160,18 +190,29 @@ const CommentItem: React.FC<{
 
                     <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
                         <Button
-                            startIcon={<FavoriteBorderIcon />}
+                            startIcon={
+                                likedComments[comment.id] ? (
+                                    <FavoriteIcon
+                                        className={`liked-heart-icon ${animatingComments[comment.id] ? 'liked-heart-icon-clicked' : ''}`}
+                                    />
+                                ) : (
+                                    <FavoriteBorderIcon
+                                        className={animatingComments[comment.id] ? 'liked-heart-icon-clicked' : ''}
+                                        sx={{ color: '#6B7280' }}
+                                    />
+                                )
+                            }
                             sx={{
-                                color: likedComments[comment.id] ? '#fff' : '#EF4444',
-                                bgcolor: likedComments[comment.id] ? '#EF4444' : 'rgba(239,68,68,0.06)',
+                                color: '#374151',
+                                bgcolor: 'transparent',
                                 textTransform: 'none',
                                 fontWeight: 600,
                                 fontSize: 14,
                                 px: 1.5,
                                 borderRadius: 2,
-                                '&:hover': { bgcolor: 'rgba(239,68,68,0.18)' }
+                                '&:hover': { bgcolor: '#EEF2FB', color: '#EF4444' }
                             }}
-                            onClick={() => onLikeComment(comment.id)}
+                            onClick={() => handleLikeClick(comment.id)}
                             disabled={likingComment}
                         >
                             {commentLikeCounts[comment.id] !== undefined ? commentLikeCounts[comment.id] : comment.likeCount || 0}
@@ -201,10 +242,21 @@ const CommentItem: React.FC<{
                                         </Typography>
                                         <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
                                             <Button
-                                                startIcon={<FavoriteBorderIcon />}
+                                                startIcon={
+                                                    likedComments[reply.id] ? (
+                                                        <FavoriteIcon
+                                                            className={`liked-heart-icon ${animatingComments[reply.id] ? 'liked-heart-icon-clicked' : ''}`}
+                                                        />
+                                                    ) : (
+                                                        <FavoriteBorderIcon
+                                                            className={animatingComments[reply.id] ? 'liked-heart-icon-clicked' : ''}
+                                                            sx={{ color: '#6B7280' }}
+                                                        />
+                                                    )
+                                                }
                                                 sx={{
-                                                    color: likedComments[reply.id] ? '#fff' : '#EF4444',
-                                                    bgcolor: likedComments[reply.id] ? '#EF4444' : 'rgba(239,68,68,0.06)',
+                                                    color: '#374151',
+                                                    bgcolor: 'transparent',
                                                     textTransform: 'none',
                                                     fontWeight: 600,
                                                     fontSize: 12,
@@ -212,9 +264,9 @@ const CommentItem: React.FC<{
                                                     py: 0.5,
                                                     borderRadius: 1,
                                                     minHeight: 24,
-                                                    '&:hover': { bgcolor: 'rgba(239,68,68,0.18)' }
+                                                    '&:hover': { bgcolor: '#EEF2FB', color: '#EF4444' }
                                                 }}
-                                                onClick={() => onLikeComment(reply.id)}
+                                                onClick={() => handleLikeClick(reply.id)}
                                                 disabled={likingComment}
                                             >
                                                 {commentLikeCounts[reply.id] !== undefined ? commentLikeCounts[reply.id] : reply.likeCount || 0}
@@ -1022,6 +1074,15 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
     const [commentsModalOpen, setCommentsModalOpen] = useState<{ open: boolean; postId: string | null }>({ open: false, postId: null });
     const [likingPost, setLikingPost] = useState(false);
     const [likingComment, setLikingComment] = useState(false);
+    const [animatingPosts, setAnimatingPosts] = useState<{ [postId: string]: boolean }>({});
+
+    const handleLikePostWithAnimation = async (postId: string) => {
+        setAnimatingPosts(prev => ({ ...prev, [postId]: true }));
+        setTimeout(() => {
+            setAnimatingPosts(prev => ({ ...prev, [postId]: false }));
+        }, 600);
+        await toggleLike(postId);
+    };
 
     // Comments state
     const [commentsByPost, setCommentsByPost] = useState<{ [postId: string]: any[] }>({});
@@ -1761,9 +1822,11 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                 <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '2fr 1fr' }, gap: 3 }}>
                     <Box>
                         {postsLoading ? (
-                            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                                <CircularProgress />
-                            </Box>
+                            <Stack spacing={4}>
+                                <PostSkeleton />
+                                <PostSkeleton />
+                                <PostSkeleton />
+                            </Stack>
                         ) : posts.length === 0 ? (
                             <Box sx={{ bgcolor: '#fff', borderRadius: 3, p: 4, textAlign: 'center', boxShadow: '0 2px 12px rgba(37,99,235,0.08)' }}>
                                 <Typography variant="h6" sx={{ color: '#6B7280', mb: 1 }}>
@@ -1881,16 +1944,27 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
 
                                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
                                         <Button
-                                            startIcon={likedPosts[post.id] ? <FavoriteIcon /> : <FavoriteBorderIcon />}
+                                            startIcon={
+                                                likedPosts[post.id] ? (
+                                                    <FavoriteIcon
+                                                        className={`liked-heart-icon ${animatingPosts[post.id] ? 'liked-heart-icon-clicked' : ''}`}
+                                                    />
+                                                ) : (
+                                                    <FavoriteBorderIcon
+                                                        className={animatingPosts[post.id] ? 'liked-heart-icon-clicked' : ''}
+                                                        sx={{ color: '#6B7280' }}
+                                                    />
+                                                )
+                                            }
                                             size="small"
-                                            onClick={() => toggleLike(post.id)}
+                                            onClick={() => handleLikePostWithAnimation(post.id)}
                                             disabled={likingPost}
                                             sx={{
-                                                bgcolor: likedPosts[post.id] ? '#EF4444' : 'transparent',
-                                                color: likedPosts[post.id] ? '#fff' : '#374151',
+                                                bgcolor: 'transparent',
+                                                color: '#374151',
                                                 '&:hover': {
-                                                    bgcolor: likedPosts[post.id] ? '#EF4444' : '#EEF2FB',
-                                                    color: likedPosts[post.id] ? '#fff' : '#2563EB'
+                                                    bgcolor: '#EEF2FB',
+                                                    color: '#2563EB'
                                                 }
                                             }}
                                         >
