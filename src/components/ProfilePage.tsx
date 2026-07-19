@@ -24,8 +24,10 @@ import StarIcon from '@mui/icons-material/Star';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import MessageIcon from '@mui/icons-material/Message';
 import CloseIcon from '@mui/icons-material/Close';
-import { useApolloClient } from '@apollo/client';
+import { useApolloClient, useMutation } from '@apollo/client';
+import { useNavigate } from 'react-router-dom';
 import { GET_POSTS_BY_USER } from '../graphql/posts';
+import { CREATE_DM_ROOM_MUTATION } from '../graphql/chat';
 
 const GRAPHQL_URL = process.env.REACT_APP_GRAPHQL_URL || 'http://localhost:8080/api/v1/graphql';
 
@@ -1056,6 +1058,8 @@ const apiService = {
 };
 
 const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUserId, onOpenProfile }) => {
+    const navigate = useNavigate();
+    const [createDmRoom] = useMutation(CREATE_DM_ROOM_MUTATION);
     const [user, setUser] = useState<UserProfile | null>(null);
     const [posts, setPosts] = useState<Post[]>([]);
     const [reviews, setReviews] = useState<UserRating[]>([]);

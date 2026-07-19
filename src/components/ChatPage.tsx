@@ -14,11 +14,11 @@ import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
 import GroupAddOutlinedIcon from '@mui/icons-material/GroupAddOutlined';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import CloseIcon from '@mui/icons-material/Close';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useApolloClient, useQuery } from '@apollo/client';
 import { GET_USERS } from '../graphql/user';
-import { CREATE_DM_ROOM_MUTATION, CREATE_GROUP_ROOM_MUTATION } from '../graphql/chat';
+import { CREATE_DM_ROOM_MUTATION, CREATE_GROUP_ROOM_MUTATION, GET_USER_ROOMS } from '../graphql/chat';
 import Chat from './Chat';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -301,6 +301,7 @@ const NewConvDialog: React.FC<{
 const ChatPage: React.FC = () => {
   const { user }  = useAuth();
   const navigate  = useNavigate();
+  const location  = useLocation();
 
   const userId      = user ? String(user.id) : '';
 
@@ -310,6 +311,55 @@ const ChatPage: React.FC = () => {
   const [filter, setFilter]               = useState<'all' | 'groups'>('all');
   const [newDlgOpen, setNewDlgOpen]       = useState(false);
   const [mobileView, setMobileView]       = useState<'sidebar' | 'chat'>('sidebar');
+
+  // ── Load active rooms from server ─────────────────────────────────────────
+  const { data: roomsData, loading: roomsLoading } = useQuery(GET_USER_ROOMS, {
+    variables: { userId },
+    skip: !userId,
+    fetchPolicy: 'network-only',
+  });
+
+  useEffect(() => {
+    if (!roomsData?.getUserRooms) return;
+    const loaded: Conversation[] = roomsData.getUserRooms.map((r: any) => {
+      const isGroup = r.roomType === 1;
+      // For DMs derive label from the other participant's name
+      let label = r.name || '';
+      if (!isGroup && r.participants) {
+        const other = r.participants.find((p: any) => p.userId !== userId);
+        if (other) {
+          label = `${other.firstName} ${other.lastName}`.trim() || r.roomId;
+        }
+      }
+      if (!label) label = r.roomId;
+      return {
+        id: r.roomId,
+        type: isGroup ? ('group' as const) : ('direct' as const),
+        label,
+        participants: r.memberIds || [],
+        lastMessage: r.lastMessage || undefined,
+        lastTime: r.lastMessageAt || undefined,
+        unread: r.hasUnread ? 1 : 0,
+      };
+    });
+    setConversations(prev => {
+      // Merge: keep locally-added rooms not yet returned by server
+      const serverIds = new Set(loaded.map(c => c.id));
+      const localOnly = prev.filter(c => !serverIds.has(c.id));
+      return [...loaded, ...localOnly];
+    });
+  }, [roomsData, userId]);
+
+  // ── Auto-select room from router state (from ProfilePage / PropertyPage) ──
+  useEffect(() => {
+    const state = location.state as { autoSelectRoomId?: string } | null;
+    if (state?.autoSelectRoomId) {
+      setActiveId(state.autoSelectRoomId);
+      setMobileView('chat');
+      // Clear state so back-navigation doesn't re-trigger
+      window.history.replaceState({}, '');
+    }
+  }, [location.state]);
 
   const activeConv = conversations.find(c => c.id === activeId) ?? null;
 
@@ -395,7 +445,11 @@ const ChatPage: React.FC = () => {
 
         {/* List */}
         <Box sx={{ flex: 1, overflowY: 'auto' }}>
-          {filtered.length === 0 ? (
+          {roomsLoading && conversations.length === 0 ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', mt: 8 }}>
+              <CircularProgress size={32} sx={{ color: LI_BLUE }} />
+            </Box>
+          ) : filtered.length === 0 ? (
             <Box sx={{ textAlign: 'center', mt: 8, px: 4 }}>
               <Box sx={{ fontSize: 48, mb: 1 }}>💬</Box>
               <Typography variant="body2" fontWeight={600} color="#333" mb={0.5}>No conversations yet</Typography>

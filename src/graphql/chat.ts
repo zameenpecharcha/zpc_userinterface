@@ -43,3 +43,23 @@ export const CREATE_GROUP_ROOM_MUTATION = gql`
     }
   }
 `;
+
+export const GET_USER_ROOMS = gql`
+  query GetUserRooms($userId: String!) {
+    getUserRooms(userId: $userId) {
+      roomId
+      roomType
+      name
+      lastMessage
+      lastMessageAt
+      hasUnread
+      memberIds
+      participants {
+        userId
+        firstName
+        lastName
+        avatarUrl
+      }
+    }
+  }
+`;
