@@ -11,3 +11,52 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+/* Shiny Pulse & Glow Effect for Liked Hearts */
+@keyframes shinyHeart {
+  0% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 1px rgba(239, 68, 68, 0.4)) brightness(1);
+  }
+  50% {
+    transform: scale(1.05);
+    filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.8)) brightness(1.2) saturate(1.2);
+  }
+  100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 1px rgba(239, 68, 68, 0.4)) brightness(1);
+  }
+}
+
+/* Lively Bounce / Pop effect for click event */
+@keyframes heartClick {
+  0% {
+    transform: scale(1);
+  }
+  15% {
+    transform: scale(1.4) rotate(-10deg);
+  }
+  30% {
+    transform: scale(0.8) rotate(10deg);
+  }
+  45% {
+    transform: scale(1.2) rotate(-3deg);
+  }
+  60% {
+    transform: scale(0.95) rotate(3deg);
+  }
+  100% {
+    transform: scale(1) rotate(0);
+  }
+}
+
+/* Shiny style for modern premium feel */
+.liked-heart-icon {
+  animation: shinyHeart 2s infinite ease-in-out;
+  color: #EF4444 !important; /* Vibrant Red */
+  fill: #EF4444 !important;
+}
+
+.liked-heart-icon-clicked {
+  animation: heartClick 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+}
