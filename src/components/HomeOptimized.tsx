@@ -15,6 +15,7 @@ import {
     Menu,
     MenuItem,
     CircularProgress,
+    Skeleton,
 } from '@mui/material';
 import { useApolloClient } from '@apollo/client';
 import { useNavigate } from 'react-router-dom';
@@ -91,11 +92,40 @@ const trendingTopics = [
     { topic: '#Travel', posts: '12.1K posts' },
 ];
 
+const PostSkeleton = () => (
+  <Box sx={{ bgcolor: '#fff', borderRadius: 3, p: 3, mb: 3, boxShadow: '0 2px 12px rgba(37,99,235,0.08)' }}>
+    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+      <Skeleton variant="circular" width={44} height={44} sx={{ mr: 2 }} />
+      <Box sx={{ flex: 1 }}>
+        <Skeleton variant="text" width="30%" height={24} />
+        <Skeleton variant="text" width="20%" height={16} />
+      </Box>
+    </Box>
+    <Skeleton variant="text" width="60%" height={28} sx={{ mb: 1 }} />
+    <Skeleton variant="rectangular" height={160} sx={{ borderRadius: 2, mb: 2 }} />
+    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+      <Skeleton variant="rectangular" width={80} height={32} sx={{ borderRadius: 1 }} />
+      <Skeleton variant="rectangular" width={80} height={32} sx={{ borderRadius: 1 }} />
+      <Skeleton variant="rectangular" width={80} height={32} sx={{ borderRadius: 1 }} />
+    </Box>
+  </Box>
+);
+
 // Memoized Post component to prevent unnecessary re-renders
 const Post = memo(({ post, onLikeToggle, onCommentClick, likedPosts, likeCounts, likingPost, unlikingPost }: any) => {
     const formatDate = useCallback((dateString: string) => {
         return new Date(dateString).toLocaleString();
     }, []);
+
+    const [isAnimating, setIsAnimating] = useState(false);
+
+    const handleLikeClick = useCallback(() => {
+        setIsAnimating(true);
+        setTimeout(() => {
+            setIsAnimating(false);
+        }, 600);
+        onLikeToggle(post.id);
+    }, [post.id, onLikeToggle]);
 
     return (
         <Box sx={{
@@ -142,22 +172,33 @@ const Post = memo(({ post, onLikeToggle, onCommentClick, likedPosts, likeCounts,
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 2 }}>
                 <Box sx={{ display: 'flex', gap: 2 }}>
                     <Button
-                        startIcon={likedPosts[post.id] ? <FavoriteIcon /> : <FavoriteBorderIcon />}
+                        startIcon={
+                            likedPosts[post.id] ? (
+                                <FavoriteIcon
+                                    className={`liked-heart-icon ${isAnimating ? 'liked-heart-icon-clicked' : ''}`}
+                                />
+                            ) : (
+                                <FavoriteBorderIcon
+                                    className={isAnimating ? 'liked-heart-icon-clicked' : ''}
+                                    sx={{ color: '#6B7280' }}
+                                />
+                            )
+                        }
                         sx={{
-                            bgcolor: likedPosts[post.id] ? '#EF4444' : 'transparent',
-                            color: likedPosts[post.id] ? '#fff' : '#374151',
+                            bgcolor: 'transparent',
+                            color: '#374151',
                             textTransform: 'none',
                             fontWeight: 600,
                             fontSize: 15,
                             transition: 'background 0.2s, color 0.2s',
                             '&:hover': {
-                                bgcolor: likedPosts[post.id] ? '#EF4444' : '#EEF2FB',
-                                color: likedPosts[post.id] ? '#fff' : '#2563EB'
+                                bgcolor: '#EEF2FB',
+                                color: '#2563EB'
                             },
                             borderRadius: 2,
                             px: 2,
                         }}
-                        onClick={() => onLikeToggle(post.id)}
+                        onClick={handleLikeClick}
                         disabled={likingPost || unlikingPost}
                     >
                         <span style={{ color: '#222', fontWeight: 600 }}>
@@ -487,7 +528,11 @@ const Home = () => {
 
                     {/* Posts Feed */}
                     {loading ? (
-                        <Typography sx={{ textAlign: 'center', mt: 6 }}>Loading posts...</Typography>
+                        <Stack spacing={4}>
+                            <PostSkeleton />
+                            <PostSkeleton />
+                            <PostSkeleton />
+                        </Stack>
                     ) : error ? (
                         <Typography color="error" sx={{ textAlign: 'center', mt: 6 }}>Error loading posts</Typography>
                     ) : (

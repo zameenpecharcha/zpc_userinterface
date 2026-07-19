@@ -19,6 +19,7 @@ import {
   Menu,
   MenuItem,
   CircularProgress,
+  Skeleton,
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import HomeIcon from '@mui/icons-material/Home';
@@ -243,10 +244,39 @@ interface PostProps {
   likeCounts: { [postId: number]: number };
 }
 
+const PostSkeleton = () => (
+  <Box sx={{ bgcolor: '#fff', borderRadius: 3, p: 3, mb: 3, boxShadow: '0 2px 12px rgba(37,99,235,0.08)' }}>
+    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+      <Skeleton variant="circular" width={44} height={44} sx={{ mr: 2 }} />
+      <Box sx={{ flex: 1 }}>
+        <Skeleton variant="text" width="30%" height={24} />
+        <Skeleton variant="text" width="20%" height={16} />
+      </Box>
+    </Box>
+    <Skeleton variant="text" width="60%" height={28} sx={{ mb: 1 }} />
+    <Skeleton variant="rectangular" height={160} sx={{ borderRadius: 2, mb: 2 }} />
+    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+      <Skeleton variant="rectangular" width={80} height={32} sx={{ borderRadius: 1 }} />
+      <Skeleton variant="rectangular" width={80} height={32} sx={{ borderRadius: 1 }} />
+      <Skeleton variant="rectangular" width={80} height={32} sx={{ borderRadius: 1 }} />
+    </Box>
+  </Box>
+);
+
 const Post = memo(({ post, onLikeToggle, onCommentClick, onOpenProfile, likedPosts, likeCounts }: PostProps) => {
   const formatDate = useCallback((dateString: string) => {
     return new Date(dateString).toLocaleString();
   }, []);
+
+  const [isAnimating, setIsAnimating] = useState(false);
+
+  const handleLikeClick = useCallback(() => {
+    setIsAnimating(true);
+    setTimeout(() => {
+      setIsAnimating(false);
+    }, 600);
+    onLikeToggle(post.id);
+  }, [post.id, onLikeToggle]);
 
   return (
     <Box sx={{
@@ -350,22 +380,33 @@ const Post = memo(({ post, onLikeToggle, onCommentClick, onOpenProfile, likedPos
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 2 }}>
         <Box sx={{ display: 'flex', gap: 2 }}>
           <Button
-            startIcon={likedPosts[post.id] ? <FavoriteIcon /> : <FavoriteBorderIcon />}
+            startIcon={
+              likedPosts[post.id] ? (
+                <FavoriteIcon
+                  className={`liked-heart-icon ${isAnimating ? 'liked-heart-icon-clicked' : ''}`}
+                />
+              ) : (
+                <FavoriteBorderIcon
+                  className={isAnimating ? 'liked-heart-icon-clicked' : ''}
+                  sx={{ color: '#6B7280' }}
+                />
+              )
+            }
             sx={{
-              bgcolor: likedPosts[post.id] ? '#EF4444' : 'transparent',
-              color: likedPosts[post.id] ? '#fff' : '#374151',
+              bgcolor: 'transparent',
+              color: '#374151',
               textTransform: 'none',
               fontWeight: 600,
               fontSize: 15,
               transition: 'background 0.2s, color 0.2s',
               '&:hover': {
-                bgcolor: likedPosts[post.id] ? '#EF4444' : '#EEF2FB',
-                color: likedPosts[post.id] ? '#fff' : '#2563EB'
+                bgcolor: '#EEF2FB',
+                color: '#2563EB'
               },
               borderRadius: 2,
               px: 2,
             }}
-            onClick={() => onLikeToggle(post.id)}
+            onClick={handleLikeClick}
           >
             <span style={{ color: '#222', fontWeight: 600 }}>
               {likeCounts[post.id] !== undefined ? likeCounts[post.id] : post.likeCount || 0}
@@ -405,6 +446,15 @@ const CommentsModal = memo(({
 }: any) => {
   const [newComment, setNewComment] = useState('');
   const [addingComment, setAddingComment] = useState(false);
+  const [animatingComments, setAnimatingComments] = useState<{ [commentId: number]: boolean }>({});
+
+  const handleLikeCommentClick = useCallback((commentId: number) => {
+    setAnimatingComments(prev => ({ ...prev, [commentId]: true }));
+    setTimeout(() => {
+      setAnimatingComments(prev => ({ ...prev, [commentId]: false }));
+    }, 600);
+    onLikeComment(commentId);
+  }, [onLikeComment]);
 
   const handleSubmitComment = useCallback(async () => {
     if (!newComment.trim() || !post) return;
@@ -558,18 +608,29 @@ const CommentsModal = memo(({
                   <Typography sx={{ fontSize: 12, color: '#6B7280', mt: 0.5 }}>{new Date(comment.addedAt).toLocaleString()}</Typography>
                   <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
                     <Button
-                      startIcon={<FavoriteBorderIcon />}
+                      startIcon={
+                        likedComments[comment.id] ? (
+                          <FavoriteIcon
+                            className={`liked-heart-icon ${animatingComments[comment.id] ? 'liked-heart-icon-clicked' : ''}`}
+                          />
+                        ) : (
+                          <FavoriteBorderIcon
+                            className={animatingComments[comment.id] ? 'liked-heart-icon-clicked' : ''}
+                            sx={{ color: '#6B7280' }}
+                          />
+                        )
+                      }
                       sx={{
-                        color: likedComments[comment.id] ? '#fff' : '#EF4444',
-                        bgcolor: likedComments[comment.id] ? '#EF4444' : 'rgba(239,68,68,0.06)',
+                        color: '#374151',
+                        bgcolor: 'transparent',
                         textTransform: 'none',
                         fontWeight: 600,
                         fontSize: 14,
                         px: 1.5,
                         borderRadius: 2,
-                        '&:hover': { bgcolor: 'rgba(239,68,68,0.18)' }
+                        '&:hover': { bgcolor: '#EEF2FB', color: '#EF4444' }
                       }}
-                      onClick={() => onLikeComment(comment.id)}
+                      onClick={() => handleLikeCommentClick(comment.id)}
                       disabled={likingComment}
                     >
                       {commentLikeCounts[comment.id] !== undefined ? commentLikeCounts[comment.id] : comment.likeCount || 0}
@@ -599,10 +660,21 @@ const CommentsModal = memo(({
                             </Typography>
                             <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
                               <Button
-                                startIcon={<FavoriteBorderIcon />}
+                                startIcon={
+                                  likedComments[reply.id] ? (
+                                    <FavoriteIcon
+                                      className={`liked-heart-icon ${animatingComments[reply.id] ? 'liked-heart-icon-clicked' : ''}`}
+                                    />
+                                  ) : (
+                                    <FavoriteBorderIcon
+                                      className={animatingComments[reply.id] ? 'liked-heart-icon-clicked' : ''}
+                                      sx={{ color: '#6B7280' }}
+                                    />
+                                  )
+                                }
                                 sx={{
-                                  color: likedComments[reply.id] ? '#fff' : '#EF4444',
-                                  bgcolor: likedComments[reply.id] ? '#EF4444' : 'rgba(239,68,68,0.06)',
+                                  color: '#374151',
+                                  bgcolor: 'transparent',
                                   textTransform: 'none',
                                   fontWeight: 600,
                                   fontSize: 12,
@@ -610,9 +682,9 @@ const CommentsModal = memo(({
                                   py: 0.5,
                                   borderRadius: 1,
                                   minHeight: 24,
-                                  '&:hover': { bgcolor: 'rgba(239,68,68,0.18)' }
+                                  '&:hover': { bgcolor: '#EEF2FB', color: '#EF4444' }
                                 }}
-                                onClick={() => onLikeComment(reply.id)}
+                                onClick={() => handleLikeCommentClick(reply.id)}
                                 disabled={likingComment}
                               >
                                 {commentLikeCounts[reply.id] !== undefined ? commentLikeCounts[reply.id] : reply.likeCount || 0}
@@ -683,14 +755,7 @@ const Home = () => {
 
   const client = useApolloClient();
 
-  // Clear cache and refetch on mount
-  useEffect(() => {
-    const clearAndRefetch = async () => {
-      await client.clearStore();
-      await refetch();
-    };
-    clearAndRefetch();
-  }, [client, refetch]);
+
 
   // Optimized state management
   const [commentsModalOpen, setCommentsModalOpen] = useState<{ open: boolean; postId: number | null }>({ open: false, postId: null });
@@ -1446,7 +1511,11 @@ const Home = () => {
 
           {/* Posts Feed */}
           {loading && !data ? (
-            <Typography sx={{ textAlign: 'center', mt: 6 }}>Loading posts...</Typography>
+            <Stack spacing={4}>
+              <PostSkeleton />
+              <PostSkeleton />
+              <PostSkeleton />
+            </Stack>
           ) : error ? (
             <Typography color="error" sx={{ textAlign: 'center', mt: 6 }}>Error loading posts</Typography>
           ) : (

@@ -35,6 +35,7 @@ const Posts: React.FC = () => {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [animatingPosts, setAnimatingPosts] = useState<{ [postId: number]: boolean }>({});
 
   // Filter states
   const [filters, setFilters] = useState<PostsQueryVariables>({
@@ -68,6 +69,14 @@ const Posts: React.FC = () => {
     } catch (err: any) {
       setError(err.message);
     }
+  };
+
+  const handleLikePostWithAnimation = async (postId: number) => {
+    setAnimatingPosts(prev => ({ ...prev, [postId]: true }));
+    setTimeout(() => {
+      setAnimatingPosts(prev => ({ ...prev, [postId]: false }));
+    }, 600);
+    await handleLikePost(postId);
   };
 
   const handleFilterChange = (field: keyof PostsQueryVariables, value: any) => {
@@ -225,10 +234,24 @@ const Posts: React.FC = () => {
                   <Box sx={{ display: 'flex', alignItems: 'center' }}>
                     <IconButton
                       size="small"
-                      onClick={() => handleLikePost(post.id)}
-                      color="primary"
+                      onClick={() => handleLikePostWithAnimation(post.id)}
+                      sx={{
+                        color: post.likeCount > 0 ? '#EF4444' : '#6B7280',
+                        transition: 'color 0.2s',
+                        '&:hover': {
+                          color: '#EF4444',
+                        }
+                      }}
                     >
-                      {post.likeCount > 0 ? <Favorite /> : <FavoriteBorder />}
+                      {post.likeCount > 0 ? (
+                        <Favorite
+                          className={`liked-heart-icon ${animatingPosts[post.id] ? 'liked-heart-icon-clicked' : ''}`}
+                        />
+                      ) : (
+                        <FavoriteBorder
+                          className={animatingPosts[post.id] ? 'liked-heart-icon-clicked' : ''}
+                        />
+                      )}
                     </IconButton>
                     <Typography variant="body2" sx={{ ml: 0.5 }}>
                       {post.likeCount}

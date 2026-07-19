@@ -3,9 +3,12 @@ FROM node:20-alpine AS build
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci
+# package-lock.json may be out of sync with package.json; npm install reconciles in-container
+RUN npm install --legacy-peer-deps
 
 COPY . .
+ENV CI=false
+ENV NODE_OPTIONS=--openssl-legacy-provider
 RUN npm run build
 
 FROM nginx:1.27-alpine
