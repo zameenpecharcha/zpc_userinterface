@@ -16,8 +16,9 @@ import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import CloseIcon from '@mui/icons-material/Close';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { useQuery } from '@apollo/client';
+import { useApolloClient, useQuery } from '@apollo/client';
 import { GET_USERS } from '../graphql/user';
+import { CREATE_DM_ROOM_MUTATION, CREATE_GROUP_ROOM_MUTATION } from '../graphql/chat';
 import Chat from './Chat';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -52,6 +53,11 @@ const fmtTime = (ms?: number) => {
   if (d.toDateString() === now.toDateString())
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+};
+
+const buildDmRoomId = (userA: string, userB: string) => {
+  const [first, second] = [String(userA), String(userB)].sort();
+  return `dm:${first}:${second}`;
 };
 
 const SIDEBAR_W = 360;
@@ -130,6 +136,7 @@ const NewConvDialog: React.FC<{
   onStart: (conv: Conversation) => void;
   myUserId: string;
 }> = ({ open, onClose, onStart, myUserId }) => {
+  const apollo = useApolloClient();
   const [type, setType]             = useState<ConvType>('direct');
   const [userSearch, setUserSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -156,11 +163,22 @@ const NewConvDialog: React.FC<{
   const reset = () => { setType('direct'); setUserSearch(''); setGroupName(''); setMembers([]); };
   const handleClose = () => { reset(); onClose(); };
 
-  const startDirect = (u: { id: number; firstName: string; lastName: string }) => {
+  const startDirect = async (u: { id: number; firstName: string; lastName: string }) => {
     const otherId = String(u.id);
-    const [a, b] = [myUserId, otherId].sort((x, y) => x.localeCompare(y));
-    onStart({ id: `dm-${a}-${b}`, type: 'direct', label: `${u.firstName} ${u.lastName}`.trim(), participants: [myUserId, otherId], unread: 0 });
-    handleClose();
+    try {
+      const result = await apollo.mutate({
+        mutation: CREATE_DM_ROOM_MUTATION,
+        variables: { createdBy: myUserId, userA: myUserId, userB: otherId },
+        fetchPolicy: 'network-only',
+      });
+      const roomId = result.data?.createDmRoom?.roomId || buildDmRoomId(myUserId, otherId);
+      onStart({ id: roomId, type: 'direct', label: `${u.firstName} ${u.lastName}`.trim(), participants: [myUserId, otherId], unread: 0 });
+    } catch (err) {
+      console.error('Failed to create DM room', err);
+      onStart({ id: buildDmRoomId(myUserId, otherId), type: 'direct', label: `${u.firstName} ${u.lastName}`.trim(), participants: [myUserId, otherId], unread: 0 });
+    } finally {
+      handleClose();
+    }
   };
 
   const toggleMember = (u: { id: number; firstName: string; lastName: string }) => {
@@ -169,16 +187,24 @@ const NewConvDialog: React.FC<{
     setMembers(prev => prev.some(m => m.id === id) ? prev.filter(m => m.id !== id) : [...prev, { id, label }]);
   };
 
-  const startGroup = () => {
+  const startGroup = async () => {
     const name = groupName.trim();
     if (!name || members.length === 0) return;
-    onStart({
-      id: `group-${name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
-      type: 'group', label: name,
-      participants: [myUserId, ...members.map(m => m.id)],
-      unread: 0,
-    });
-    handleClose();
+    const memberIds = [myUserId, ...members.map(m => m.id)];
+    try {
+      const result = await apollo.mutate({
+        mutation: CREATE_GROUP_ROOM_MUTATION,
+        variables: { createdBy: myUserId, name, memberIds },
+        fetchPolicy: 'network-only',
+      });
+      const roomId = result.data?.createGroupRoom?.roomId || `group-${name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`;
+      onStart({ id: roomId, type: 'group', label: name, participants: memberIds, unread: 0 });
+    } catch (err) {
+      console.error('Failed to create group room', err);
+      onStart({ id: `group-${name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`, type: 'group', label: name, participants: memberIds, unread: 0 });
+    } finally {
+      handleClose();
+    }
   };
 
   return (

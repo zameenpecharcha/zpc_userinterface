@@ -44,16 +44,44 @@ const stringToColor = (s: string) => {
 
 const initials = (id: string) => id.slice(0, 2).toUpperCase();
 
-const toAlternateDmRoomId = (id: string): string | null => {
+const normalizeRoomId = (id: string): string => {
+  if (!id) return id;
+  const trimmed = id.trim();
+  if (trimmed.startsWith('dm-')) {
+    const parts = trimmed.split('-');
+    if (parts.length >= 3 && parts[1] && parts[2]) {
+      const userA = parts[1];
+      const userB = parts.slice(2).join('-');
+      const [first, second] = [userA, userB].sort();
+      return `dm:${first}:${second}`;
+    }
+  }
+  if (trimmed.startsWith('dm:')) {
+    const parts = trimmed.split(':');
+    if (parts.length >= 3 && parts[1] && parts[2]) {
+      const [first, second] = [parts[1], parts[2]].sort();
+      return `dm:${first}:${second}`;
+    }
+  }
+  return trimmed;
+};
+
+const getRoomCandidates = (id: string): string[] => {
+  const normalized = normalizeRoomId(id);
+  const candidates = [id, normalized];
   if (id.startsWith('dm-')) {
     const parts = id.split('-');
-    if (parts.length === 3 && parts[1] && parts[2]) return `dm:${parts[1]}:${parts[2]}`;
+    if (parts.length >= 3 && parts[1] && parts[2]) {
+      candidates.push(`dm:${parts[1]}:${parts[2]}`);
+    }
   }
   if (id.startsWith('dm:')) {
     const parts = id.split(':');
-    if (parts.length === 3 && parts[1] && parts[2]) return `dm-${parts[1]}-${parts[2]}`;
+    if (parts.length >= 3 && parts[1] && parts[2]) {
+      candidates.push(`dm-${parts[1]}-${parts[2]}`);
+    }
   }
-  return null;
+  return Array.from(new Set(candidates.filter(Boolean)));
 };
 
 const mapHistory = (rows: any[]): ChatMessage[] => (
@@ -87,9 +115,10 @@ const Chat: React.FC<ChatProps> = ({ roomId, userId }) => {
   const bottomRef      = useRef<HTMLDivElement | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shouldReconnectRef = useRef(true);
+  const pendingMessagesRef = useRef<string[]>([]);
 
   useEffect(() => {
-    setResolvedRoomId(roomId);
+    setResolvedRoomId(normalizeRoomId(roomId));
   }, [roomId]);
 
   useEffect(() => {
@@ -101,11 +130,8 @@ const Chat: React.FC<ChatProps> = ({ roomId, userId }) => {
         return;
       }
 
-      const candidates = [roomId];
-      const alternate = toAlternateDmRoomId(roomId);
-      if (alternate && alternate !== roomId) candidates.push(alternate);
-
-      let matchedRoomId = roomId;
+      const candidates = getRoomCandidates(roomId);
+      let matchedRoomId = normalizeRoomId(roomId);
       let matchedMessages: ChatMessage[] = [];
 
       for (const candidate of candidates) {
@@ -133,7 +159,7 @@ const Chat: React.FC<ChatProps> = ({ roomId, userId }) => {
       }
 
       if (cancelled) return;
-      setResolvedRoomId(matchedRoomId);
+      setResolvedRoomId(matchedRoomId || normalizeRoomId(roomId));
       setMessages(matchedMessages);
     };
 
@@ -151,6 +177,11 @@ const Chat: React.FC<ChatProps> = ({ roomId, userId }) => {
 
   // ── WebSocket ──────────────────────────────────────────────────────────────
 
+  const sendReadReceipt = useCallback((messageId: string) => {
+    if (!messageId || wsRef.current?.readyState !== WebSocket.OPEN) return;
+    wsRef.current.send(JSON.stringify({ eventType: 3, messageId }));
+  }, []);
+
   const connect = useCallback(() => {
     shouldReconnectRef.current = true;
     const token = localStorage.getItem('token') || '';
@@ -160,7 +191,15 @@ const Chat: React.FC<ChatProps> = ({ roomId, userId }) => {
     const ws = new WebSocket(url);
     wsRef.current = ws;
 
-    ws.onopen  = () => setConnected(true);
+    ws.onopen  = () => {
+      setConnected(true);
+      while (pendingMessagesRef.current.length > 0) {
+        const payload = pendingMessagesRef.current.shift();
+        if (payload && ws.readyState === WebSocket.OPEN) {
+          ws.send(payload);
+        }
+      }
+    };
     ws.onclose = (ev) => {
       setConnected(false);
       if (ev.code === 1008) return;
@@ -172,28 +211,37 @@ const Chat: React.FC<ChatProps> = ({ roomId, userId }) => {
     ws.onmessage = ({ data }) => {
       try {
         const msg: ChatMessage = JSON.parse(data);
-        if (msg.eventType === 1) {
+        const eventType = typeof msg.eventType === 'number' ? msg.eventType : 0;
+        const normalizedStatus = typeof msg.status === 'number' ? msg.status : 0;
+        if (eventType === 1) {
           setTypingSet(s => new Set(s).add(msg.userId));
-        } else if (msg.eventType === 2) {
+        } else if (eventType === 2) {
           setTypingSet(s => { const n = new Set(s); n.delete(msg.userId); return n; });
-        } else if (msg.eventType === 5) {
+        } else if (eventType === 5) {
           setMessages(prev => prev.map(m =>
             m.messageId === msg.messageId ? { ...m, isDeleted: true } : m));
-        } else if (msg.eventType === 4) {
+        } else if (eventType === 4) {
           setMessages(prev => prev.map(m =>
             m.messageId === msg.messageId ? { ...m, reactionEmoji: msg.reactionEmoji } : m));
-        } else if (msg.eventType === 0 && msg.text) {
+        } else if (eventType === 3) {
+          setMessages(prev => prev.map(m =>
+            m.messageId === msg.messageId ? { ...m, status: 3 } : m));
+        } else if ((eventType === 0 || msg.text) && msg.messageId) {
           setMessages(prev => {
-            // Update existing optimistic message or add new one
-            if (prev.some(m => m.messageId === msg.messageId)) {
-              return prev.map(m => m.messageId === msg.messageId ? { ...m, ...msg } : m);
+            const exists = prev.some(m => m.messageId === msg.messageId);
+            if (exists) {
+              return prev.map(m => m.messageId === msg.messageId ? { ...m, ...msg, status: normalizedStatus || 0 } : m);
             }
-            return [...prev, msg];
+            const next = [...prev, { ...msg, eventType: 0, status: normalizedStatus || (msg.userId === userId ? 1 : 0) }];
+            if (msg.userId !== userId) {
+              sendReadReceipt(msg.messageId);
+            }
+            return next;
           });
         }
       } catch { /* ignore malformed frames */ }
     };
-  }, [resolvedRoomId, userId]);
+  }, [resolvedRoomId, userId, sendReadReceipt]);
 
   useEffect(() => {
     connect();
@@ -218,15 +266,20 @@ const Chat: React.FC<ChatProps> = ({ roomId, userId }) => {
 
   const send = () => {
     const text = input.trim();
-    if (!text || wsRef.current?.readyState !== WebSocket.OPEN) return;
+    if (!text) return;
     const messageId = crypto.randomUUID();
     const now = Date.now();
+    const payload = JSON.stringify({ text, messageId, sentAt: now });
     // Show message immediately (optimistic)
     setMessages(prev => [...prev, {
       messageId, userId, text, sentAt: now,
       eventType: 0, status: 0, isDeleted: false,
     }]);
-    wsRef.current.send(JSON.stringify({ text, messageId }));
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(payload);
+    } else {
+      pendingMessagesRef.current.push(payload);
+    }
     setInput('');
   };
 
