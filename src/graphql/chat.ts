@@ -25,3 +25,21 @@ export const GET_CHAT_MESSAGES = gql`
     }
   }
 `;
+
+export const CREATE_DM_ROOM_MUTATION = gql`
+  mutation CreateDmRoom($createdBy: String!, $userA: String!, $userB: String!) {
+    createDmRoom(createdBy: $createdBy, userA: $userA, userB: $userB) {
+      roomId
+      name
+    }
+  }
+`;
+
+export const CREATE_GROUP_ROOM_MUTATION = gql`
+  mutation CreateGroupRoom($createdBy: String!, $name: String!, $memberIds: [String!]!) {
+    createGroupRoom(createdBy: $createdBy, name: $name, memberIds: $memberIds) {
+      roomId
+      name
+    }
+  }
+`;
