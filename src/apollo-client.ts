@@ -35,7 +35,8 @@ const errorLink = onError(({ graphQLErrors, networkError, operation, forward }) 
     console.error(`[Network error]: ${networkError}`);
     const msg = String((networkError as any)?.message || networkError);
     const status = (networkError as any)?.statusCode || (networkError as any)?.response?.status;
-    if (status === 401 || status === 403 || msg.includes('Failed to fetch')) {
+    // Only force logout on real auth failures — not transient network blips
+    if (status === 401 || status === 403) {
       try {
         localStorage.removeItem('token');
         localStorage.removeItem('refreshToken');

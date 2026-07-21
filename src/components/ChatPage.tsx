@@ -17,7 +17,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useApolloClient, useQuery } from '@apollo/client';
-import { GET_USERS } from '../graphql/user';
+import { SEARCH_USERS_LIGHT } from '../graphql/user';
 import { CREATE_DM_ROOM_MUTATION, CREATE_GROUP_ROOM_MUTATION, GET_USER_ROOMS } from '../graphql/chat';
 import Chat from './Chat';
 
@@ -55,10 +55,6 @@ const fmtTime = (ms?: number) => {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
 };
 
-const buildDmRoomId = (userA: string, userB: string) => {
-  const [first, second] = [String(userA), String(userB)].sort();
-  return `dm:${first}:${second}`;
-};
 
 const SIDEBAR_W = 360;
 const LI_BLUE   = '#0A66C2';
@@ -142,6 +138,7 @@ const NewConvDialog: React.FC<{
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [groupName, setGroupName]   = useState('');
   const [members, setMembers]       = useState<Array<{ id: string; label: string }>>([]);
+  const [error, setError]           = useState<string | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(userSearch.trim()), 350);
@@ -150,34 +147,39 @@ const NewConvDialog: React.FC<{
 
   const shouldSearch = !open ? false : (debouncedSearch.length === 0 || debouncedSearch.length >= 2);
 
-  const { data, loading } = useQuery(GET_USERS, {
+  const { data, loading } = useQuery(SEARCH_USERS_LIGHT, {
     variables: { search: debouncedSearch, page: 1, limit: 30 },
     skip: !shouldSearch,
-    fetchPolicy: 'cache-first',
+    fetchPolicy: 'network-only',
+    nextFetchPolicy: 'cache-first',
     notifyOnNetworkStatusChange: true,
   });
 
   const apiUsers: Array<{ id: number; firstName: string; lastName: string; email: string; role?: string; profilePhotoSignedUrl?: string }> =
     data?.users ?? [];
 
-  const reset = () => { setType('direct'); setUserSearch(''); setGroupName(''); setMembers([]); };
+  const reset = () => { setType('direct'); setUserSearch(''); setGroupName(''); setMembers([]); setError(null); };
   const handleClose = () => { reset(); onClose(); };
 
   const startDirect = async (u: { id: number; firstName: string; lastName: string }) => {
     const otherId = String(u.id);
+    setError(null);
     try {
       const result = await apollo.mutate({
         mutation: CREATE_DM_ROOM_MUTATION,
         variables: { createdBy: myUserId, userA: myUserId, userB: otherId },
         fetchPolicy: 'network-only',
       });
-      const roomId = result.data?.createDmRoom?.roomId || buildDmRoomId(myUserId, otherId);
+      const roomId = result.data?.createDmRoom?.roomId;
+      if (!roomId) {
+        setError('Failed to create conversation. Please try again.');
+        return;
+      }
       onStart({ id: roomId, type: 'direct', label: `${u.firstName} ${u.lastName}`.trim(), participants: [myUserId, otherId], unread: 0 });
+      handleClose();
     } catch (err) {
       console.error('Failed to create DM room', err);
-      onStart({ id: buildDmRoomId(myUserId, otherId), type: 'direct', label: `${u.firstName} ${u.lastName}`.trim(), participants: [myUserId, otherId], unread: 0 });
-    } finally {
-      handleClose();
+      setError('Failed to create conversation. Please try again.');
     }
   };
 
@@ -191,19 +193,23 @@ const NewConvDialog: React.FC<{
     const name = groupName.trim();
     if (!name || members.length === 0) return;
     const memberIds = [myUserId, ...members.map(m => m.id)];
+    setError(null);
     try {
       const result = await apollo.mutate({
         mutation: CREATE_GROUP_ROOM_MUTATION,
         variables: { createdBy: myUserId, name, memberIds },
         fetchPolicy: 'network-only',
       });
-      const roomId = result.data?.createGroupRoom?.roomId || `group-${name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`;
+      const roomId = result.data?.createGroupRoom?.roomId;
+      if (!roomId) {
+        setError('Failed to create group. Please try again.');
+        return;
+      }
       onStart({ id: roomId, type: 'group', label: name, participants: memberIds, unread: 0 });
+      handleClose();
     } catch (err) {
       console.error('Failed to create group room', err);
-      onStart({ id: `group-${name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`, type: 'group', label: name, participants: memberIds, unread: 0 });
-    } finally {
-      handleClose();
+      setError('Failed to create group. Please try again.');
     }
   };
 
@@ -215,6 +221,11 @@ const NewConvDialog: React.FC<{
       </DialogTitle>
 
       <DialogContent sx={{ pt: 2 }}>
+        {error && (
+          <Typography variant="body2" color="error" sx={{ mb: 1.5 }}>
+            {error}
+          </Typography>
+        )}
         <ToggleButtonGroup value={type} exclusive onChange={(_, v) => v && setType(v)} size="small" fullWidth sx={{ mb: 2 }}>
           <ToggleButton value="direct" sx={{ textTransform: 'none', fontWeight: 600, gap: 0.5 }}>
             <PersonOutlineIcon fontSize="small" /> Direct message
@@ -311,6 +322,7 @@ const ChatPage: React.FC = () => {
   const [filter, setFilter]               = useState<'all' | 'groups'>('all');
   const [newDlgOpen, setNewDlgOpen]       = useState(false);
   const [mobileView, setMobileView]       = useState<'sidebar' | 'chat'>('sidebar');
+  const [wsConnected, setWsConnected]     = useState(false);
 
   // ── Load active rooms from server ─────────────────────────────────────────
   const { data: roomsData, loading: roomsLoading } = useQuery(GET_USER_ROOMS, {
@@ -343,12 +355,15 @@ const ChatPage: React.FC = () => {
       };
     });
     setConversations(prev => {
-      // Merge: keep locally-added rooms not yet returned by server
       const serverIds = new Set(loaded.map(c => c.id));
-      const localOnly = prev.filter(c => !serverIds.has(c.id));
-      return [...loaded, ...localOnly];
+      const pending = prev.filter(c => !serverIds.has(c.id));
+      return [...loaded, ...pending];
     });
   }, [roomsData, userId]);
+
+  useEffect(() => {
+    setWsConnected(false);
+  }, [activeId]);
 
   // ── Auto-select room from router state (from ProfilePage / PropertyPage) ──
   useEffect(() => {
@@ -487,12 +502,19 @@ const ChatPage: React.FC = () => {
                   <Avatar sx={{ bgcolor: stringToColor(activeConv.label), width: 44, height: 44, fontWeight: 700, fontSize: 16 }}>
                     {initials(activeConv.label)}
                   </Avatar>
-                  <Box sx={{ position: 'absolute', bottom: 1, right: 1, width: 11, height: 11, borderRadius: '50%', bgcolor: '#2ECC71', border: '2px solid #fff' }} />
+                  {activeConv.type === 'direct' && (
+                    <Box sx={{
+                      position: 'absolute', bottom: 1, right: 1, width: 11, height: 11, borderRadius: '50%',
+                      bgcolor: wsConnected ? '#2ECC71' : '#aaa', border: '2px solid #fff',
+                    }} />
+                  )}
                 </Box>
                 <Box>
                   <Typography fontWeight={700} fontSize={15} color="#000">{activeConv.label}</Typography>
-                  <Typography fontSize={12} color="#777">
-                    {activeConv.type === 'group' ? `${activeConv.participants.length} members` : 'Connected'}
+                  <Typography fontSize={12} color={activeConv.type === 'direct' && wsConnected ? '#2ECC71' : '#777'}>
+                    {activeConv.type === 'group'
+                      ? `${activeConv.participants.length} members`
+                      : wsConnected ? 'Connected' : 'Connecting…'}
                   </Typography>
                 </Box>
               </Box>
@@ -511,7 +533,7 @@ const ChatPage: React.FC = () => {
 
             {/* Messages */}
             <Box sx={{ flex: 1, overflow: 'hidden' }}>
-              <Chat roomId={activeConv.id} userId={userId} />
+              <Chat roomId={activeConv.id} userId={userId} onConnectionChange={setWsConnected} />
             </Box>
           </>
         ) : (

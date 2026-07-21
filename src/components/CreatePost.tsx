@@ -1,4 +1,6 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
+import { useLazyQuery } from '@apollo/client';
+import { SEARCH_USERS_LIGHT } from '../graphql/user';
 import {
   Box,
   Typography,
@@ -12,7 +14,11 @@ import {
   FormControl,
   Chip,
   IconButton,
-  Divider
+  Divider,
+  Paper,
+  List,
+  ListItemButton,
+  ListItemText,
 } from '@mui/material';
 // Removed Grid import to avoid dependency on Unstable_Grid2; using CSS grid instead
 import {
@@ -49,6 +55,20 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
   const [visibility, setVisibility] = useState('public');
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionSearch, setMentionSearch] = useState('');
+  const [mentionStart, setMentionStart] = useState<number | null>(null);
+  const mentionedUserIdsRef = useRef<Set<number>>(new Set());
+  const descriptionRef = useRef<HTMLTextAreaElement | HTMLInputElement | null>(null);
+  const mentionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [searchUsers, { data: mentionData, loading: mentionLoading }] = useLazyQuery(
+    SEARCH_USERS_LIGHT,
+    {
+      fetchPolicy: 'network-only',
+      nextFetchPolicy: 'cache-first',
+    }
+  );
 
   const postTypes = [
     {
@@ -118,6 +138,55 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
     setLongitude(locationData.longitude);
   };
 
+  const handleDescriptionChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    setDescription(value);
+
+    const cursorPos = e.target.selectionStart ?? value.length;
+    const textBeforeCursor = value.slice(0, cursorPos);
+    const atMatch = textBeforeCursor.match(/@([\w\s]*)$/);
+
+    if (mentionTimerRef.current) {
+      clearTimeout(mentionTimerRef.current);
+      mentionTimerRef.current = null;
+    }
+
+    if (atMatch) {
+      const searchTerm = atMatch[1] || '';
+      setMentionOpen(true);
+      setMentionSearch(searchTerm);
+      setMentionStart(cursorPos - atMatch[0].length);
+      // Debounce so we don't hit Neon on every keystroke / block behind other loads
+      mentionTimerRef.current = setTimeout(() => {
+        searchUsers({
+          variables: { search: searchTerm.trim(), page: 1, limit: 8 },
+        });
+      }, 280);
+    } else {
+      setMentionOpen(false);
+      setMentionSearch('');
+      setMentionStart(null);
+    }
+  };
+
+  const handleSelectMention = (user: { id: number; firstName: string; lastName?: string }) => {
+    if (mentionStart === null) return;
+
+    const displayName = user.firstName;
+    const token = `@[${user.id}:${displayName}]`;
+    const before = description.slice(0, mentionStart);
+    const after = description.slice(mentionStart + 1 + mentionSearch.length);
+    const nextDescription = `${before}${token} ${after}`.slice(0, 500);
+
+    setDescription(nextDescription);
+    mentionedUserIdsRef.current.add(user.id);
+    setMentionOpen(false);
+    setMentionSearch('');
+    setMentionStart(null);
+
+    setTimeout(() => descriptionRef.current?.focus(), 0);
+  };
+
   const handleSubmit = () => {
     if (!selectedType || !title.trim() || !description.trim()) return;
 
@@ -129,7 +198,8 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
       latitude,
       longitude,
       visibility,
-      media: uploadedFiles
+      media: uploadedFiles,
+      mentionedUserIds: Array.from(mentionedUserIdsRef.current),
     };
 
     onSubmit(postData);
@@ -146,6 +216,10 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
       setLongitude(null);
       setVisibility('public');
       setUploadedFiles([]);
+      mentionedUserIdsRef.current = new Set();
+      setMentionOpen(false);
+      setMentionSearch('');
+      setMentionStart(null);
       onClose();
     }
   };
@@ -334,7 +408,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
             </Typography>
           </Box>
 
-          <Box sx={{ mb: 3 }}>
+          <Box sx={{ mb: 3, position: 'relative' }}>
             <Typography 
               sx={{ 
                 fontWeight: 600, 
@@ -349,9 +423,10 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
               fullWidth
               multiline
               rows={4}
-              placeholder="Provide details about your post..."
+              placeholder="Provide details about your post... Type @ to mention someone"
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={handleDescriptionChange}
+              inputRef={descriptionRef}
               sx={{
                 '& .MuiOutlinedInput-root': {
                   borderRadius: 2,
@@ -371,6 +446,42 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
                 sx: { fontSize: '0.875rem' }
               }}
             />
+            {mentionOpen && (
+              <Paper
+                elevation={4}
+                sx={{
+                  position: 'absolute',
+                  left: 0,
+                  right: 0,
+                  top: '100%',
+                  mt: 0.5,
+                  zIndex: 10,
+                  maxHeight: 220,
+                  overflow: 'auto',
+                }}
+              >
+                <List dense disablePadding>
+                  {mentionLoading && (
+                    <ListItemButton disabled>
+                      <ListItemText primary="Searching users..." />
+                    </ListItemButton>
+                  )}
+                  {!mentionLoading && (mentionData?.users?.length ?? 0) === 0 && (
+                    <ListItemButton disabled>
+                      <ListItemText primary="No users found" />
+                    </ListItemButton>
+                  )}
+                  {(mentionData?.users ?? []).map((user: any) => (
+                    <ListItemButton key={user.id} onClick={() => handleSelectMention(user)}>
+                      <ListItemText
+                        primary={`${user.firstName} ${user.lastName || ''}`.trim()}
+                        secondary={user.role || user.email}
+                      />
+                    </ListItemButton>
+                  ))}
+                </List>
+              </Paper>
+            )}
             <Typography 
               sx={{ 
                 fontSize: '0.75rem', 

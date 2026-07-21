@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Container,
   Box,
   Typography,
   TextField,
@@ -17,7 +16,37 @@ import { useAuth } from '../contexts/AuthContext';
 import { AuthService } from '../services/authService';
 import { gql, useApolloClient, useMutation } from '@apollo/client';
 import { OTPType } from '../types/auth';
-// import authClient from '../auth-client';
+import LandingBackground from './LandingBackground';
+import BackgroundPreviewSwitcher from './BackgroundPreviewSwitcher';
+import SceneSimHud from './SceneSimHud';
+import {
+  BACKGROUND_STORAGE_KEY,
+  BackgroundId,
+  getBackgroundOption,
+  readStoredBackgroundId,
+} from '../scene/backgroundRegistry';
+
+const glassFieldSx = {
+  mb: 2.5,
+  '& .MuiOutlinedInput-root': {
+    bgcolor: 'rgba(255,255,255,0.55)',
+    backdropFilter: 'blur(8px)',
+    borderRadius: '12px',
+    fontFamily: '"DM Sans", sans-serif',
+    transition: 'background 0.25s ease, box-shadow 0.25s ease',
+    '& fieldset': { borderColor: 'rgba(255,255,255,0.35)' },
+    '&:hover': {
+      bgcolor: 'rgba(255,255,255,0.72)',
+      '& fieldset': { borderColor: 'rgba(255,255,255,0.55)' },
+    },
+    '&.Mui-focused': {
+      bgcolor: 'rgba(255,255,255,0.85)',
+      boxShadow: '0 0 0 3px rgba(30, 58, 72, 0.15)',
+      '& fieldset': { borderColor: 'rgba(30, 58, 72, 0.45)' },
+    },
+  },
+  '& .MuiInputBase-input': { color: '#1a2a32' },
+};
 
 const LOGIN_MUTATION = gql`
   mutation Login($email: String!, $password: String!) {
@@ -102,6 +131,9 @@ const Landing = () => {
     otp: '',
     newPassword: '',
   });
+  const [bgId, setBgId] = useState<BackgroundId>(() => readStoredBackgroundId());
+  const [simSpeed, setSimSpeed] = useState(1);
+  const bgOption = useMemo(() => getBackgroundOption(bgId), [bgId]);
 
   const [login] = useMutation(LOGIN_MUTATION, {
     onCompleted: (data) => {
@@ -181,7 +213,7 @@ const Landing = () => {
     setSuccessMessage('');
     try {
       const response = await authService.login({
-        email: formData.email,
+        email: formData.email.trim().toLowerCase(),
         password: formData.password,
       });
 
@@ -276,44 +308,127 @@ const Landing = () => {
   };
 
   return (
-    <Container component="main" maxWidth="sm">
+    <Box
+      sx={{
+        position: 'relative',
+        minHeight: '100vh',
+        width: '100%',
+        overflow: 'hidden',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        px: { xs: 2, sm: 3 },
+        py: { xs: 4, md: 6 },
+      }}
+    >
+      <LandingBackground option={bgOption} simSpeed={simSpeed} />
+      <Box
+        aria-hidden
+        sx={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 1,
+          pointerEvents: 'none',
+          background: bgOption.vignette,
+          transition: 'background 0.5s ease',
+        }}
+      />
+
+      <SceneSimHud option={bgOption} simSpeed={simSpeed} onSimSpeed={setSimSpeed} />
+
+      <BackgroundPreviewSwitcher
+        value={bgId}
+        onChange={(id) => {
+          setBgId(id);
+          try {
+            localStorage.setItem(BACKGROUND_STORAGE_KEY, id);
+          } catch {
+            /* ignore */
+          }
+        }}
+      />
+
       <Box
         sx={{
-          marginTop: 8,
+          position: 'relative',
+          zIndex: 2,
+          width: '100%',
+          maxWidth: 440,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
+          mb: { xs: 10, sm: 8 },
         }}
       >
         <Typography
           component="h1"
-          variant="h3"
-          sx={{ color: '#6366F1', mb: 2, fontWeight: 500 }}
+          sx={{
+            fontFamily: '"Cormorant Garamond", Georgia, serif',
+            fontWeight: 600,
+            fontSize: { xs: '2.35rem', sm: '2.85rem' },
+            letterSpacing: '0.02em',
+            color: bgOption.brandColor,
+            textAlign: 'center',
+            mb: 0.75,
+            textShadow: '0 2px 24px rgba(0,0,0,0.35)',
+            lineHeight: 1.1,
+            transition: 'color 0.4s ease',
+          }}
         >
           Zameen pe charcha
         </Typography>
         <Typography
-          variant="subtitle1"
-          sx={{ color: '#6B7280', mb: 6, textAlign: 'center' }}
+          sx={{
+            fontFamily: '"DM Sans", sans-serif',
+            fontSize: '0.95rem',
+            fontWeight: 500,
+            color: bgOption.taglineColor,
+            mb: 3.5,
+            textAlign: 'center',
+            textShadow: '0 1px 12px rgba(0,0,0,0.3)',
+            transition: 'color 0.4s ease',
+          }}
         >
           A single platform for all your real needs
         </Typography>
-        <Box sx={{ width: '100%', maxWidth: 400 }}>
-          <Typography variant="h4" component="h2" sx={{ mb: 4 }}>
+
+        <Box
+          sx={{
+            width: '100%',
+            p: { xs: 3, sm: 3.5 },
+            borderRadius: '20px',
+            background: 'rgba(248, 244, 238, 0.55)',
+            backdropFilter: 'blur(22px) saturate(1.35)',
+            WebkitBackdropFilter: 'blur(22px) saturate(1.35)',
+            border: '1px solid rgba(255,255,255,0.45)',
+            boxShadow:
+              '0 8px 32px rgba(12, 24, 32, 0.18), inset 0 1px 0 rgba(255,255,255,0.55)',
+            transition: 'transform 0.35s ease, box-shadow 0.35s ease',
+          }}
+        >
+          <Typography
+            sx={{
+              fontFamily: '"DM Sans", sans-serif',
+              fontWeight: 600,
+              fontSize: '1.35rem',
+              color: '#1a2a32',
+              mb: 2.5,
+            }}
+          >
             Login to your account
           </Typography>
           {error && (
-            <Alert severity="error" sx={{ width: '100%', mb: 2 }}>
+            <Alert severity="error" sx={{ width: '100%', mb: 2, borderRadius: 2 }}>
               {error}
             </Alert>
           )}
           {successMessage && (
-            <Alert severity="success" sx={{ width: '100%', mb: 2 }}>
+            <Alert severity="success" sx={{ width: '100%', mb: 2, borderRadius: 2 }}>
               {successMessage}
             </Alert>
           )}
           <Box component="form" onSubmit={handleSubmit} sx={{ width: '100%' }}>
-            <Typography variant="subtitle1" sx={{ mb: 2 }}>
+            <Typography sx={{ fontFamily: '"DM Sans", sans-serif', fontSize: 13, fontWeight: 600, color: '#2c3e48', mb: 1 }}>
               Email
             </Typography>
             <TextField
@@ -324,17 +439,9 @@ const Landing = () => {
               placeholder="Enter your email"
               value={formData.email}
               onChange={handleChange}
-              sx={{ mb: 3 }}
-              InputProps={{
-                sx: {
-                  bgcolor: '#F9FAFB',
-                  '&:hover': {
-                    bgcolor: '#F3F4F6',
-                  },
-                },
-              }}
+              sx={glassFieldSx}
             />
-            <Typography variant="subtitle1" sx={{ mb: 2 }}>
+            <Typography sx={{ fontFamily: '"DM Sans", sans-serif', fontSize: 13, fontWeight: 600, color: '#2c3e48', mb: 1 }}>
               Password
             </Typography>
             <TextField
@@ -345,22 +452,20 @@ const Landing = () => {
               placeholder="Enter your password"
               value={formData.password}
               onChange={handleChange}
-              sx={{ mb: 1 }}
-              InputProps={{
-                sx: {
-                  bgcolor: '#F9FAFB',
-                  '&:hover': {
-                    bgcolor: '#F3F4F6',
-                  },
-                },
-              }}
+              sx={{ ...glassFieldSx, mb: 1 }}
             />
-            <Box sx={{ textAlign: 'right', mb: 3 }}>
+            <Box sx={{ textAlign: 'right', mb: 2.5 }}>
               <Link
                 component="button"
                 type="button"
                 onClick={() => setForgotPasswordOpen(true)}
-                sx={{ color: '#6366F1', textDecoration: 'none' }}
+                sx={{
+                  fontFamily: '"DM Sans", sans-serif',
+                  color: '#1e3a48',
+                  fontWeight: 600,
+                  textDecoration: 'none',
+                  '&:hover': { textDecoration: 'underline' },
+                }}
               >
                 Forgot password?
               </Link>
@@ -370,25 +475,37 @@ const Landing = () => {
               fullWidth
               variant="contained"
               sx={{
-                bgcolor: '#6366F1',
+                fontFamily: '"DM Sans", sans-serif',
+                fontWeight: 600,
+                bgcolor: '#1e3a48',
+                color: '#f7f3ec',
                 py: 1.5,
-                mb: 3,
-                '&:hover': {
-                  bgcolor: '#4F46E5',
-                },
+                mb: 2.5,
+                borderRadius: '12px',
+                textTransform: 'none',
+                fontSize: '1rem',
+                boxShadow: '0 8px 24px rgba(30, 58, 72, 0.35)',
+                transition: 'background 0.25s ease, transform 0.2s ease',
+                '&:hover': { bgcolor: '#162c38', transform: 'translateY(-1px)' },
               }}
             >
               Login
             </Button>
             <Box sx={{ textAlign: 'center' }}>
-              <Typography variant="body1" display="inline">
+              <Typography display="inline" sx={{ fontFamily: '"DM Sans", sans-serif', color: '#3a4f58', fontSize: 14 }}>
                 Don't have an account?{' '}
               </Typography>
               <Link
                 component="button"
-                variant="body1"
+                type="button"
                 onClick={() => navigate('/register')}
-                sx={{ color: '#6366F1', textDecoration: 'none' }}
+                sx={{
+                  fontFamily: '"DM Sans", sans-serif',
+                  color: '#1e3a48',
+                  fontWeight: 700,
+                  textDecoration: 'none',
+                  '&:hover': { textDecoration: 'underline' },
+                }}
               >
                 Sign up
               </Link>
@@ -413,10 +530,12 @@ const Landing = () => {
             boxShadow: 8,
             p: 2,
             textAlign: 'center',
+            background: 'rgba(248, 244, 238, 0.92)',
+            backdropFilter: 'blur(16px)',
           },
         }}
       >
-        <DialogTitle sx={{ fontWeight: 600, fontSize: 22, color: '#4F46E5', textAlign: 'center', pb: 1 }}>
+        <DialogTitle sx={{ fontWeight: 600, fontSize: 22, color: '#1e3a48', textAlign: 'center', pb: 1, fontFamily: '"DM Sans", sans-serif' }}>
           Reset Password
         </DialogTitle>
         <DialogContent sx={{ pt: 0 }}>
@@ -454,16 +573,17 @@ const Landing = () => {
                 fullWidth
                 variant="contained"
                 sx={{
-                  bgcolor: '#7C3AED',
+                  bgcolor: '#1e3a48',
                   color: '#fff',
-                  fontWeight: 500,
+                  fontWeight: 600,
                   mb: 2,
                   mt: 1,
-                  '&:hover': { bgcolor: '#6D28D9' },
+                  textTransform: 'none',
+                  '&:hover': { bgcolor: '#162c38' },
                 }}
                 onClick={handleVerifyOTP}
               >
-                VERIFY OTP
+                Verify OTP
               </Button>
             </>
           )}
@@ -487,21 +607,21 @@ const Landing = () => {
               setError('');
               setSuccessMessage('');
             }}
-            sx={{ color: '#7C3AED', fontWeight: 500 }}
+            sx={{ color: '#1e3a48', fontWeight: 500, textTransform: 'none' }}
           >
-            CANCEL
+            Cancel
           </Button>
           {resetStep === 'email' && (
             <Button
               onClick={handleForgotPassword}
-              sx={{ color: '#7C3AED', fontWeight: 500 }}
+              sx={{ color: '#1e3a48', fontWeight: 600, textTransform: 'none' }}
             >
-              SEND OTP
+              Send OTP
             </Button>
           )}
         </DialogActions>
       </Dialog>
-    </Container>
+    </Box>
   );
 };
 

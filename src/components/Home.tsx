@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback, memo, useEffect, useRef } from 'react';
 import { gql, useQuery, useMutation, useApolloClient } from '@apollo/client';
-import { SEARCH_POSTS, CREATE_POST } from '../graphql/posts';
+import { SEARCH_POSTS, CREATE_POST, TRENDING_POSTS } from '../graphql/posts';
+import { GET_SUGGESTED_USERS, FOLLOW_USER, CREATE_NOTIFICATION, GET_USER_NOTIFICATIONS, MARK_NOTIFICATION_READ } from '../graphql/user';
 import CreatePost from './CreatePost';
 import { PostService } from '../services/postService';
 import { useAuth } from '../contexts/AuthContext';
@@ -20,6 +21,7 @@ import {
   MenuItem,
   CircularProgress,
   Skeleton,
+  Badge,
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import HomeIcon from '@mui/icons-material/Home';
@@ -196,16 +198,49 @@ const leftNav = [
   { icon: <EventIcon />, label: 'Events' },
 ];
 
-const friendSuggestions = [
-  { name: 'Mike Wilson', info: '3 mutual friends', avatar: 'https://randomuser.me/api/portraits/men/32.jpg' },
-  { name: 'Emma Davis', info: '1 mutual friend', avatar: 'https://randomuser.me/api/portraits/women/44.jpg' },
-];
+const MENTION_PATTERN = /@\[(\d+):([^\]]+)\]/g;
 
-const trendingTopics = [
-  { topic: '#TechTrends2024', posts: '15.2K posts' },
-  { topic: '#Photography', posts: '8.7K posts' },
-  { topic: '#Travel', posts: '12.1K posts' },
-];
+const renderPostContent = (content: string, onOpenProfile: (userId: number) => void) => {
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  const regex = new RegExp(MENTION_PATTERN);
+  while ((match = regex.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(content.slice(lastIndex, match.index));
+    }
+    const userId = parseInt(match[1], 10);
+    const name = match[2];
+    parts.push(
+      <Box
+        component="span"
+        key={`mention-${match.index}-${userId}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpenProfile(userId);
+        }}
+        sx={{ color: '#2563EB', fontWeight: 600, cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
+      >
+        @{name}
+      </Box>
+    );
+    lastIndex = regex.lastIndex;
+  }
+  if (lastIndex < content.length) {
+    parts.push(content.slice(lastIndex));
+  }
+  return parts.length > 0 ? parts : content;
+};
+
+const extractMentionedUserIds = (content: string, extraIds: number[] = []) => {
+  const ids = new Set<number>(extraIds);
+  const regex = new RegExp(MENTION_PATTERN);
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(content)) !== null) {
+    ids.add(parseInt(match[1], 10));
+  }
+  return Array.from(ids);
+};
 
 // Memoized Post component to prevent unnecessary re-renders
 interface PostProps {
@@ -279,7 +314,9 @@ const Post = memo(({ post, onLikeToggle, onCommentClick, onOpenProfile, likedPos
   }, [post.id, onLikeToggle]);
 
   return (
-    <Box sx={{
+    <Box
+      id={`post-${post.id}`}
+      sx={{
       bgcolor: '#fff',
       borderRadius: 4,
       boxShadow: '0 2px 16px rgba(37,99,235,0.10)',
@@ -314,7 +351,9 @@ const Post = memo(({ post, onLikeToggle, onCommentClick, onOpenProfile, likedPos
         </Box>
       </Box>
       <Typography sx={{ color: '#2563EB', fontWeight: 700, fontSize: 17, mb: 1 }}>{post.title}</Typography>
-      <Typography sx={{ color: '#374151', fontSize: 16, mb: 2 }}>{post.content}</Typography>
+      <Typography sx={{ color: '#374151', fontSize: 16, mb: 2, whiteSpace: 'pre-wrap' }}>
+        {renderPostContent(post.content, onOpenProfile)}
+      </Typography>
       <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', mb: 1 }}>
         <Typography sx={{ fontSize: 14, color: '#6B7280', bgcolor: 'rgba(37,99,235,0.06)', px: 1.5, py: 0.5, borderRadius: 2 }}>Location: {post.location}</Typography>
         <Typography sx={{ fontSize: 14, color: '#6B7280', bgcolor: 'rgba(99,102,241,0.06)', px: 1.5, py: 0.5, borderRadius: 2 }}>Type: {post.propertyType}</Typography>
@@ -753,6 +792,11 @@ const Home = () => {
     fetchPolicy: 'network-only',
   });
 
+  const { data: trendingData, loading: trendingLoading } = useQuery(TRENDING_POSTS, {
+    variables: { limit: 5 },
+    fetchPolicy: 'network-only',
+  });
+
   const client = useApolloClient();
 
 
@@ -761,6 +805,20 @@ const Home = () => {
   const [commentsModalOpen, setCommentsModalOpen] = useState<{ open: boolean; postId: number | null }>({ open: false, postId: null });
   const [likedPosts, setLikedPosts] = useState<{ [postId: number]: boolean }>({});
   const [likeCounts, setLikeCounts] = useState<{ [postId: number]: number }>({});
+
+  // Hydrate liked state from server (persists across refresh)
+  useEffect(() => {
+    if (!data?.searchPosts) return;
+    const nextLiked: { [postId: number]: boolean } = {};
+    const nextCounts: { [postId: number]: number } = {};
+    data.searchPosts.forEach((p: any) => {
+      if (p.isLiked) nextLiked[p.id] = true;
+      nextCounts[p.id] = p.likeCount || 0;
+    });
+    setLikedPosts(prev => ({ ...nextLiked, ...prev }));
+    setLikeCounts(prev => ({ ...nextCounts, ...prev }));
+  }, [data?.searchPosts]);
+
   const [likingPost, setLikingPost] = useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars
   const [unlikingPost, setUnlikingPost] = useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -783,6 +841,27 @@ const Home = () => {
   const commentsRefreshTimerRef = useRef<NodeJS.Timeout | null>(null);
   // Authenticated user object (from localStorage) – do not repurpose for viewing profiles
   const [currentUser, setCurrentUser] = useState(getUserData());
+  const activeUserId = currentUser?.id || authUser?.id || storedUser?.id;
+
+  const { data: suggestedData, loading: suggestedLoading, refetch: refetchSuggested } = useQuery(GET_SUGGESTED_USERS, {
+    variables: { userId: parseInt(String(activeUserId || 0)), limit: 5 },
+    skip: !activeUserId,
+    fetchPolicy: 'network-only',
+  });
+
+  const { data: notifData, refetch: refetchNotifs } = useQuery(GET_USER_NOTIFICATIONS, {
+    variables: { userId: parseInt(String(activeUserId || 0)), page: 1, limit: 20 },
+    skip: !activeUserId,
+    fetchPolicy: 'network-only',
+    pollInterval: 60000,
+  });
+  const [markNotificationRead] = useMutation(MARK_NOTIFICATION_READ);
+  const [notifAnchor, setNotifAnchor] = useState<null | HTMLElement>(null);
+  const notifications = notifData?.userNotifications?.notifications || [];
+  const unreadCount = notifications.filter((n: any) => !n.read).length;
+
+  const [followedSuggestedIds, setFollowedSuggestedIds] = useState<{ [userId: number]: boolean }>({});
+  const [followingSuggestedId, setFollowingSuggestedId] = useState<number | null>(null);
   // Ref to track currentUser without causing effect re-runs
   const currentUserRef = useRef(currentUser);
   useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
@@ -797,6 +876,8 @@ const Home = () => {
   const [likePost] = useMutation(LIKE_POST_MUTATION);
   const [unlikePost] = useMutation(UNLIKE_POST_MUTATION);
   const [createPostMutation] = useMutation(CREATE_POST);
+  const [followUserMutation] = useMutation(FOLLOW_USER);
+  const [createNotificationMutation] = useMutation(CREATE_NOTIFICATION);
 
   // Create Post form state (simplified for new component)
   const [cpSubmitting, setCpSubmitting] = useState(false);
@@ -977,45 +1058,44 @@ const Home = () => {
     setCurrentPage('profile');
   }, []);
 
+  const handleFollowSuggested = useCallback(async (followingId: number) => {
+    if (!activeUserId || followedSuggestedIds[followingId]) return;
+    setFollowingSuggestedId(followingId);
+    try {
+      await followUserMutation({
+        variables: {
+          userId: parseInt(String(activeUserId)),
+          followingId,
+        },
+      });
+      setFollowedSuggestedIds(prev => ({ ...prev, [followingId]: true }));
+      await refetchSuggested();
+    } catch (error) {
+      console.error('Error following suggested user:', error);
+    } finally {
+      setFollowingSuggestedId(null);
+    }
+  }, [activeUserId, followedSuggestedIds, followUserMutation, refetchSuggested]);
+
+  const handleTrendingPostClick = useCallback((postId: number) => {
+    const el = document.getElementById(`post-${postId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, []);
+
   // Helper function to check if user has property management permissions
   const canManageProperties = useCallback(() => {
-    console.log('=== DEBUGGING ROLE CHECK ===');
-    console.log('authUser:', authUser);
-    console.log('authUser.role:', authUser?.role);
-    console.log('currentUser:', currentUser);
-    console.log('currentUser.role:', currentUser?.role);
-    console.log('storedUser:', storedUser);
-    console.log('storedUser.role:', storedUser?.role);
-    
-    // Try authUser first, then currentUser, then storedUser
     const user = authUser || currentUser || storedUser;
-    console.log('Using user:', user);
-    console.log('User role:', user?.role);
-    console.log('User role type:', typeof user?.role);
-    console.log('User role length:', user?.role?.length);
-    
     if (!user) {
-      console.log('No user found - returning false');
       return false;
     }
-    
-    // Check if role exists and is not empty
     if (!user.role || user.role.trim() === '') {
-      console.log('No role or empty role found - returning false');
-      console.log('User email:', user.email);
-      console.log('This user needs to have their role set to "builder" or "admin"');
       return false;
     }
-    
     const userRole = user.role.toLowerCase().trim();
-    console.log('User role (lowercase, trimmed):', userRole);
-    
-    const canManage = userRole === 'builder' || userRole === 'admin';
-    console.log('Can manage properties:', canManage);
-    console.log('=== END DEBUGGING ===');
-    
-    return canManage;
-  }, [authUser, currentUser]);
+    return userRole === 'builder' || userRole === 'admin';
+  }, [authUser, currentUser, storedUser]);
 
   const handleCreatePost = useCallback(async (postData: any) => {
     if (!currentUser || !currentUser.id) {
@@ -1117,6 +1197,28 @@ const Home = () => {
 
       if (data?.createPost?.success) {
         setCreateOpen(false);
+
+        const mentionedIds = extractMentionedUserIds(
+          postData.content,
+          postData.mentionedUserIds || []
+        ).filter((id) => id !== parseInt(String(currentUser.id)));
+
+        for (const mentionedId of mentionedIds) {
+          try {
+            await createNotificationMutation({
+              variables: {
+                userId: mentionedId,
+                title: 'You were mentioned',
+                message: `${currentUser.firstName || 'Someone'} mentioned you in a post: ${postData.title}`,
+                type: 'mention',
+                metadata: JSON.stringify({ postTitle: postData.title }),
+              },
+            });
+          } catch (notifyError) {
+            console.error('Failed to create mention notification:', notifyError);
+          }
+        }
+
         // Refresh posts
         await refetch();
       } else {
@@ -1128,7 +1230,7 @@ const Home = () => {
     } finally {
       setCpSubmitting(false);
     }
-  }, [currentUser, createPostMutation, refetch]);
+  }, [currentUser, createPostMutation, createNotificationMutation, refetch]);
 
   const handleLikeToggle = useCallback(async (postId: number) => {
     if (!currentUser?.id) return;
@@ -1369,25 +1471,61 @@ const Home = () => {
               }}
             />
           </Box>
-          {/* Debug info - remove after testing */}
-          <Box sx={{ mr: 2, fontSize: 12, color: '#666', bgcolor: '#f0f0f0', px: 1, py: 0.5, borderRadius: 1 }}>
-            Auth: {authUser?.role || 'None'} | Current: {currentUser?.role || 'None'} | Stored: {storedUser?.role || 'None'} | Can Manage: {canManageProperties() ? 'Yes' : 'No'}
-            <Button 
-              size="small" 
-              onClick={fetchAndUpdateUserData}
-              sx={{ ml: 1, fontSize: 10, minWidth: 'auto', px: 1 }}
-            >
-              Refresh User Data
-            </Button>
-          </Box>
           {/* Notification & Profile */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <IconButton title="Messages" onClick={() => navigate('/chat')} sx={{ transition: 'background 0.2s', '&:hover': { bgcolor: '#EEF2FB' } }}>
               <MessageIcon sx={{ color: '#2563EB' }} />
             </IconButton>
-            <IconButton title="Notifications" sx={{ transition: 'background 0.2s', '&:hover': { bgcolor: '#EEF2FB' } }}>
-              <NotificationsIcon sx={{ color: '#2563EB' }} />
+            <IconButton
+              title="Notifications"
+              onClick={(e) => setNotifAnchor(e.currentTarget)}
+              sx={{ transition: 'background 0.2s', '&:hover': { bgcolor: '#EEF2FB' } }}
+            >
+              <Badge badgeContent={unreadCount} color="error" max={9}>
+                <NotificationsIcon sx={{ color: '#2563EB' }} />
+              </Badge>
             </IconButton>
+            <Menu
+              anchorEl={notifAnchor}
+              open={Boolean(notifAnchor)}
+              onClose={() => setNotifAnchor(null)}
+              PaperProps={{ sx: { width: 360, maxHeight: 420 } }}
+            >
+              {notifications.length === 0 && (
+                <MenuItem disabled>No notifications</MenuItem>
+              )}
+              {notifications.map((n: any) => (
+                <MenuItem
+                  key={n.id}
+                  onClick={async () => {
+                    if (!n.read && activeUserId) {
+                      try {
+                        await markNotificationRead({
+                          variables: {
+                            notificationId: n.id,
+                            userId: parseInt(String(activeUserId)),
+                          },
+                        });
+                        refetchNotifs();
+                      } catch (err) {
+                        console.warn('markNotificationRead failed', err);
+                      }
+                    }
+                    setNotifAnchor(null);
+                  }}
+                  sx={{
+                    alignItems: 'flex-start',
+                    whiteSpace: 'normal',
+                    bgcolor: n.read ? 'transparent' : 'rgba(37,99,235,0.06)',
+                  }}
+                >
+                  <Box>
+                    <Typography fontWeight={600} fontSize={14}>{n.title}</Typography>
+                    <Typography fontSize={13} color="text.secondary">{n.message}</Typography>
+                  </Box>
+                </MenuItem>
+              ))}
+            </Menu>
             <IconButton title="Add Friend" sx={{ transition: 'background 0.2s', '&:hover': { bgcolor: '#EEF2FB' } }}>
               <PersonAddIcon sx={{ color: '#2563EB' }} />
             </IconButton>
@@ -1495,9 +1633,9 @@ const Home = () => {
               />
             </Box>
             <Box sx={{ display: 'flex', gap: 3, mt: 1 }}>
-              <Button size="medium" startIcon={<AddIcon />} sx={{ color: '#2563EB', textTransform: 'none', fontWeight: 600, fontSize: 15, bgcolor: 'rgba(37,99,235,0.08)', borderRadius: 2, '&:hover': { bgcolor: 'rgba(37,99,235,0.18)' } }}>Photo</Button>
-              <Button size="medium" startIcon={<AddIcon />} sx={{ color: '#EF4444', textTransform: 'none', fontWeight: 600, fontSize: 15, bgcolor: 'rgba(239,68,68,0.08)', borderRadius: 2, '&:hover': { bgcolor: 'rgba(239,68,68,0.18)' } }}>Video</Button>
-              <Button size="medium" startIcon={<AddIcon />} sx={{ color: '#6366F1', textTransform: 'none', fontWeight: 600, fontSize: 15, bgcolor: 'rgba(99,102,241,0.08)', borderRadius: 2, '&:hover': { bgcolor: 'rgba(99,102,241,0.18)' } }}>Tag</Button>
+              <Button size="medium" startIcon={<AddIcon />} sx={{ color: '#2563EB', textTransform: 'none', fontWeight: 600, fontSize: 15, bgcolor: 'rgba(37,99,235,0.08)', borderRadius: 2, '&:hover': { bgcolor: 'rgba(37,99,235,0.18)' } }} onClick={() => setCreateOpen(true)}>Photo</Button>
+              <Button size="medium" startIcon={<AddIcon />} sx={{ color: '#EF4444', textTransform: 'none', fontWeight: 600, fontSize: 15, bgcolor: 'rgba(239,68,68,0.08)', borderRadius: 2, '&:hover': { bgcolor: 'rgba(239,68,68,0.18)' } }} onClick={() => setCreateOpen(true)}>Video</Button>
+              <Button size="medium" startIcon={<AddIcon />} sx={{ color: '#6366F1', textTransform: 'none', fontWeight: 600, fontSize: 15, bgcolor: 'rgba(99,102,241,0.08)', borderRadius: 2, '&:hover': { bgcolor: 'rgba(99,102,241,0.18)' } }} onClick={() => setCreateOpen(true)}>@ Mention</Button>
             </Box>
             {/* Floating Action Button for mobile */}
             {isMobile && (
@@ -1517,7 +1655,22 @@ const Home = () => {
               <PostSkeleton />
             </Stack>
           ) : error ? (
-            <Typography color="error" sx={{ textAlign: 'center', mt: 6 }}>Error loading posts</Typography>
+            <Box sx={{ textAlign: 'center', mt: 6, px: 2 }}>
+              <Typography color="error" sx={{ fontWeight: 600, mb: 1 }}>
+                Error loading posts
+              </Typography>
+              <Typography sx={{ color: '#6B7280', fontSize: 14, wordBreak: 'break-word' }}>
+                {error.message}
+              </Typography>
+              <Button
+                variant="outlined"
+                size="small"
+                sx={{ mt: 2, textTransform: 'none' }}
+                onClick={() => refetch()}
+              >
+                Retry
+              </Button>
+            </Box>
           ) : (
             <Stack spacing={4}>
               {data?.searchPosts?.map((post: any) => (
@@ -1541,29 +1694,85 @@ const Home = () => {
             {/* People You May Know */}
             <Box sx={{ bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 4, boxShadow: '0 2px 12px rgba(37,99,235,0.08)', p: 2.5 }}>
               <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2, color: '#2563EB', ...interFont }}>People You May Know</Typography>
-              <Stack spacing={2}>
-                {friendSuggestions.map((friend, idx) => (
-                  <Box key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 2, bgcolor: '#F6F8FB', borderRadius: 3, p: 1.2, boxShadow: 1 }}>
-                    <Avatar src={friend.avatar} sx={{ width: 38, height: 38, mr: 1 }} />
-                    <Box>
-                      <Typography sx={{ fontWeight: 600, fontSize: 15 }}>{friend.name}</Typography>
-                      <Typography sx={{ fontSize: 13, color: '#6B7280' }}>{friend.info}</Typography>
+              {suggestedLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}><CircularProgress size={24} /></Box>
+              ) : (
+                <Stack spacing={2}>
+                  {(suggestedData?.suggestedUsers ?? []).map((friend: any) => (
+                    <Box key={friend.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, bgcolor: '#F6F8FB', borderRadius: 3, p: 1.2, boxShadow: 1 }}>
+                      <Avatar
+                        src={friend.profilePhotoSignedUrl || friend.profilePhoto || `https://randomuser.me/api/portraits/lego/${friend.id % 10}.jpg`}
+                        sx={{ width: 38, height: 38, mr: 1, cursor: 'pointer' }}
+                        onClick={() => handleOpenProfile(friend.id)}
+                      />
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography
+                          sx={{ fontWeight: 600, fontSize: 15, cursor: 'pointer' }}
+                          onClick={() => handleOpenProfile(friend.id)}
+                        >
+                          {friend.firstName} {friend.lastName}
+                        </Typography>
+                        <Typography sx={{ fontSize: 13, color: '#6B7280' }}>{friend.role || 'User'}</Typography>
+                      </Box>
+                      <Button
+                        size="small"
+                        variant={followedSuggestedIds[friend.id] ? 'outlined' : 'contained'}
+                        disabled={followedSuggestedIds[friend.id] || followingSuggestedId === friend.id}
+                        onClick={() => handleFollowSuggested(friend.id)}
+                        sx={{
+                          textTransform: 'none',
+                          fontWeight: 600,
+                          borderRadius: 2,
+                          minWidth: 72,
+                          bgcolor: followedSuggestedIds[friend.id] ? 'transparent' : '#2563EB',
+                        }}
+                      >
+                        {followedSuggestedIds[friend.id] ? 'Following' : followingSuggestedId === friend.id ? '...' : 'Follow'}
+                      </Button>
                     </Box>
-                  </Box>
-                ))}
-              </Stack>
+                  ))}
+                  {(suggestedData?.suggestedUsers ?? []).length === 0 && (
+                    <Typography sx={{ fontSize: 13, color: '#6B7280' }}>No suggestions right now</Typography>
+                  )}
+                </Stack>
+              )}
             </Box>
-            {/* Trending Topics */}
+            {/* Trending Posts */}
             <Box sx={{ bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 4, boxShadow: '0 2px 12px rgba(37,99,235,0.08)', p: 2.5 }}>
               <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2, color: '#2563EB', ...interFont }}>Trending</Typography>
-              <Stack spacing={1.5}>
-                {trendingTopics.map((trend, idx) => (
-                  <Box key={idx} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', bgcolor: '#F6F8FB', borderRadius: 3, p: 1, boxShadow: 1 }}>
-                    <Typography sx={{ color: '#2563EB', fontWeight: 600, fontSize: 15 }}>{trend.topic}</Typography>
-                    <Typography sx={{ fontSize: 13, color: '#6366F1', fontWeight: 500, bgcolor: 'rgba(99,102,241,0.08)', px: 1.2, borderRadius: 2 }}>{trend.posts}</Typography>
-                  </Box>
-                ))}
-              </Stack>
+              {trendingLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}><CircularProgress size={24} /></Box>
+              ) : (
+                <Stack spacing={1.5}>
+                  {(trendingData?.trendingPosts ?? []).map((trend: any) => (
+                    <Box
+                      key={trend.id}
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        bgcolor: '#F6F8FB',
+                        borderRadius: 3,
+                        p: 1,
+                        boxShadow: 1,
+                        cursor: 'pointer',
+                        '&:hover': { bgcolor: '#EEF2FB' },
+                      }}
+                      onClick={() => handleTrendingPostClick(trend.id)}
+                    >
+                      <Typography sx={{ color: '#2563EB', fontWeight: 600, fontSize: 15, pr: 1 }}>
+                        {trend.title}
+                      </Typography>
+                      <Typography sx={{ fontSize: 13, color: '#6366F1', fontWeight: 500, bgcolor: 'rgba(99,102,241,0.08)', px: 1.2, borderRadius: 2, whiteSpace: 'nowrap' }}>
+                        {trend.likeCount || 0} likes
+                      </Typography>
+                    </Box>
+                  ))}
+                  {(trendingData?.trendingPosts ?? []).length === 0 && (
+                    <Typography sx={{ fontSize: 13, color: '#6B7280' }}>No trending posts yet</Typography>
+                  )}
+                </Stack>
+              )}
             </Box>
           </Box>
         )}

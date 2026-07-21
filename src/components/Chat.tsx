@@ -29,6 +29,7 @@ export interface ChatMessage {
 interface ChatProps {
   roomId: string;
   userId: string;
+  onConnectionChange?: (connected: boolean) => void;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -104,7 +105,7 @@ const mapHistory = (rows: any[]): ChatMessage[] => (
 
 // ── Chat component ───────────────────────────────────────────────────────────
 
-const Chat: React.FC<ChatProps> = ({ roomId, userId }) => {
+const Chat: React.FC<ChatProps> = ({ roomId, userId, onConnectionChange }) => {
   const apollo = useApolloClient();
   const [messages, setMessages]   = useState<ChatMessage[]>([]);
   const [input, setInput]         = useState('');
@@ -115,7 +116,12 @@ const Chat: React.FC<ChatProps> = ({ roomId, userId }) => {
   const bottomRef      = useRef<HTMLDivElement | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shouldReconnectRef = useRef(true);
+  const authReconnectAttemptedRef = useRef(false);
   const pendingMessagesRef = useRef<string[]>([]);
+
+  useEffect(() => {
+    onConnectionChange?.(connected);
+  }, [connected, onConnectionChange]);
 
   useEffect(() => {
     setResolvedRoomId(normalizeRoomId(roomId));
@@ -192,6 +198,7 @@ const Chat: React.FC<ChatProps> = ({ roomId, userId }) => {
     wsRef.current = ws;
 
     ws.onopen  = () => {
+      authReconnectAttemptedRef.current = false;
       setConnected(true);
       while (pendingMessagesRef.current.length > 0) {
         const payload = pendingMessagesRef.current.shift();
@@ -202,7 +209,14 @@ const Chat: React.FC<ChatProps> = ({ roomId, userId }) => {
     };
     ws.onclose = (ev) => {
       setConnected(false);
-      if (ev.code === 1008) return;
+      if (ev.code === 1008) {
+        const token = localStorage.getItem('token');
+        if (token && !authReconnectAttemptedRef.current && shouldReconnectRef.current) {
+          authReconnectAttemptedRef.current = true;
+          reconnectTimer.current = setTimeout(connect, 3000);
+        }
+        return;
+      }
       if (!shouldReconnectRef.current) return;
       reconnectTimer.current = setTimeout(connect, 3000);
     };
