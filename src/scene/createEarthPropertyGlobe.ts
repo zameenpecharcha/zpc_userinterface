@@ -41,10 +41,10 @@ function loadTexture(url: string): Promise<THREE.Texture | null> {
   });
 }
 
-function makeStarfield(count: number) {
+function makeStarfield(count: number, size: number, color: number, opacity: number) {
   const positions = new Float32Array(count * 3);
   for (let i = 0; i < count; i++) {
-    const r = 100 + Math.random() * 240;
+    const r = 90 + Math.random() * 280;
     const theta = Math.random() * Math.PI * 2;
     const phi = Math.acos(2 * Math.random() - 1);
     positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
@@ -53,29 +53,33 @@ function makeStarfield(count: number) {
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  return new THREE.Points(
-    geo,
-    new THREE.PointsMaterial({
-      color: 0xc8d8f0,
-      size: 0.32,
-      sizeAttenuation: true,
-      transparent: true,
-      opacity: 0.85,
-      depthWrite: false,
-    })
-  );
+  const mat = new THREE.PointsMaterial({
+    color,
+    size,
+    sizeAttenuation: true,
+    transparent: true,
+    opacity,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const points = new THREE.Points(geo, mat);
+  points.userData = {
+    baseOpacity: opacity,
+    phase: Math.random() * Math.PI * 2,
+  };
+  return points;
 }
 
 function makeAtmosphere(radius: number) {
   const outer = new THREE.Mesh(
-    new THREE.SphereGeometry(radius * 1.1, 64, 64),
+    new THREE.SphereGeometry(radius * 1.12, 64, 64),
     new THREE.ShaderMaterial({
       transparent: true,
       depthWrite: false,
       side: THREE.BackSide,
       blending: THREE.AdditiveBlending,
       uniforms: {
-        glowColor: { value: new THREE.Color(0x6ec0ff) },
+        glowColor: { value: new THREE.Color(0x7ec8ff) },
       },
       vertexShader: `
         varying vec3 vNormal;
@@ -88,8 +92,8 @@ function makeAtmosphere(radius: number) {
         varying vec3 vNormal;
         uniform vec3 glowColor;
         void main() {
-          float intensity = pow(0.7 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.4);
-          gl_FragColor = vec4(glowColor, 1.0) * intensity * 0.75;
+          float intensity = pow(0.62 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.0);
+          gl_FragColor = vec4(glowColor, 1.0) * intensity * 1.25;
         }
       `,
     })
@@ -98,13 +102,12 @@ function makeAtmosphere(radius: number) {
 }
 
 /**
- * Bright, readable Earth for the login hero.
- * Uses MeshBasicMaterial so the satellite map stays fully lit (no night silhouette).
+ * Sun-lit Earth for the login hero — directional daylight + dense starfield.
  */
 export function createEarthPropertyGlobe(container: HTMLElement): SceneHandle {
   const kit = createSceneKit(container, {
-    bg: 0x0a1520,
-    exposure: 1.15,
+    bg: 0x050b14,
+    exposure: 1.35,
     disableBloom: true,
     shadows: false,
   });
@@ -113,13 +116,51 @@ export function createEarthPropertyGlobe(container: HTMLElement): SceneHandle {
   let simSpeed = 1;
   const disposables: THREE.Texture[] = [];
 
-  // Soft fill for atmosphere / pins only (globe itself is unlit basic material)
-  scene.add(new THREE.AmbientLight(0xffffff, 0.9));
-  const sun = new THREE.DirectionalLight(0xffffff, 1.2);
-  sun.position.set(20, 15, 40);
-  scene.add(sun);
+  // Daylight: bright warm sun on the face toward camera, soft blue fill on night side
+  const hemi = new THREE.HemisphereLight(0xb8d4ff, 0x1a2838, 0.45);
+  scene.add(hemi);
+  const ambient = new THREE.AmbientLight(0x6a8098, 0.28);
+  scene.add(ambient);
 
-  scene.add(makeStarfield(isMobile ? 1400 : 2600));
+  const sun = new THREE.DirectionalLight(0xfff2dd, 3.6);
+  sun.position.set(28, 18, 55);
+  scene.add(sun);
+  const sunFill = new THREE.DirectionalLight(0xa8c8ff, 0.55);
+  sunFill.position.set(-35, -10, -20);
+  scene.add(sunFill);
+
+  // Soft sun disc in the sky (visual cue for daylight)
+  const sunDisc = new THREE.Mesh(
+    new THREE.SphereGeometry(2.2, 24, 24),
+    new THREE.MeshBasicMaterial({
+      color: 0xfff0c8,
+      transparent: true,
+      opacity: 0.95,
+      depthWrite: false,
+    })
+  );
+  sunDisc.position.copy(sun.position).normalize().multiplyScalar(85);
+  scene.add(sunDisc);
+  const sunGlow = new THREE.Mesh(
+    new THREE.SphereGeometry(5.5, 24, 24),
+    new THREE.MeshBasicMaterial({
+      color: 0xffd080,
+      transparent: true,
+      opacity: 0.22,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    })
+  );
+  sunGlow.position.copy(sunDisc.position);
+  scene.add(sunGlow);
+
+  // Layered starfield — dense background + bright foreground sparks
+  const starLayers = [
+    makeStarfield(isMobile ? 2200 : 4800, 0.22, 0xa8bce0, 0.55),
+    makeStarfield(isMobile ? 900 : 1800, 0.38, 0xd8e8ff, 0.85),
+    makeStarfield(isMobile ? 180 : 360, 0.72, 0xffffff, 0.95),
+  ];
+  starLayers.forEach((s) => scene.add(s));
 
   const earthGroup = new THREE.Group();
   scene.add(earthGroup);
@@ -127,18 +168,24 @@ export function createEarthPropertyGlobe(container: HTMLElement): SceneHandle {
   const R = 10;
   const segments = isMobile ? 80 : 112;
 
-  // Placeholder bright ocean until textures load — never a black ball
-  const earthMat = new THREE.MeshBasicMaterial({
-    color: 0x3a7ab0,
+  // Lit surface — sun creates a real day/night terminator
+  const earthMat = new THREE.MeshStandardMaterial({
+    color: 0x7ab0d8,
+    roughness: 0.72,
+    metalness: 0.05,
+    emissive: new THREE.Color(0x000000),
+    emissiveIntensity: 0,
   });
   const earth = new THREE.Mesh(new THREE.SphereGeometry(R, segments, segments), earthMat);
   earthGroup.add(earth);
 
-  const cloudsMat = new THREE.MeshBasicMaterial({
+  const cloudsMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     transparent: true,
     opacity: 0,
     depthWrite: false,
+    roughness: 1,
+    metalness: 0,
   });
   const clouds = new THREE.Mesh(
     new THREE.SphereGeometry(R * 1.012, segments, segments),
@@ -146,7 +193,7 @@ export function createEarthPropertyGlobe(container: HTMLElement): SceneHandle {
   );
   earthGroup.add(clouds);
 
-  // Soft night-lights overlay (additive) — does not darken the day map
+  // City lights on the night side (additive / emissive)
   const nightMat = new THREE.MeshBasicMaterial({
     color: 0xffcc88,
     transparent: true,
@@ -178,7 +225,7 @@ export function createEarthPropertyGlobe(container: HTMLElement): SceneHandle {
       configureMap(day, renderer, true);
       disposables.push(day);
       earthMat.map = day;
-      earthMat.color.set(0xffffff);
+      earthMat.color.setRGB(1.12, 1.1, 1.08);
       earthMat.needsUpdate = true;
     } else {
       console.warn('[Earth] Day texture failed to load — using solid ocean color');
@@ -188,7 +235,8 @@ export function createEarthPropertyGlobe(container: HTMLElement): SceneHandle {
       configureMap(cloudsTex, renderer, true);
       disposables.push(cloudsTex);
       cloudsMat.map = cloudsTex;
-      cloudsMat.opacity = 0.35;
+      cloudsMat.opacity = 0.38;
+      cloudsMat.color.setRGB(1.05, 1.05, 1.05);
       cloudsMat.needsUpdate = true;
     }
 
@@ -196,8 +244,13 @@ export function createEarthPropertyGlobe(container: HTMLElement): SceneHandle {
       configureMap(night, renderer, true);
       disposables.push(night);
       nightMat.map = night;
-      nightMat.opacity = 0.45;
+      nightMat.opacity = 0.55;
       nightMat.needsUpdate = true;
+      // Soft emissive so dark side stays readable while sun lights the day side
+      earthMat.emissiveMap = night;
+      earthMat.emissive = new THREE.Color(0xffaa66);
+      earthMat.emissiveIntensity = 0.35;
+      earthMat.needsUpdate = true;
     }
   })();
 
@@ -292,6 +345,8 @@ export function createEarthPropertyGlobe(container: HTMLElement): SceneHandle {
   let intro = 0;
   let orbit = 0;
   let simTime = 0;
+  const sunDir = new THREE.Vector3();
+  const sunNorm = new THREE.Vector3();
 
   const baseHandle = kit.startLoop((_t, dt) => {
     const sdt = dt * simSpeed;
@@ -304,6 +359,25 @@ export function createEarthPropertyGlobe(container: HTMLElement): SceneHandle {
     surfaceLayer.rotation.y = spin;
     clouds.rotation.y = simTime * 0.042;
     clouds.rotation.x = Math.sin(simTime * 0.04) * 0.012;
+
+    // Keep sun lighting the camera-facing hemisphere (daylight on India view)
+    sunDir.set(
+      22 + Math.sin(simTime * 0.05) * 4,
+      14 + Math.cos(simTime * 0.04) * 2,
+      48
+    );
+    sun.position.copy(sunDir);
+    sunNorm.copy(sunDir).normalize().multiplyScalar(85);
+    sunDisc.position.copy(sunNorm);
+    sunGlow.position.copy(sunNorm);
+
+    // Gentle star twinkle
+    starLayers.forEach((layer, i) => {
+      const mat = layer.material as THREE.PointsMaterial;
+      const base = (layer.userData as { baseOpacity: number; phase: number }).baseOpacity;
+      const phase = (layer.userData as { phase: number }).phase;
+      mat.opacity = base * (0.82 + Math.sin(simTime * (0.7 + i * 0.35) + phase) * 0.18);
+    });
 
     pins.forEach((p) => {
       const pulse = 0.92 + Math.sin(simTime * 2.0 + p.phase) * 0.18;

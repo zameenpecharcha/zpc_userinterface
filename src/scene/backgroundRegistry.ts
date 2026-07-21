@@ -37,7 +37,7 @@ export const BACKGROUND_OPTIONS: BackgroundOption[] = [
     description: 'Cinematic globe + India property pins (solar-system tier)',
     create: createEarthPropertyGlobe,
     vignette:
-      'radial-gradient(ellipse at 50% 42%, rgba(8, 20, 32, 0.0) 0%, rgba(8, 20, 32, 0.12) 100%)',
+      'radial-gradient(ellipse at 50% 42%, rgba(5, 10, 18, 0.0) 0%, rgba(5, 10, 18, 0.08) 100%)',
     brandColor: '#eef6ff',
     taglineColor: 'rgba(220,235,255,0.82)',
     showSimHud: true,

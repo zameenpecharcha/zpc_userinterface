@@ -10,20 +10,22 @@ type Props = {
   onSimSpeed: (speed: number) => void;
 };
 
-/** Solar-system-style HUD — modern, quiet, readable over WebGL. */
+/** Solar-system-style HUD — compact on mobile so the login card stays usable. */
 const SceneSimHud: React.FC<Props> = ({ option, simSpeed, onSimSpeed }) => {
   if (!option.showSimHud) return null;
 
   return (
     <>
+      {/* Desktop / tablet: left title */}
       <Box
         sx={{
           position: 'fixed',
-          top: { xs: 14, sm: 22 },
-          left: { xs: 14, sm: 24 },
+          top: { sm: 22 },
+          left: { sm: 24 },
           zIndex: 15,
           pointerEvents: 'none',
           maxWidth: 280,
+          display: { xs: 'none', sm: 'block' },
         }}
       >
         <Typography
@@ -42,7 +44,7 @@ const SceneSimHud: React.FC<Props> = ({ option, simSpeed, onSimSpeed }) => {
         <Typography
           sx={{
             fontFamily: '"DM Sans", sans-serif',
-            fontSize: { xs: 14, sm: 15 },
+            fontSize: 15,
             fontWeight: 600,
             color: 'rgba(255,255,255,0.92)',
             textShadow: '0 1px 12px rgba(0,0,0,0.45)',
@@ -62,14 +64,16 @@ const SceneSimHud: React.FC<Props> = ({ option, simSpeed, onSimSpeed }) => {
         </Typography>
       </Box>
 
+      {/* Desktop: status */}
       <Box
         sx={{
           position: 'fixed',
-          top: { xs: 14, sm: 22 },
-          right: { xs: 14, sm: 24 },
+          top: 22,
+          right: 24,
           zIndex: 15,
           pointerEvents: 'none',
           textAlign: 'right',
+          display: { xs: 'none', md: 'block' },
         }}
       >
         <Typography
@@ -107,26 +111,29 @@ const SceneSimHud: React.FC<Props> = ({ option, simSpeed, onSimSpeed }) => {
         </Box>
       </Box>
 
+      {/* Speed control — compact top-right on mobile, below status on desktop */}
       <Box
         sx={{
           position: 'fixed',
-          top: { xs: 78, sm: 22 },
-          left: { xs: '50%', sm: 'auto' },
-          right: { xs: 'auto', sm: 24 },
-          transform: { xs: 'translateX(-50%)', sm: 'none' },
+          top: {
+            xs: 'max(8px, env(safe-area-inset-top))',
+            sm: 22,
+          },
+          right: { xs: 10, sm: 24 },
           mt: { xs: 0, sm: 7 },
           zIndex: 15,
           display: 'flex',
           alignItems: 'center',
-          gap: 0.5,
-          px: 0.6,
-          py: 0.5,
+          gap: 0.35,
+          px: { xs: 0.4, sm: 0.6 },
+          py: { xs: 0.35, sm: 0.5 },
           borderRadius: '999px',
-          background: 'rgba(12, 18, 24, 0.45)',
+          background: 'rgba(12, 18, 24, 0.55)',
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
           border: '1px solid rgba(255,255,255,0.14)',
           pointerEvents: 'auto',
+          maxWidth: 'calc(100vw - 20px)',
         }}
       >
         <Typography
@@ -153,12 +160,14 @@ const SceneSimHud: React.FC<Props> = ({ option, simSpeed, onSimSpeed }) => {
               sx={{
                 border: 'none',
                 cursor: 'pointer',
+                touchAction: 'manipulation',
                 borderRadius: '999px',
-                px: 1.1,
-                py: 0.55,
-                minWidth: 40,
+                px: { xs: 0.85, sm: 1.1 },
+                py: { xs: 0.45, sm: 0.55 },
+                minWidth: { xs: 34, sm: 40 },
+                minHeight: { xs: 32, sm: 'auto' },
                 fontFamily: '"DM Sans", sans-serif',
-                fontSize: 11,
+                fontSize: { xs: 10, sm: 11 },
                 fontWeight: 700,
                 color: active ? '#0c1218' : 'rgba(255,255,255,0.75)',
                 background: active ? 'rgba(255,255,255,0.92)' : 'transparent',

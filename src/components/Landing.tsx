@@ -11,6 +11,8 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  CircularProgress,
+  useMediaQuery,
 } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
 import { AuthService } from '../services/authService';
@@ -27,25 +29,29 @@ import {
 } from '../scene/backgroundRegistry';
 
 const glassFieldSx = {
-  mb: 2.5,
+  mb: { xs: 1.5, sm: 2.5 },
   '& .MuiOutlinedInput-root': {
-    bgcolor: 'rgba(255,255,255,0.55)',
+    bgcolor: { xs: 'rgba(255,255,255,0.92)', sm: 'rgba(255,255,255,0.55)' },
     backdropFilter: 'blur(8px)',
-    borderRadius: '12px',
+    borderRadius: { xs: '10px', sm: '12px' },
     fontFamily: '"DM Sans", sans-serif',
+    fontSize: { xs: '16px', sm: '1rem' },
     transition: 'background 0.25s ease, box-shadow 0.25s ease',
     '& fieldset': { borderColor: 'rgba(255,255,255,0.35)' },
     '&:hover': {
-      bgcolor: 'rgba(255,255,255,0.72)',
+      bgcolor: { xs: '#fff', sm: 'rgba(255,255,255,0.72)' },
       '& fieldset': { borderColor: 'rgba(255,255,255,0.55)' },
     },
     '&.Mui-focused': {
-      bgcolor: 'rgba(255,255,255,0.85)',
+      bgcolor: '#fff',
       boxShadow: '0 0 0 3px rgba(30, 58, 72, 0.15)',
       '& fieldset': { borderColor: 'rgba(30, 58, 72, 0.45)' },
     },
   },
-  '& .MuiInputBase-input': { color: '#1a2a32' },
+  '& .MuiInputBase-input': {
+    color: '#1a2a32',
+    py: { xs: 1.4, sm: 1.5 },
+  },
 };
 
 const LOGIN_MUTATION = gql`
@@ -124,6 +130,7 @@ const Landing = () => {
   });
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [loggingIn, setLoggingIn] = useState(false);
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
   const [resetStep, setResetStep] = useState<'email' | 'otp' | 'newPassword'>('email');
   const [resetData, setResetData] = useState({
@@ -134,6 +141,8 @@ const Landing = () => {
   const [bgId, setBgId] = useState<BackgroundId>(() => readStoredBackgroundId());
   const [simSpeed, setSimSpeed] = useState(1);
   const bgOption = useMemo(() => getBackgroundOption(bgId), [bgId]);
+  const isMobile = useMediaQuery('(max-width:900px)');
+  const isNarrow = useMediaQuery('(max-width:600px)');
 
   const [login] = useMutation(LOGIN_MUTATION, {
     onCompleted: (data) => {
@@ -209,8 +218,10 @@ const Landing = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loggingIn) return;
     setError('');
     setSuccessMessage('');
+    setLoggingIn(true);
     try {
       const response = await authService.login({
         email: formData.email.trim().toLowerCase(),
@@ -231,6 +242,8 @@ const Landing = () => {
     } catch (err: any) {
       console.error('Login error:', err);
       setError(err.message || 'An error occurred during login');
+    } finally {
+      setLoggingIn(false);
     }
   };
 
@@ -311,14 +324,27 @@ const Landing = () => {
     <Box
       sx={{
         position: 'relative',
-        minHeight: '100vh',
+        minHeight: { xs: '100dvh', sm: '100vh' },
         width: '100%',
-        overflow: 'hidden',
+        maxWidth: '100vw',
+        overflowX: 'hidden',
+        overflowY: 'auto',
+        WebkitOverflowScrolling: 'touch',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         px: { xs: 2, sm: 3 },
-        py: { xs: 4, md: 6 },
+        pt: {
+          xs: 'max(20px, env(safe-area-inset-top))',
+          sm: 4,
+          md: 6,
+        },
+        pb: {
+          xs: 'max(24px, env(safe-area-inset-bottom))',
+          sm: isMobile ? 'calc(88px + env(safe-area-inset-bottom))' : 6,
+          md: 6,
+        },
+        boxSizing: 'border-box',
       }}
     >
       <LandingBackground option={bgOption} simSpeed={simSpeed} />
@@ -329,35 +355,43 @@ const Landing = () => {
           inset: 0,
           zIndex: 1,
           pointerEvents: 'none',
-          background: bgOption.vignette,
+          background: {
+            xs: 'linear-gradient(180deg, rgba(12,20,28,0.35) 0%, rgba(12,20,28,0.55) 100%)',
+            sm: bgOption.vignette,
+          },
           transition: 'background 0.5s ease',
         }}
       />
 
-      <SceneSimHud option={bgOption} simSpeed={simSpeed} onSimSpeed={setSimSpeed} />
+      {/* Keep sim HUD / bg switcher off phones so login stays usable */}
+      {!isNarrow && (
+        <SceneSimHud option={bgOption} simSpeed={simSpeed} onSimSpeed={setSimSpeed} />
+      )}
 
-      <BackgroundPreviewSwitcher
-        value={bgId}
-        onChange={(id) => {
-          setBgId(id);
-          try {
-            localStorage.setItem(BACKGROUND_STORAGE_KEY, id);
-          } catch {
-            /* ignore */
-          }
-        }}
-      />
+      {!isNarrow && (
+        <BackgroundPreviewSwitcher
+          value={bgId}
+          onChange={(id) => {
+            setBgId(id);
+            try {
+              localStorage.setItem(BACKGROUND_STORAGE_KEY, id);
+            } catch {
+              /* ignore */
+            }
+          }}
+        />
+      )}
 
       <Box
         sx={{
           position: 'relative',
           zIndex: 2,
           width: '100%',
-          maxWidth: 440,
+          maxWidth: { xs: 380, sm: 440 },
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          mb: { xs: 10, sm: 8 },
+          mx: 'auto',
         }}
       >
         <Typography
@@ -365,13 +399,14 @@ const Landing = () => {
           sx={{
             fontFamily: '"Cormorant Garamond", Georgia, serif',
             fontWeight: 600,
-            fontSize: { xs: '2.35rem', sm: '2.85rem' },
+            fontSize: { xs: '1.65rem', sm: '2.85rem' },
             letterSpacing: '0.02em',
             color: bgOption.brandColor,
             textAlign: 'center',
-            mb: 0.75,
+            mb: { xs: 0.35, sm: 0.75 },
+            px: 0.5,
             textShadow: '0 2px 24px rgba(0,0,0,0.35)',
-            lineHeight: 1.1,
+            lineHeight: 1.15,
             transition: 'color 0.4s ease',
           }}
         >
@@ -380,13 +415,16 @@ const Landing = () => {
         <Typography
           sx={{
             fontFamily: '"DM Sans", sans-serif',
-            fontSize: '0.95rem',
+            fontSize: { xs: '0.78rem', sm: '0.95rem' },
             fontWeight: 500,
             color: bgOption.taglineColor,
-            mb: 3.5,
+            mb: { xs: 2, sm: 3.5 },
+            px: 1,
             textAlign: 'center',
             textShadow: '0 1px 12px rgba(0,0,0,0.3)',
             transition: 'color 0.4s ease',
+            maxWidth: 300,
+            lineHeight: 1.4,
           }}
         >
           A single platform for all your real needs
@@ -395,24 +433,26 @@ const Landing = () => {
         <Box
           sx={{
             width: '100%',
-            p: { xs: 3, sm: 3.5 },
-            borderRadius: '20px',
-            background: 'rgba(248, 244, 238, 0.55)',
-            backdropFilter: 'blur(22px) saturate(1.35)',
-            WebkitBackdropFilter: 'blur(22px) saturate(1.35)',
-            border: '1px solid rgba(255,255,255,0.45)',
+            p: { xs: 2.5, sm: 3.5 },
+            borderRadius: { xs: '16px', sm: '20px' },
+            background: {
+              xs: 'rgba(255, 252, 248, 0.94)',
+              sm: 'rgba(248, 244, 238, 0.55)',
+            },
+            backdropFilter: { xs: 'blur(20px) saturate(1.2)', sm: 'blur(22px) saturate(1.35)' },
+            WebkitBackdropFilter: { xs: 'blur(20px) saturate(1.2)', sm: 'blur(22px) saturate(1.35)' },
+            border: '1px solid rgba(255,255,255,0.55)',
             boxShadow:
-              '0 8px 32px rgba(12, 24, 32, 0.18), inset 0 1px 0 rgba(255,255,255,0.55)',
-            transition: 'transform 0.35s ease, box-shadow 0.35s ease',
+              '0 8px 32px rgba(12, 24, 32, 0.22), inset 0 1px 0 rgba(255,255,255,0.55)',
           }}
         >
           <Typography
             sx={{
               fontFamily: '"DM Sans", sans-serif',
               fontWeight: 600,
-              fontSize: '1.35rem',
+              fontSize: { xs: '1.1rem', sm: '1.35rem' },
               color: '#1a2a32',
-              mb: 2.5,
+              mb: { xs: 1.5, sm: 2.5 },
             }}
           >
             Login to your account
@@ -439,6 +479,7 @@ const Landing = () => {
               placeholder="Enter your email"
               value={formData.email}
               onChange={handleChange}
+              disabled={loggingIn}
               sx={glassFieldSx}
             />
             <Typography sx={{ fontFamily: '"DM Sans", sans-serif', fontSize: 13, fontWeight: 600, color: '#2c3e48', mb: 1 }}>
@@ -452,19 +493,26 @@ const Landing = () => {
               placeholder="Enter your password"
               value={formData.password}
               onChange={handleChange}
+              disabled={loggingIn}
               sx={{ ...glassFieldSx, mb: 1 }}
             />
-            <Box sx={{ textAlign: 'right', mb: 2.5 }}>
+            <Box sx={{ textAlign: 'right', mb: { xs: 2, sm: 2.5 } }}>
               <Link
                 component="button"
                 type="button"
+                disabled={loggingIn}
                 onClick={() => setForgotPasswordOpen(true)}
                 sx={{
                   fontFamily: '"DM Sans", sans-serif',
                   color: '#1e3a48',
                   fontWeight: 600,
+                  fontSize: { xs: 13, sm: 14 },
                   textDecoration: 'none',
+                  minHeight: 44,
+                  display: 'inline-flex',
+                  alignItems: 'center',
                   '&:hover': { textDecoration: 'underline' },
+                  '&.Mui-disabled': { color: 'rgba(30,58,72,0.4)' },
                 }}
               >
                 Forgot password?
@@ -474,25 +522,45 @@ const Landing = () => {
               type="submit"
               fullWidth
               variant="contained"
+              disabled={loggingIn}
+              startIcon={
+                loggingIn ? (
+                  <CircularProgress size={18} thickness={5} sx={{ color: '#f7f3ec' }} />
+                ) : undefined
+              }
               sx={{
                 fontFamily: '"DM Sans", sans-serif',
                 fontWeight: 600,
                 bgcolor: '#1e3a48',
                 color: '#f7f3ec',
-                py: 1.5,
-                mb: 2.5,
+                py: { xs: 1.4, sm: 1.5 },
+                mb: { xs: 1.75, sm: 2.5 },
                 borderRadius: '12px',
                 textTransform: 'none',
-                fontSize: '1rem',
+                fontSize: { xs: '1rem', sm: '1rem' },
+                minHeight: 48,
+                touchAction: 'manipulation',
                 boxShadow: '0 8px 24px rgba(30, 58, 72, 0.35)',
                 transition: 'background 0.25s ease, transform 0.2s ease',
                 '&:hover': { bgcolor: '#162c38', transform: 'translateY(-1px)' },
+                '&.Mui-disabled': {
+                  bgcolor: '#1e3a48',
+                  color: '#f7f3ec',
+                  opacity: 0.85,
+                },
               }}
             >
-              Login
+              {loggingIn ? 'Signing in…' : 'Login'}
             </Button>
             <Box sx={{ textAlign: 'center' }}>
-              <Typography display="inline" sx={{ fontFamily: '"DM Sans", sans-serif', color: '#3a4f58', fontSize: 14 }}>
+              <Typography
+                display="inline"
+                sx={{
+                  fontFamily: '"DM Sans", sans-serif',
+                  color: '#3a4f58',
+                  fontSize: { xs: 13, sm: 14 },
+                }}
+              >
                 Don't have an account?{' '}
               </Typography>
               <Link
@@ -503,7 +571,12 @@ const Landing = () => {
                   fontFamily: '"DM Sans", sans-serif',
                   color: '#1e3a48',
                   fontWeight: 700,
+                  fontSize: { xs: 13, sm: 14 },
                   textDecoration: 'none',
+                  minHeight: 44,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  verticalAlign: 'middle',
                   '&:hover': { textDecoration: 'underline' },
                 }}
               >
@@ -516,6 +589,8 @@ const Landing = () => {
 
       <Dialog
         open={forgotPasswordOpen}
+        fullWidth
+        maxWidth="xs"
         onClose={() => {
           setForgotPasswordOpen(false);
           setResetStep('email');
@@ -525,10 +600,12 @@ const Landing = () => {
         }}
         PaperProps={{
           sx: {
-            borderRadius: 3,
-            minWidth: 320,
+            borderRadius: { xs: 2, sm: 3 },
+            m: { xs: 1.5, sm: 2 },
+            width: { xs: 'calc(100% - 24px)', sm: 'auto' },
+            maxWidth: { xs: 'calc(100% - 24px)', sm: 400 },
             boxShadow: 8,
-            p: 2,
+            p: { xs: 1, sm: 2 },
             textAlign: 'center',
             background: 'rgba(248, 244, 238, 0.92)',
             backdropFilter: 'blur(16px)',

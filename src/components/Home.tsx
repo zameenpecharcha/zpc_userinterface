@@ -22,6 +22,12 @@ import {
   CircularProgress,
   Skeleton,
   Badge,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Drawer,
+  Divider,
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import HomeIcon from '@mui/icons-material/Home';
@@ -32,11 +38,13 @@ import EventIcon from '@mui/icons-material/Event';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import MessageIcon from '@mui/icons-material/Message';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
+import SearchIcon from '@mui/icons-material/Search';
+import MenuIcon from '@mui/icons-material/Menu';
+import WhatshotIcon from '@mui/icons-material/Whatshot';
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
 import FavoriteIcon from '@mui/icons-material/Favorite';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import ShareIcon from '@mui/icons-material/Share';
-import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
 import ProfilePage from './ProfilePage';
 
@@ -844,7 +852,7 @@ const Home = () => {
   const activeUserId = currentUser?.id || authUser?.id || storedUser?.id;
 
   const { data: suggestedData, loading: suggestedLoading, refetch: refetchSuggested } = useQuery(GET_SUGGESTED_USERS, {
-    variables: { userId: parseInt(String(activeUserId || 0)), limit: 5 },
+    variables: { userId: parseInt(String(activeUserId || 0)), limit: 12 },
     skip: !activeUserId,
     fetchPolicy: 'network-only',
   });
@@ -862,6 +870,9 @@ const Home = () => {
 
   const [followedSuggestedIds, setFollowedSuggestedIds] = useState<{ [userId: number]: boolean }>({});
   const [followingSuggestedId, setFollowingSuggestedId] = useState<number | null>(null);
+  const [findFriendsOpen, setFindFriendsOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileDiscoverOpen, setMobileDiscoverOpen] = useState(false);
   // Ref to track currentUser without causing effect re-runs
   const currentUserRef = useRef(currentUser);
   useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
@@ -1449,47 +1460,114 @@ const Home = () => {
     <Box sx={{ bgcolor: '#F6F8FB', minHeight: '100vh', ...interFont }}>
       {/* Header */}
       <AppBar position="fixed" elevation={1} sx={{ bgcolor: '#fff', color: '#2563EB', zIndex: 1201 }}>
-        <Toolbar sx={{ justifyContent: 'space-between', px: isMobile ? 1 : 4 }}>
-          {/* Logo */}
-          <Typography variant="h5" sx={{ fontWeight: 900, color: '#2563EB', letterSpacing: 1, ...interFont }}>
+        <Toolbar
+          sx={{
+            justifyContent: 'space-between',
+            px: { xs: 1, sm: 2, md: 4 },
+            minHeight: { xs: 56, sm: 64 },
+            gap: { xs: 0.5, sm: 2 },
+          }}
+        >
+          {isMobile && (
+            <IconButton
+              edge="start"
+              aria-label="Open menu"
+              onClick={() => setMobileMenuOpen(true)}
+              size="small"
+              sx={{ mr: 0.25, color: '#2563EB' }}
+            >
+              <MenuIcon />
+            </IconButton>
+          )}
+
+          {/* Logo — single line; never stacks on mobile */}
+          <Typography
+            component="div"
+            title="Zameen pe charcha"
+            sx={{
+              fontWeight: 800,
+              color: '#2563EB',
+              letterSpacing: { xs: '-0.01em', sm: 0.3 },
+              ...interFont,
+              fontSize: { xs: 'clamp(0.9rem, 3.8vw, 1.1rem)', sm: '1.35rem', md: '1.5rem' },
+              whiteSpace: 'nowrap',
+              lineHeight: 1.2,
+              flex: '1 1 auto',
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              pr: 0.5,
+            }}
+          >
             Zameen pe charcha
           </Typography>
-          {/* Search Bar */}
-          <Box sx={{ flex: 1, mx: 2, display: 'flex', justifyContent: 'center' }}>
-            <InputBase
-              placeholder="Search zameen pe charcha"
-              sx={{
-                bgcolor: '#F3F4F6',
-                px: 2,
-                py: 1.2,
-                borderRadius: 3,
-                width: isMobile ? '100%' : 420,
-                boxShadow: 1,
-                transition: 'box-shadow 0.2s',
-                '&:hover': { boxShadow: 3, bgcolor: '#EEF2FB' },
-                fontSize: 16,
-              }}
-            />
-          </Box>
-          {/* Notification & Profile */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <IconButton title="Messages" onClick={() => navigate('/chat')} sx={{ transition: 'background 0.2s', '&:hover': { bgcolor: '#EEF2FB' } }}>
-              <MessageIcon sx={{ color: '#2563EB' }} />
+
+          {/* Search — desktop only in this row */}
+          {!isMobile && (
+            <Box sx={{ flex: 1, mx: 2, display: 'flex', justifyContent: 'center', minWidth: 0 }}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  bgcolor: '#F3F4F6',
+                  px: 1.75,
+                  py: 0.75,
+                  borderRadius: 3,
+                  width: '100%',
+                  maxWidth: 420,
+                  boxShadow: 1,
+                  transition: 'box-shadow 0.2s, background 0.2s',
+                  '&:hover': { boxShadow: 3, bgcolor: '#EEF2FB' },
+                }}
+              >
+                <SearchIcon sx={{ color: '#9CA3AF', fontSize: 20 }} />
+                <InputBase
+                  placeholder="Search zameen pe charcha"
+                  fullWidth
+                  sx={{
+                    fontSize: 15,
+                    ...interFont,
+                    '& input': { py: 0.5 },
+                  }}
+                />
+              </Box>
+            </Box>
+          )}
+
+          {/* Actions */}
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: { xs: 0.15, sm: 1 },
+              flexShrink: 0,
+              ml: 'auto',
+            }}
+          >
+            <IconButton
+              title="Messages"
+              onClick={() => navigate('/chat')}
+              size={isMobile ? 'small' : 'medium'}
+              sx={{ transition: 'background 0.2s', '&:hover': { bgcolor: '#EEF2FB' } }}
+            >
+              <MessageIcon sx={{ color: '#2563EB', fontSize: { xs: 22, sm: 24 } }} />
             </IconButton>
             <IconButton
               title="Notifications"
+              size={isMobile ? 'small' : 'medium'}
               onClick={(e) => setNotifAnchor(e.currentTarget)}
               sx={{ transition: 'background 0.2s', '&:hover': { bgcolor: '#EEF2FB' } }}
             >
               <Badge badgeContent={unreadCount} color="error" max={9}>
-                <NotificationsIcon sx={{ color: '#2563EB' }} />
+                <NotificationsIcon sx={{ color: '#2563EB', fontSize: { xs: 22, sm: 24 } }} />
               </Badge>
             </IconButton>
             <Menu
               anchorEl={notifAnchor}
               open={Boolean(notifAnchor)}
               onClose={() => setNotifAnchor(null)}
-              PaperProps={{ sx: { width: 360, maxHeight: 420 } }}
+              PaperProps={{ sx: { width: { xs: 'min(360px, calc(100vw - 24px))', sm: 360 }, maxHeight: 420 } }}
             >
               {notifications.length === 0 && (
                 <MenuItem disabled>No notifications</MenuItem>
@@ -1526,11 +1604,37 @@ const Home = () => {
                 </MenuItem>
               ))}
             </Menu>
-            <IconButton title="Add Friend" sx={{ transition: 'background 0.2s', '&:hover': { bgcolor: '#EEF2FB' } }}>
-              <PersonAddIcon sx={{ color: '#2563EB' }} />
+            <IconButton
+              title="Find friends"
+              size={isMobile ? 'small' : 'medium'}
+              onClick={() => {
+                setFindFriendsOpen(true);
+                refetchSuggested();
+              }}
+              sx={{ transition: 'background 0.2s', '&:hover': { bgcolor: '#EEF2FB' } }}
+            >
+              <PersonAddIcon sx={{ color: '#2563EB', fontSize: { xs: 22, sm: 24 } }} />
             </IconButton>
-            <IconButton onClick={handleMenu} title="Profile" sx={{ transition: 'background 0.2s', '&:hover': { bgcolor: '#EEF2FB' } }}>
-              <Avatar src={currentUserData?.profileImage || ''} sx={{ width: 36, height: 36, boxShadow: 1 }} />
+            {isMobile && (
+              <IconButton
+                title="Discover"
+                size="small"
+                onClick={() => setMobileDiscoverOpen(true)}
+                sx={{ transition: 'background 0.2s', '&:hover': { bgcolor: '#EEF2FB' } }}
+              >
+                <WhatshotIcon sx={{ color: '#2563EB', fontSize: 22 }} />
+              </IconButton>
+            )}
+            <IconButton
+              onClick={handleMenu}
+              title="Profile"
+              size={isMobile ? 'small' : 'medium'}
+              sx={{ transition: 'background 0.2s', '&:hover': { bgcolor: '#EEF2FB' }, p: { xs: 0.5, sm: 1 } }}
+            >
+              <Avatar
+                src={currentUserData?.profileImage || ''}
+                sx={{ width: { xs: 32, sm: 36 }, height: { xs: 32, sm: 36 }, boxShadow: 1 }}
+              />
             </IconButton>
             <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleClose}>
               <MenuItem onClick={handleProfileClick}>Profile</MenuItem>
@@ -1559,10 +1663,50 @@ const Home = () => {
             </Menu>
           </Box>
         </Toolbar>
+
+        {/* Mobile search row — full width under brand/actions */}
+        {isMobile && (
+          <Box
+            sx={{
+              px: 1.5,
+              pb: 1.25,
+              pt: 0,
+            }}
+          >
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                bgcolor: '#F3F4F6',
+                px: 1.5,
+                py: 0.85,
+                borderRadius: 999,
+                width: '100%',
+                border: '1px solid #E5E7EB',
+              }}
+            >
+              <SearchIcon sx={{ color: '#9CA3AF', fontSize: 20, flexShrink: 0 }} />
+              <InputBase
+                placeholder="Search people, places…"
+                fullWidth
+                inputProps={{ 'aria-label': 'Search' }}
+                sx={{
+                  fontSize: 15,
+                  ...interFont,
+                  '& input': {
+                    py: 0.25,
+                    '&::placeholder': { opacity: 0.7 },
+                  },
+                }}
+              />
+            </Box>
+          </Box>
+        )}
       </AppBar>
 
-      {/* Layout */}
-      <Box sx={{ display: 'flex', pt: 9, px: isMobile ? 0 : 3 }}>
+      {/* Layout — extra top pad on mobile for two-row header */}
+      <Box sx={{ display: 'flex', pt: { xs: 14, sm: 9 }, px: isMobile ? 0 : 3 }}>
         {/* Left Sidebar */}
         {!isMobile && (
           <Box sx={{ width: 240, mr: 3, position: 'sticky', top: 88, alignSelf: 'flex-start', height: 'fit-content', zIndex: 2 }}>
@@ -1612,37 +1756,56 @@ const Home = () => {
         {/* Main Feed */}
         <Box sx={{ flex: 1, minWidth: 0, mx: 0, mt: isMobile ? 0 : 2, maxWidth: 'none' }}>
           {/* Create Post Card */}
-          <Box sx={{ mb: 4, p: 3, bgcolor: '#fff', borderRadius: 4, boxShadow: '0 2px 12px rgba(37,99,235,0.08)', display: 'flex', flexDirection: 'column', gap: 2, position: 'relative' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Avatar src={currentUserData?.profileImage || ''} sx={{ width: 44, height: 44 }} />
-              <InputBase
-                placeholder="What's on your mind?"
+          <Box
+            sx={{
+              mb: { xs: 2, sm: 4 },
+              mx: { xs: 1.25, sm: 0 },
+              p: { xs: 1.5, sm: 3 },
+              bgcolor: '#fff',
+              borderRadius: { xs: 3, sm: 4 },
+              boxShadow: '0 2px 12px rgba(37,99,235,0.08)',
+            }}
+          >
+            <Box
+              onClick={() => setCreateOpen(true)}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: { xs: 1, sm: 1.5 },
+                cursor: 'pointer',
+              }}
+            >
+              <Avatar
+                src={currentUserData?.profileImage || ''}
+                sx={{ width: { xs: 36, sm: 44 }, height: { xs: 36, sm: 44 }, flexShrink: 0 }}
+              />
+              <Box
                 sx={{
-                  bgcolor: '#F3F4F6',
-                  px: 3,
-                  py: 1.5,
-                  borderRadius: 3,
                   flex: 1,
-                  fontSize: 17,
+                  minWidth: 0,
+                  bgcolor: '#F3F4F6',
+                  px: { xs: 1.75, sm: 2.5 },
+                  py: { xs: 1.15, sm: 1.4 },
+                  borderRadius: 3,
                   boxShadow: 1,
-                  transition: 'box-shadow 0.2s',
+                  transition: 'box-shadow 0.2s, background 0.2s',
                   '&:hover': { boxShadow: 3, bgcolor: '#EEF2FB' },
                 }}
-                readOnly
-                onClick={() => setCreateOpen(true)}
-              />
+              >
+                <Typography
+                  sx={{
+                    fontSize: { xs: 14, sm: 17 },
+                    color: '#9CA3AF',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    ...interFont,
+                  }}
+                >
+                  What&apos;s on your mind?
+                </Typography>
+              </Box>
             </Box>
-            <Box sx={{ display: 'flex', gap: 3, mt: 1 }}>
-              <Button size="medium" startIcon={<AddIcon />} sx={{ color: '#2563EB', textTransform: 'none', fontWeight: 600, fontSize: 15, bgcolor: 'rgba(37,99,235,0.08)', borderRadius: 2, '&:hover': { bgcolor: 'rgba(37,99,235,0.18)' } }} onClick={() => setCreateOpen(true)}>Photo</Button>
-              <Button size="medium" startIcon={<AddIcon />} sx={{ color: '#EF4444', textTransform: 'none', fontWeight: 600, fontSize: 15, bgcolor: 'rgba(239,68,68,0.08)', borderRadius: 2, '&:hover': { bgcolor: 'rgba(239,68,68,0.18)' } }} onClick={() => setCreateOpen(true)}>Video</Button>
-              <Button size="medium" startIcon={<AddIcon />} sx={{ color: '#6366F1', textTransform: 'none', fontWeight: 600, fontSize: 15, bgcolor: 'rgba(99,102,241,0.08)', borderRadius: 2, '&:hover': { bgcolor: 'rgba(99,102,241,0.18)' } }} onClick={() => setCreateOpen(true)}>@ Mention</Button>
-            </Box>
-            {/* Floating Action Button for mobile */}
-            {isMobile && (
-              <IconButton sx={{ position: 'absolute', right: 18, bottom: -28, bgcolor: '#2563EB', color: '#fff', boxShadow: 3, width: 56, height: 56, '&:hover': { bgcolor: '#1D4ED8' } }} onClick={() => setCreateOpen(true)}>
-                <AddIcon sx={{ fontSize: 32 }} />
-              </IconButton>
-            )}
           </Box>
 
 
@@ -1777,6 +1940,307 @@ const Home = () => {
           </Box>
         )}
       </Box>
+
+      {/* Mobile: left nav drawer (replaces left sidebar) */}
+      <Drawer
+        anchor="left"
+        open={mobileMenuOpen}
+        onClose={() => setMobileMenuOpen(false)}
+        PaperProps={{
+          sx: {
+            width: 'min(300px, 86vw)',
+            pt: 'env(safe-area-inset-top)',
+            pb: 'env(safe-area-inset-bottom)',
+          },
+        }}
+      >
+        <Box sx={{ px: 2, py: 2 }}>
+          <Typography sx={{ fontWeight: 800, color: '#2563EB', fontSize: '1.15rem', mb: 0.5, ...interFont }}>
+            Zameen pe charcha
+          </Typography>
+          <Typography sx={{ fontSize: 13, color: '#6B7280', mb: 2 }}>Menu</Typography>
+          <Stack spacing={0.5}>
+            {leftNav.map((item, idx) => (
+              <Box
+                key={idx}
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  if (item.label === 'Properties') {
+                    window.location.href = '/my-properties';
+                  } else if (item.label === 'Home') {
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }
+                }}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1.75,
+                  px: 1.5,
+                  py: 1.35,
+                  borderRadius: 2.5,
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                  color: '#374151',
+                  fontSize: 15,
+                  '&:active': { bgcolor: 'rgba(37,99,235,0.1)' },
+                }}
+              >
+                <Box sx={{ color: '#2563EB', display: 'flex' }}>{item.icon}</Box>
+                <span>{item.label}</span>
+              </Box>
+            ))}
+          </Stack>
+        </Box>
+      </Drawer>
+
+      {/* Mobile: discover drawer (replaces right sidebar) */}
+      <Drawer
+        anchor="right"
+        open={mobileDiscoverOpen}
+        onClose={() => setMobileDiscoverOpen(false)}
+        PaperProps={{
+          sx: {
+            width: 'min(340px, 92vw)',
+            pt: 'env(safe-area-inset-top)',
+            pb: 'env(safe-area-inset-bottom)',
+          },
+        }}
+      >
+        <Box sx={{ px: 2, py: 2 }}>
+          <Typography sx={{ fontWeight: 800, color: '#2563EB', fontSize: '1.1rem', mb: 2, ...interFont }}>
+            Discover
+          </Typography>
+
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.25, color: '#2563EB', ...interFont }}>
+            People you may know
+          </Typography>
+          {suggestedLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+              <CircularProgress size={24} />
+            </Box>
+          ) : (
+            <Stack spacing={1.25} sx={{ mb: 2.5 }}>
+              {(suggestedData?.suggestedUsers ?? []).slice(0, 6).map((friend: any) => (
+                <Box
+                  key={friend.id}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1.25,
+                    bgcolor: '#F6F8FB',
+                    borderRadius: 2,
+                    p: 1.1,
+                  }}
+                >
+                  <Avatar
+                    src={
+                      friend.profilePhotoSignedUrl ||
+                      friend.profilePhoto ||
+                      `https://randomuser.me/api/portraits/lego/${friend.id % 10}.jpg`
+                    }
+                    sx={{ width: 40, height: 40, cursor: 'pointer' }}
+                    onClick={() => {
+                      setMobileDiscoverOpen(false);
+                      handleOpenProfile(friend.id);
+                    }}
+                  />
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography
+                      noWrap
+                      sx={{ fontWeight: 600, fontSize: 14, cursor: 'pointer' }}
+                      onClick={() => {
+                        setMobileDiscoverOpen(false);
+                        handleOpenProfile(friend.id);
+                      }}
+                    >
+                      {friend.firstName} {friend.lastName}
+                    </Typography>
+                    <Typography noWrap sx={{ fontSize: 12, color: '#6B7280' }}>
+                      {friend.role || 'User'}
+                    </Typography>
+                  </Box>
+                  <Button
+                    size="small"
+                    variant={followedSuggestedIds[friend.id] ? 'outlined' : 'contained'}
+                    disabled={followedSuggestedIds[friend.id] || followingSuggestedId === friend.id}
+                    onClick={() => handleFollowSuggested(friend.id)}
+                    sx={{
+                      textTransform: 'none',
+                      fontWeight: 600,
+                      borderRadius: 2,
+                      minWidth: 72,
+                      bgcolor: followedSuggestedIds[friend.id] ? 'transparent' : '#2563EB',
+                    }}
+                  >
+                    {followedSuggestedIds[friend.id]
+                      ? 'Following'
+                      : followingSuggestedId === friend.id
+                        ? '...'
+                        : 'Follow'}
+                  </Button>
+                </Box>
+              ))}
+              {(suggestedData?.suggestedUsers ?? []).length === 0 && (
+                <Typography sx={{ fontSize: 13, color: '#6B7280' }}>No suggestions right now</Typography>
+              )}
+            </Stack>
+          )}
+
+          <Divider sx={{ my: 1.5 }} />
+
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.25, color: '#2563EB', ...interFont }}>
+            Trending
+          </Typography>
+          {trendingLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+              <CircularProgress size={24} />
+            </Box>
+          ) : (
+            <Stack spacing={1.25}>
+              {(trendingData?.trendingPosts ?? []).map((trend: any) => (
+                <Box
+                  key={trend.id}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 1,
+                    bgcolor: '#F6F8FB',
+                    borderRadius: 2,
+                    p: 1.1,
+                    cursor: 'pointer',
+                    '&:active': { bgcolor: '#EEF2FB' },
+                  }}
+                  onClick={() => {
+                    setMobileDiscoverOpen(false);
+                    handleTrendingPostClick(trend.id);
+                  }}
+                >
+                  <Typography sx={{ color: '#2563EB', fontWeight: 600, fontSize: 14, pr: 0.5 }}>
+                    {trend.title}
+                  </Typography>
+                  <Typography
+                    sx={{
+                      fontSize: 12,
+                      color: '#6366F1',
+                      fontWeight: 500,
+                      bgcolor: 'rgba(99,102,241,0.08)',
+                      px: 1,
+                      borderRadius: 2,
+                      whiteSpace: 'nowrap',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {trend.likeCount || 0} likes
+                  </Typography>
+                </Box>
+              ))}
+              {(trendingData?.trendingPosts ?? []).length === 0 && (
+                <Typography sx={{ fontSize: 13, color: '#6B7280' }}>No trending posts yet</Typography>
+              )}
+            </Stack>
+          )}
+        </Box>
+      </Drawer>
+
+      {/* Find friends / People you may know */}
+      <Dialog
+        open={findFriendsOpen}
+        onClose={() => setFindFriendsOpen(false)}
+        fullWidth
+        maxWidth="xs"
+        PaperProps={{
+          sx: {
+            borderRadius: { xs: 2, sm: 3 },
+            m: { xs: 1.5, sm: 2 },
+            maxHeight: { xs: '85vh', sm: 520 },
+          },
+        }}
+      >
+        <DialogTitle sx={{ fontWeight: 700, color: '#2563EB', pb: 1, ...interFont }}>
+          People you may know
+        </DialogTitle>
+        <DialogContent dividers sx={{ px: { xs: 1.5, sm: 2 }, py: 1.5 }}>
+          {suggestedLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress size={28} />
+            </Box>
+          ) : (suggestedData?.suggestedUsers ?? []).length === 0 ? (
+            <Typography sx={{ fontSize: 14, color: '#6B7280', textAlign: 'center', py: 3 }}>
+              No suggestions right now. Check back later.
+            </Typography>
+          ) : (
+            <Stack spacing={1.5}>
+              {(suggestedData?.suggestedUsers ?? []).map((friend: any) => (
+                <Box
+                  key={friend.id}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1.5,
+                    bgcolor: '#F6F8FB',
+                    borderRadius: 2,
+                    p: 1.25,
+                  }}
+                >
+                  <Avatar
+                    src={
+                      friend.profilePhotoSignedUrl ||
+                      friend.profilePhoto ||
+                      `https://randomuser.me/api/portraits/lego/${friend.id % 10}.jpg`
+                    }
+                    sx={{ width: 44, height: 44, cursor: 'pointer', flexShrink: 0 }}
+                    onClick={() => {
+                      setFindFriendsOpen(false);
+                      handleOpenProfile(friend.id);
+                    }}
+                  />
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography
+                      sx={{ fontWeight: 600, fontSize: 15, cursor: 'pointer', ...interFont }}
+                      noWrap
+                      onClick={() => {
+                        setFindFriendsOpen(false);
+                        handleOpenProfile(friend.id);
+                      }}
+                    >
+                      {friend.firstName} {friend.lastName}
+                    </Typography>
+                    <Typography sx={{ fontSize: 13, color: '#6B7280' }} noWrap>
+                      {friend.role || 'User'}
+                    </Typography>
+                  </Box>
+                  <Button
+                    size="small"
+                    variant={followedSuggestedIds[friend.id] ? 'outlined' : 'contained'}
+                    disabled={followedSuggestedIds[friend.id] || followingSuggestedId === friend.id}
+                    onClick={() => handleFollowSuggested(friend.id)}
+                    sx={{
+                      textTransform: 'none',
+                      fontWeight: 600,
+                      borderRadius: 2,
+                      minWidth: 84,
+                      flexShrink: 0,
+                      bgcolor: followedSuggestedIds[friend.id] ? 'transparent' : '#2563EB',
+                    }}
+                  >
+                    {followedSuggestedIds[friend.id]
+                      ? 'Following'
+                      : followingSuggestedId === friend.id
+                        ? '...'
+                        : 'Follow'}
+                  </Button>
+                </Box>
+              ))}
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 2, py: 1.25 }}>
+          <Button onClick={() => setFindFriendsOpen(false)} sx={{ textTransform: 'none', fontWeight: 600 }}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Comments Modal */}
       <CommentsModal
