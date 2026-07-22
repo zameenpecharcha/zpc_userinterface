@@ -106,10 +106,11 @@ const Register = () => {
         return;
       }
 
+      const normalizedEmail = formData.email.trim().toLowerCase();
       const response = await authService.register({
         firstName: formData.firstName,
         lastName: formData.lastName,
-        email: formData.email,
+        email: normalizedEmail,
         phone: formData.phone,
         password: formData.password,
         role: formData.role,
@@ -122,7 +123,7 @@ const Register = () => {
       if (response) {
         // After successful registration, login the user
         const loginResponse = await authService.login({
-          email: formData.email,
+          email: normalizedEmail,
           password: formData.password,
         });
 

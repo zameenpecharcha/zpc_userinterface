@@ -33,6 +33,7 @@ export const POST_FIELDS = gql`
     }
     likeCount
     commentCount
+    isLiked
   }
 `;
 
@@ -76,6 +77,7 @@ export const SEARCH_POSTS = gql`
       createdAt
       likeCount
       commentCount
+      isLiked
       media {
         id
         mediaType
@@ -86,6 +88,17 @@ export const SEARCH_POSTS = gql`
         caption
         uploadedAt
       }
+    }
+  }
+`;
+
+export const TRENDING_POSTS = gql`
+  query TrendingPosts($limit: Int = 5) {
+    trendingPosts(limit: $limit) {
+      id
+      title
+      likeCount
+      commentCount
     }
   }
 `;

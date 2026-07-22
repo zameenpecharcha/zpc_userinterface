@@ -14,6 +14,19 @@ export const GET_USERS = gql`
   }
 `;
 
+/** Fast mention / picker search — no signed photo work on the server. */
+export const SEARCH_USERS_LIGHT = gql`
+  query SearchUsersLight($search: String, $page: Int, $limit: Int) {
+    users(search: $search, page: $page, limit: $limit) {
+      id
+      firstName
+      lastName
+      email
+      role
+    }
+  }
+`;
+
 export const GET_USER_PROFILE = gql`
   query GetUserProfile($id: Int!) {
     user(id: $id) {
@@ -102,6 +115,72 @@ export const UPDATE_FOLLOW_STATUS = gql`
       followingId
       status
       followedAt
+    }
+  }
+`;
+
+export const GET_SUGGESTED_USERS = gql`
+  query GetSuggestedUsers($userId: Int!, $limit: Int = 5) {
+    suggestedUsers(userId: $userId, limit: $limit) {
+      id
+      firstName
+      lastName
+      role
+      profilePhotoSignedUrl
+      profilePhoto
+    }
+  }
+`;
+
+export const GET_USER_NOTIFICATIONS = gql`
+  query GetUserNotifications($userId: Int!, $page: Int = 1, $limit: Int = 20) {
+    userNotifications(userId: $userId, page: $page, limit: $limit) {
+      total
+      notifications {
+        id
+        userId
+        title
+        message
+        type
+        read
+        createdAt
+        metadata
+      }
+    }
+  }
+`;
+
+export const CREATE_NOTIFICATION = gql`
+  mutation CreateNotification(
+    $userId: Int!
+    $title: String!
+    $message: String!
+    $type: String!
+    $metadata: String
+  ) {
+    createNotification(
+      userId: $userId
+      title: $title
+      message: $message
+      type: $type
+      metadata: $metadata
+    ) {
+      id
+      userId
+      title
+      message
+      type
+      read
+      createdAt
+    }
+  }
+`;
+
+export const MARK_NOTIFICATION_READ = gql`
+  mutation MarkNotificationRead($notificationId: Int!, $userId: Int!) {
+    markNotificationRead(notificationId: $notificationId, userId: $userId) {
+      id
+      read
     }
   }
 `;

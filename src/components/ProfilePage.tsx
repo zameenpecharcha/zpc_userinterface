@@ -618,6 +618,7 @@ const GRAPHQL_QUERIES = {
                 }
                 likeCount
                 commentCount
+                isLiked
             }
         }
     `,
@@ -1204,31 +1205,31 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
             
             const { data } = await client.query({
                 query: GET_POSTS_BY_USER,
-                variables: { userId, page: 1, limit: 100 },
+                variables: { userId, page: 1, limit: 20 },
                 fetchPolicy: 'network-only'
             });
             
             console.log('User posts loaded from GraphQL:', data);
             
             if (data?.postsByUser) {
-                const postsWithDetails = await Promise.all(
-                    data.postsByUser.map(async (post: any) => {
-                        try {
-                            const comments = await apiService.fetchPostComments(post.id);
-                            return {
-                                ...post,
-                                commentsList: comments
-                            };
-                        } catch (commentError) {
-                            console.warn('Error fetching comments for post:', post.id, commentError);
-                            return {
-                                ...post,
-                                commentsList: []
-                            };
-                        }
-                    })
-                );
+                // Do not fetch comments for every post here — that was N+1 and made profile very slow.
+                // Comments load on demand when the user opens the comments UI.
+                const postsWithDetails = data.postsByUser.map((post: any) => ({
+                    ...post,
+                    likesCount: post.likeCount || 0,
+                    commentsList: [] as any[],
+                }));
                 setPosts(postsWithDetails);
+
+                const nextLiked: { [postId: string]: boolean } = {};
+                const nextCounts: { [postId: string]: number } = {};
+                postsWithDetails.forEach((post: any) => {
+                    const id = String(post.id);
+                    if (post.isLiked) nextLiked[id] = true;
+                    nextCounts[id] = post.likeCount || post.likesCount || 0;
+                });
+                setLikedPosts(nextLiked);
+                setPostLikeCounts(prev => ({ ...prev, ...nextCounts }));
             } else {
                 setPosts([]);
             }
@@ -1689,6 +1690,27 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                         <Button
                                             variant="outlined"
                                             startIcon={<MessageIcon />}
+                                            onClick={async () => {
+                                                if (!currentUserId || !user) return;
+                                                try {
+                                                    const result = await createDmRoom({
+                                                        variables: {
+                                                            createdBy: String(currentUserId),
+                                                            userA: String(currentUserId),
+                                                            userB: String(userId),
+                                                        },
+                                                    });
+                                                    const roomId = result.data?.createDmRoom?.roomId;
+                                                    if (!roomId) {
+                                                        setSnack({ open: true, message: 'Failed to start conversation', severity: 'error' });
+                                                        return;
+                                                    }
+                                                    navigate('/chat', { state: { autoSelectRoomId: roomId } });
+                                                } catch (err) {
+                                                    console.error('Failed to create DM room', err);
+                                                    setSnack({ open: true, message: 'Failed to start conversation', severity: 'error' });
+                                                }
+                                            }}
                                             sx={{
                                                 borderColor: '#2563EB',
                                                 color: '#2563EB',
@@ -1949,19 +1971,19 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
                                         <Button
                                             startIcon={
-                                                likedPosts[post.id] ? (
+                                                likedPosts[String(post.id)] ? (
                                                     <FavoriteIcon
-                                                        className={`liked-heart-icon ${animatingPosts[post.id] ? 'liked-heart-icon-clicked' : ''}`}
+                                                        className={`liked-heart-icon ${animatingPosts[String(post.id)] ? 'liked-heart-icon-clicked' : ''}`}
                                                     />
                                                 ) : (
                                                     <FavoriteBorderIcon
-                                                        className={animatingPosts[post.id] ? 'liked-heart-icon-clicked' : ''}
+                                                        className={animatingPosts[String(post.id)] ? 'liked-heart-icon-clicked' : ''}
                                                         sx={{ color: '#6B7280' }}
                                                     />
                                                 )
                                             }
                                             size="small"
-                                            onClick={() => handleLikePostWithAnimation(post.id)}
+                                            onClick={() => handleLikePostWithAnimation(String(post.id))}
                                             disabled={likingPost}
                                             sx={{
                                                 bgcolor: 'transparent',
@@ -1972,7 +1994,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                                 }
                                             }}
                                         >
-                                            {postLikeCounts[post.id] !== undefined ? postLikeCounts[post.id] : post.likesCount || 0}
+                                            {postLikeCounts[String(post.id)] !== undefined ? postLikeCounts[String(post.id)] : post.likesCount || 0}
                                         </Button>
                                         <Button
                                             startIcon={<ChatBubbleOutlineIcon />}
