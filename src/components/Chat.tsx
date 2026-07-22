@@ -110,7 +110,6 @@ const Chat: React.FC<ChatProps> = ({ roomId, userId, onConnectionChange }) => {
   const [messages, setMessages]   = useState<ChatMessage[]>([]);
   const [input, setInput]         = useState('');
   const [connected, setConnected] = useState(false);
-  const [resolvedRoomId, setResolvedRoomId] = useState(roomId);
   const [typingSet, setTypingSet] = useState<Set<string>>(new Set());
   const wsRef          = useRef<WebSocket | null>(null);
   const bottomRef      = useRef<HTMLDivElement | null>(null);
@@ -118,13 +117,20 @@ const Chat: React.FC<ChatProps> = ({ roomId, userId, onConnectionChange }) => {
   const shouldReconnectRef = useRef(true);
   const authReconnectAttemptedRef = useRef(false);
   const pendingMessagesRef = useRef<string[]>([]);
+  // Synchronously compute the canonical roomId — never derive it from async state
+  // to avoid the race where the WebSocket connects with the wrong room.
+  const canonicalRoomId = normalizeRoomId(roomId);
 
   useEffect(() => {
     onConnectionChange?.(connected);
   }, [connected, onConnectionChange]);
 
+  // Bug-4 fix: clear messages AND typing indicators immediately when room changes
+  // so stale Room-A messages never bleed into Room-B's view.
   useEffect(() => {
-    setResolvedRoomId(normalizeRoomId(roomId));
+    setMessages([]);
+    setTypingSet(new Set());
+    setConnected(false);
   }, [roomId]);
 
   useEffect(() => {
@@ -136,50 +142,26 @@ const Chat: React.FC<ChatProps> = ({ roomId, userId, onConnectionChange }) => {
         return;
       }
 
-      const candidates = getRoomCandidates(roomId);
-      let matchedRoomId = normalizeRoomId(roomId);
-      let matchedMessages: ChatMessage[] = [];
+      try {
+        const result = await apollo.query({
+          query: GET_CHAT_MESSAGES,
+          variables: { roomId: canonicalRoomId, userId, limit: 50, beforeUnixMs: 0 },
+          fetchPolicy: 'network-only',
+        });
 
-      for (const candidate of candidates) {
-        try {
-          const result = await apollo.query({
-            query: GET_CHAT_MESSAGES,
-            variables: { roomId: candidate, userId, limit: 50, beforeUnixMs: 0 },
-            fetchPolicy: 'network-only',
-          });
-
-          const rows = result.data?.getMessages?.messages ?? [];
-          const mapped = mapHistory(rows);
-          if (mapped.length > 0) {
-            matchedRoomId = candidate;
-            matchedMessages = mapped;
-            break;
-          }
-          if (candidate === roomId) {
-            matchedMessages = mapped;
-          }
-        } catch (err) {
-          // Ignore per-candidate errors and try the fallback ID.
-          console.error('Chat history load failed', { candidate, roomId, userId, err });
-        }
+        if (cancelled) return;
+        const rows = result.data?.getMessages?.messages ?? [];
+        setMessages(mapHistory(rows));
+      } catch (err) {
+        console.error('Chat history load failed', { roomId, canonicalRoomId, userId, err });
       }
-
-      if (cancelled) return;
-      setResolvedRoomId(matchedRoomId || normalizeRoomId(roomId));
-      setMessages(matchedMessages);
     };
 
     loadHistory();
     return () => {
       cancelled = true;
     };
-  }, [apollo, roomId, userId]);
-
-  useEffect(() => {
-    if (!roomId || !userId) {
-      setMessages([]);
-    }
-  }, [roomId, userId]);
+  }, [apollo, roomId, canonicalRoomId, userId]);
 
   // ── WebSocket ──────────────────────────────────────────────────────────────
 
@@ -191,9 +173,11 @@ const Chat: React.FC<ChatProps> = ({ roomId, userId, onConnectionChange }) => {
   const connect = useCallback(() => {
     shouldReconnectRef.current = true;
     const token = localStorage.getItem('token') || '';
+    // Bug-1/2/6 fix: use the synchronously-computed canonicalRoomId (not async
+    // resolvedRoomId state) so the WebSocket always connects to the correct room.
     const url = token
-      ? `${WS_CHAT_URL}/${resolvedRoomId}/${userId}?token=${encodeURIComponent(token)}`
-      : `${WS_CHAT_URL}/${resolvedRoomId}/${userId}`;
+      ? `${WS_CHAT_URL}/${canonicalRoomId}/${userId}?token=${encodeURIComponent(token)}`
+      : `${WS_CHAT_URL}/${canonicalRoomId}/${userId}`;
     const ws = new WebSocket(url);
     wsRef.current = ws;
 
@@ -255,14 +239,21 @@ const Chat: React.FC<ChatProps> = ({ roomId, userId, onConnectionChange }) => {
         }
       } catch { /* ignore malformed frames */ }
     };
-  }, [resolvedRoomId, userId, sendReadReceipt]);
+  }, [canonicalRoomId, userId, sendReadReceipt]);
 
   useEffect(() => {
     connect();
     return () => {
+      // Bug-5 fix: set flag FIRST so any in-flight onclose handler won't schedule
+      // a new reconnect, then cancel the timer and null all refs.
       shouldReconnectRef.current = false;
-      if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+      if (reconnectTimer.current) {
+        clearTimeout(reconnectTimer.current);
+        reconnectTimer.current = null;
+      }
       wsRef.current?.close();
+      wsRef.current = null;
+      pendingMessagesRef.current = [];
     };
   }, [connect]);
 

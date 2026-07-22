@@ -1,7 +1,7 @@
 import { gql } from '@apollo/client';
 
 export const GET_CHAT_MESSAGES = gql`
-  query GetChatMessages($roomId: String!, $userId: String!, $limit: Int, $beforeUnixMs: Int) {
+  query GetChatMessages($roomId: String!, $userId: String!, $limit: Int, $beforeUnixMs: BigInt) {
     getMessages(roomId: $roomId, userId: $userId, limit: $limit, beforeUnixMs: $beforeUnixMs) {
       hasMore
       messages {
@@ -54,12 +54,6 @@ export const GET_USER_ROOMS = gql`
       lastMessageAt
       hasUnread
       memberIds
-      participants {
-        userId
-        firstName
-        lastName
-        avatarUrl
-      }
     }
   }
 `;

@@ -17,7 +17,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useApolloClient, useQuery } from '@apollo/client';
-import { SEARCH_USERS_LIGHT } from '../graphql/user';
+import { SEARCH_USERS_LIGHT, GET_USER_PROFILE } from '../graphql/user';
 import { CREATE_DM_ROOM_MUTATION, CREATE_GROUP_ROOM_MUTATION, GET_USER_ROOMS } from '../graphql/chat';
 import Chat from './Chat';
 
@@ -96,6 +96,8 @@ const ConvItem: React.FC<{
         </Badge>
       </ListItemAvatar>
       <ListItemText
+        primaryTypographyProps={{ component: 'div' }}
+        secondaryTypographyProps={{ component: 'div' }}
         primary={
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
             <Typography variant="subtitle2" fontWeight={conv.unread > 0 ? 700 : 500} noWrap sx={{ fontSize: 14, color: '#000', maxWidth: 160 }}>
@@ -323,6 +325,9 @@ const ChatPage: React.FC = () => {
   const [newDlgOpen, setNewDlgOpen]       = useState(false);
   const [mobileView, setMobileView]       = useState<'sidebar' | 'chat'>('sidebar');
   const [wsConnected, setWsConnected]     = useState(false);
+  // Map of userId → "First Last" for resolving DM conversation labels
+  const [userNames, setUserNames]         = useState<Record<string, string>>({});
+  const apollo = useApolloClient();
 
   // ── Load active rooms from server ─────────────────────────────────────────
   const { data: roomsData, loading: roomsLoading } = useQuery(GET_USER_ROOMS, {
@@ -335,13 +340,12 @@ const ChatPage: React.FC = () => {
     if (!roomsData?.getUserRooms) return;
     const loaded: Conversation[] = roomsData.getUserRooms.map((r: any) => {
       const isGroup = r.roomType === 1;
-      // For DMs derive label from the other participant's name
+      // Derive a temporary label — will be updated by the name-resolution effect below
       let label = r.name || '';
-      if (!isGroup && r.participants) {
-        const other = r.participants.find((p: any) => p.userId !== userId);
-        if (other) {
-          label = `${other.firstName} ${other.lastName}`.trim() || r.roomId;
-        }
+      if (!isGroup && !label) {
+        // Placeholder: use the other member's ID until name resolves
+        const otherId = (r.memberIds || []).find((id: string) => id !== userId);
+        label = otherId ? (userNames[otherId] || otherId) : r.roomId;
       }
       if (!label) label = r.roomId;
       return {
@@ -359,7 +363,37 @@ const ChatPage: React.FC = () => {
       const pending = prev.filter(c => !serverIds.has(c.id));
       return [...loaded, ...pending];
     });
-  }, [roomsData, userId]);
+  }, [roomsData, userId, userNames]);
+
+  // ── Resolve DM user names asynchronously ─────────────────────────────────
+  useEffect(() => {
+    if (!roomsData?.getUserRooms) return;
+    const otherIds: string[] = [];
+    for (const r of roomsData.getUserRooms) {
+      if (r.roomType !== 1) { // DM
+        const otherId = (r.memberIds || []).find((id: string) => id !== userId);
+        if (otherId && !userNames[otherId]) otherIds.push(otherId);
+      }
+    }
+    if (otherIds.length === 0) return;
+    // Fetch each unknown user's name (fire-and-forget, update state when done)
+    otherIds.forEach(async (uid) => {
+      try {
+        const res = await apollo.query({
+          query: GET_USER_PROFILE,
+          variables: { id: parseInt(uid, 10) },
+          fetchPolicy: 'cache-first',
+        });
+        const u = res.data?.user;
+        if (u) {
+          const name = `${u.firstName} ${u.lastName}`.trim();
+          setUserNames(prev => ({ ...prev, [uid]: name }));
+        }
+      } catch {
+        // leave as uid fallback
+      }
+    });
+  }, [roomsData, userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setWsConnected(false);
