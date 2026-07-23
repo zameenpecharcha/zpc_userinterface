@@ -119,6 +119,7 @@ export const GET_POST_COMMENTS = gql`
       status
       addedAt
       commentedAt
+      editedAt
       profilePhoto
       profilePhotoSignedUrl
       replies {
@@ -133,6 +134,7 @@ export const GET_POST_COMMENTS = gql`
         status
         addedAt
         commentedAt
+        editedAt
         likeCount
         profilePhoto
         profilePhotoSignedUrl
@@ -314,6 +316,7 @@ export const UPDATE_COMMENT = gql`
         id
         comment
         status
+        editedAt
       }
     }
   }
@@ -329,8 +332,8 @@ export const DELETE_COMMENT = gql`
 `;
 
 export const LIKE_COMMENT = gql`
-  mutation LikeComment($commentId: Int!, $userId: Int!) {
-    likeComment(commentId: $commentId, userId: $userId) {
+  mutation LikeComment($commentId: Int!, $userId: Int!, $reactionType: String) {
+    likeComment(commentId: $commentId, userId: $userId, reactionType: $reactionType) {
       success
       message
       comment {

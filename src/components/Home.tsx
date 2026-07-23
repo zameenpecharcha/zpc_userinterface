@@ -1,11 +1,14 @@
 import React, { useState, useMemo, useCallback, memo, useEffect, useRef } from 'react';
 import { gql, useQuery, useMutation, useApolloClient } from '@apollo/client';
-import { SEARCH_POSTS, CREATE_POST, TRENDING_POSTS, DELETE_POST, UPDATE_POST } from '../graphql/posts';
+import { SEARCH_POSTS, CREATE_POST, TRENDING_POSTS, DELETE_POST, UPDATE_POST, UPDATE_COMMENT, DELETE_COMMENT, UNLIKE_COMMENT } from '../graphql/posts';
 import { GET_SUGGESTED_USERS, FOLLOW_USER, GET_USER_NOTIFICATIONS, MARK_NOTIFICATION_READ } from '../graphql/user';
 import CreatePost from './CreatePost';
 import { PostService } from '../services/postService';
 import { useAuth } from '../contexts/AuthContext';
 import { renderMentionContent, nameInitials, stringToColor } from '../utils/mentions';
+import CommentListItem from './comments/CommentListItem';
+import CommentComposer from './comments/CommentComposer';
+import { normalizeReactionEmoji } from './comments/commentReactions';
 // import { styled } from '@mui/material/styles';
 import {
   AppBar,
@@ -47,7 +50,6 @@ import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
 import FavoriteIcon from '@mui/icons-material/Favorite';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import ShareSymbol from './icons/ShareSymbol';
-import SendRoundedIcon from '@mui/icons-material/SendRounded';
 import CloseIcon from '@mui/icons-material/Close';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import ProfilePage from './ProfilePage';
@@ -74,6 +76,7 @@ query GetPostComments($postId: Int!, $page: Int, $limit: Int) {
     status
     addedAt
     commentedAt
+    editedAt
     profilePhoto
     profilePhotoSignedUrl
     replies {
@@ -88,6 +91,7 @@ query GetPostComments($postId: Int!, $page: Int, $limit: Int) {
       status
       addedAt
       commentedAt
+      editedAt
       likeCount
       profilePhoto
       profilePhotoSignedUrl
@@ -119,6 +123,7 @@ mutation CreateComment($postId: Int!, $userId: Int!, $comment: String!, $parentC
       status
       addedAt
       commentedAt
+      editedAt
       likeCount
     }
   }
@@ -126,8 +131,8 @@ mutation CreateComment($postId: Int!, $userId: Int!, $comment: String!, $parentC
 `;
 
 const LIKE_COMMENT_MUTATION = gql`
-mutation LikeComment($commentId: Int!, $userId: Int!) {
-  likeComment(commentId: $commentId, userId: $userId) {
+mutation LikeComment($commentId: Int!, $userId: Int!, $reactionType: String) {
+  likeComment(commentId: $commentId, userId: $userId, reactionType: $reactionType) {
     success
     message
     comment {
@@ -507,7 +512,6 @@ const Post = memo(({ post, onLikeToggle, onCommentClick, onOpenProfile, onEditPo
   );
 });
 
-// Optimized Comments Modal with actual comments functionality
 const CommentsModal = memo(({
   open,
   post,
@@ -515,8 +519,12 @@ const CommentsModal = memo(({
   comments,
   loadingComments,
   onAddComment,
-  onLikeComment,
+  onReactComment,
+  onEditComment,
+  onDeleteComment,
+  currentUserId,
   likedComments,
+  commentReactions,
   commentLikeCounts,
   likingComment,
   replyingCommentId,
@@ -525,32 +533,6 @@ const CommentsModal = memo(({
   setReplyingCommentId,
   replying
 }: any) => {
-  const [newComment, setNewComment] = useState('');
-  const [addingComment, setAddingComment] = useState(false);
-  const [animatingComments, setAnimatingComments] = useState<{ [commentId: number]: boolean }>({});
-
-  const handleLikeCommentClick = useCallback((commentId: number) => {
-    setAnimatingComments(prev => ({ ...prev, [commentId]: true }));
-    setTimeout(() => {
-      setAnimatingComments(prev => ({ ...prev, [commentId]: false }));
-    }, 600);
-    onLikeComment(commentId);
-  }, [onLikeComment]);
-
-  const handleSubmitComment = useCallback(async () => {
-    if (!newComment.trim() || !post) return;
-
-    setAddingComment(true);
-    try {
-      await onAddComment(post.id, newComment);
-      setNewComment('');
-    } catch (error) {
-      console.error('Error adding comment:', error);
-    } finally {
-      setAddingComment(false);
-    }
-  }, [newComment, post, onAddComment]);
-
   if (!open || !post) {
     return null;
   }
@@ -587,7 +569,6 @@ const CommentsModal = memo(({
         }}
         onClick={e => e.stopPropagation()}
       >
-        {/* Header */}
         <Box
           sx={{
             display: 'flex',
@@ -624,9 +605,7 @@ const CommentsModal = memo(({
           </IconButton>
         </Box>
 
-        {/* Scrollable body */}
         <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto', px: { xs: 2, sm: 2.5 }, py: 2 }}>
-          {/* Post context — compact */}
           <Box sx={{ mb: 2.5 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, mb: 1.25, minWidth: 0 }}>
               <Avatar
@@ -650,25 +629,6 @@ const CommentsModal = memo(({
             <Typography sx={{ color: '#334155', fontSize: 15, fontWeight: 500, lineHeight: 1.55, wordBreak: 'break-word' }}>
               {renderMentionContent(post.content, {})}
             </Typography>
-            {(post.location || post.propertyType || (post.price != null && post.price !== '' && Number(post.price) > 0)) && (
-              <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', mt: 1.25 }}>
-                {post.location ? (
-                  <Typography sx={{ fontSize: 11, fontWeight: 800, color: '#1D4ED8', bgcolor: '#EFF6FF', px: 1.25, py: 0.45, borderRadius: 999 }}>
-                    {post.location}
-                  </Typography>
-                ) : null}
-                {post.propertyType ? (
-                  <Typography sx={{ fontSize: 11, fontWeight: 800, color: '#4338CA', bgcolor: '#EEF2FF', px: 1.25, py: 0.45, borderRadius: 999 }}>
-                    {post.propertyType}
-                  </Typography>
-                ) : null}
-                {post.price != null && post.price !== '' && Number(post.price) > 0 ? (
-                  <Typography sx={{ fontSize: 11, fontWeight: 800, color: '#B91C1C', bgcolor: '#FEF2F2', px: 1.25, py: 0.45, borderRadius: 999 }}>
-                    ₹{post.price}
-                  </Typography>
-                ) : null}
-              </Box>
-            )}
           </Box>
 
           <Typography sx={{ fontWeight: 900, color: '#0F172A', fontSize: 13, letterSpacing: '0.06em', textTransform: 'uppercase', mb: 1.5 }}>
@@ -680,201 +640,24 @@ const CommentsModal = memo(({
           ) : comments && comments.length > 0 ? (
             <Stack spacing={1.75}>
               {comments.map((comment: any) => (
-                <Box key={comment.id} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.25, minWidth: 0 }}>
-                  <Avatar
-                    src={comment.profilePhotoSignedUrl || comment.profilePhoto || undefined}
-                    sx={{
-                      width: 36,
-                      height: 36,
-                      flexShrink: 0,
-                      fontWeight: 800,
-                      bgcolor: stringToColor(`${comment.userFirstName || ''} ${comment.userLastName || ''}` || String(comment.userId)),
-                    }}
-                  >
-                    {nameInitials(`${comment.userFirstName || ''} ${comment.userLastName || ''}`, String(comment.userId))}
-                  </Avatar>
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Box
-                      sx={{
-                        ...MATTE_INSET,
-                        borderRadius: '4px 16px 16px 16px',
-                        px: 1.5,
-                        py: 1.15,
-                      }}
-                    >
-                      <Typography sx={{ fontWeight: 800, fontSize: 13.5, color: '#0F172A' }}>
-                        {comment.userFirstName} {comment.userLastName}
-                      </Typography>
-                      {comment.userRole && (
-                        <Typography sx={{ fontSize: 11, color: '#64748B', fontWeight: 700, mt: 0.15 }}>
-                          {comment.userRole}
-                        </Typography>
-                      )}
-                      <Typography sx={{ fontSize: 14.5, color: '#1E293B', mt: 0.5, fontWeight: 500, lineHeight: 1.45, wordBreak: 'break-word' }}>
-                        {renderMentionContent(comment.comment, {})}
-                      </Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5, mt: 0.5, pl: 0.5 }}>
-                      <Typography sx={{ fontSize: 11, color: '#94A3B8', fontWeight: 600, mr: 0.5 }}>
-                        {new Date(comment.addedAt).toLocaleString()}
-                      </Typography>
-                      <Button
-                        size="small"
-                        startIcon={
-                          likedComments[comment.id] ? (
-                            <FavoriteIcon className={`liked-heart-icon ${animatingComments[comment.id] ? 'liked-heart-icon-clicked' : ''}`} sx={{ fontSize: 15 }} />
-                          ) : (
-                            <FavoriteBorderIcon className={animatingComments[comment.id] ? 'liked-heart-icon-clicked' : ''} sx={{ fontSize: 15, color: '#64748B' }} />
-                          )
-                        }
-                        sx={{
-                          color: likedComments[comment.id] ? '#EF4444' : '#64748B',
-                          textTransform: 'none',
-                          fontWeight: 500,
-                          fontSize: 12,
-                          minWidth: 0,
-                          px: 0.5,
-                          bgcolor: 'transparent',
-                          '& .MuiButton-startIcon': { mr: 0.35 },
-                          '&:hover': { bgcolor: 'transparent', color: '#EF4444' },
-                        }}
-                        onClick={() => handleLikeCommentClick(comment.id)}
-                        disabled={likingComment}
-                      >
-                        {commentLikeCounts[comment.id] !== undefined ? commentLikeCounts[comment.id] : comment.likeCount || 0}
-                      </Button>
-                      <Button
-                        size="small"
-                        sx={{
-                          color: '#2563EB',
-                          textTransform: 'none',
-                          fontWeight: 600,
-                          fontSize: 12,
-                          minWidth: 0,
-                          px: 0.5,
-                          bgcolor: 'transparent',
-                          '&:hover': { bgcolor: 'transparent', color: '#1D4ED8' },
-                        }}
-                        onClick={() => setReplyingCommentId(comment.id)}
-                      >
-                        Reply
-                      </Button>
-                    </Box>
-
-                    {comment.replies && comment.replies.length > 0 && (
-                      <Box sx={{ mt: 1.25, ml: 0.5, pl: 1.5, borderLeft: '3px solid #E2E8F0' }}>
-                        {comment.replies.map((reply: any) => (
-                          <Box key={reply.id} sx={{ mb: 1.25, display: 'flex', alignItems: 'flex-start', gap: 1, minWidth: 0 }}>
-                            <Avatar
-                              src={reply.profilePhotoSignedUrl || reply.profilePhoto || undefined}
-                              sx={{
-                                width: 28,
-                                height: 28,
-                                flexShrink: 0,
-                                bgcolor: stringToColor(`${reply.userFirstName || ''} ${reply.userLastName || ''}` || String(reply.userId)),
-                                fontSize: 11,
-                                fontWeight: 700,
-                              }}
-                            >
-                              {nameInitials(`${reply.userFirstName || ''} ${reply.userLastName || ''}`, String(reply.userId))}
-                            </Avatar>
-                            <Box sx={{ flex: 1, minWidth: 0 }}>
-                              <Box sx={{ ...MATTE_INSET, borderRadius: '4px 14px 14px 14px', px: 1.25, py: 0.9 }}>
-                                <Typography sx={{ fontWeight: 800, fontSize: 12.5, color: '#0F172A' }}>
-                                  {reply.userFirstName} {reply.userLastName}
-                                </Typography>
-                                <Typography sx={{ fontSize: 13, color: '#1E293B', mt: 0.35, fontWeight: 500, wordBreak: 'break-word' }}>
-                                  {renderMentionContent(reply.comment, {})}
-                                </Typography>
-                              </Box>
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.35, pl: 0.5 }}>
-                                <Typography sx={{ fontSize: 10, color: '#94A3B8', fontWeight: 600 }}>
-                                  {new Date(reply.addedAt).toLocaleString()}
-                                </Typography>
-                                <Button
-                                  size="small"
-                                  startIcon={
-                                    likedComments[reply.id] ? (
-                                      <FavoriteIcon sx={{ fontSize: 13 }} />
-                                    ) : (
-                                      <FavoriteBorderIcon sx={{ fontSize: 13, color: '#64748B' }} />
-                                    )
-                                  }
-                                  sx={{
-                                    color: likedComments[reply.id] ? '#EF4444' : '#64748B',
-                                    textTransform: 'none',
-                                    fontWeight: 500,
-                                    fontSize: 11,
-                                    minWidth: 0,
-                                    px: 0.5,
-                                    bgcolor: 'transparent',
-                                    '& .MuiButton-startIcon': { mr: 0.25 },
-                                    '&:hover': { bgcolor: 'transparent', color: '#EF4444' },
-                                  }}
-                                  onClick={() => handleLikeCommentClick(reply.id)}
-                                  disabled={likingComment}
-                                >
-                                  {commentLikeCounts[reply.id] !== undefined ? commentLikeCounts[reply.id] : reply.likeCount || 0}
-                                </Button>
-                              </Box>
-                            </Box>
-                          </Box>
-                        ))}
-                      </Box>
-                    )}
-
-                    {replyingCommentId === comment.id && (
-                      <Box sx={{ mt: 1.25, display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 1, alignItems: { xs: 'stretch', sm: 'center' } }}>
-                        <InputBase
-                          value={replyText}
-                          onChange={e => setReplyText(e.target.value)}
-                          placeholder="Write a reply..."
-                          autoFocus
-                          sx={{
-                            bgcolor: '#F1F5F9',
-                            px: 1.5,
-                            py: 1,
-                            borderRadius: 999,
-                            fontSize: 14,
-                            fontWeight: 600,
-                            flex: 1,
-                            minWidth: 0,
-                            border: '1.5px solid #E2E8F0',
-                          }}
-                          multiline
-                          minRows={1}
-                          maxRows={3}
-                        />
-                        <Box sx={{ display: 'flex', gap: 0.75 }}>
-                          <Button
-                            variant="contained"
-                            disableElevation
-                            sx={{
-                              bgcolor: '#2563EB',
-                              fontWeight: 800,
-                              borderRadius: 999,
-                              px: 2,
-                              py: 0.85,
-                              minWidth: 0,
-                              textTransform: 'none',
-                              '&:hover': { bgcolor: '#1D4ED8' },
-                            }}
-                            onClick={() => onAddComment(post.id, replyText, comment.id)}
-                            disabled={replying || !replyText.trim()}
-                          >
-                            Send
-                          </Button>
-                          <Button
-                            sx={{ color: '#64748B', fontWeight: 700, borderRadius: 999, px: 1.5, textTransform: 'none' }}
-                            onClick={() => { setReplyingCommentId(null); setReplyText(''); }}
-                          >
-                            Cancel
-                          </Button>
-                        </Box>
-                      </Box>
-                    )}
-                  </Box>
-                </Box>
+                <CommentListItem
+                  key={comment.id}
+                  comment={comment}
+                  currentUserId={currentUserId}
+                  likedComments={likedComments}
+                  commentReactions={commentReactions}
+                  commentLikeCounts={commentLikeCounts}
+                  likingComment={likingComment}
+                  replyingCommentId={replyingCommentId}
+                  replyText={replyText}
+                  setReplyText={setReplyText}
+                  setReplyingCommentId={setReplyingCommentId}
+                  replying={replying}
+                  onReply={(text: string) => onAddComment(post.id, text, comment.id)}
+                  onReactComment={onReactComment}
+                  onEditComment={onEditComment}
+                  onDeleteComment={onDeleteComment}
+                />
               ))}
             </Stack>
           ) : (
@@ -885,7 +668,6 @@ const CommentsModal = memo(({
           )}
         </Box>
 
-        {/* Sticky composer */}
         <Box
           sx={{
             flexShrink: 0,
@@ -899,49 +681,13 @@ const CommentsModal = memo(({
             color: 'inherit',
           }}
         >
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
-            <InputBase
-              value={newComment}
-              onChange={(e) => setNewComment(e.target.value)}
-              placeholder="Write a comment..."
-              sx={{
-                bgcolor: 'rgba(255,255,255,0.55)',
-                px: 2,
-                py: 1.35,
-                borderRadius: 3,
-                fontSize: 15,
-                fontWeight: 600,
-                flex: 1,
-                minWidth: 0,
-                border: '1.5px solid rgba(90, 70, 50, 0.12)',
-                '&:focus-within': { borderColor: '#2563EB', bgcolor: 'rgba(255,255,255,0.75)' },
-              }}
-              multiline
-              minRows={1}
-              maxRows={4}
-            />
-            <IconButton
-              onClick={handleSubmitComment}
-              disabled={addingComment || !newComment.trim()}
-              sx={{
-                width: 46,
-                height: 46,
-                flexShrink: 0,
-                bgcolor: newComment.trim() ? '#2563EB' : '#E2E8F0',
-                color: newComment.trim() ? '#fff' : '#94A3B8',
-                borderRadius: 3,
-                '&:hover': { bgcolor: newComment.trim() ? '#1D4ED8' : '#E2E8F0' },
-                '&.Mui-disabled': { bgcolor: '#E2E8F0', color: '#94A3B8' },
-              }}
-            >
-              <SendRoundedIcon sx={{ fontSize: 22 }} />
-            </IconButton>
-          </Box>
+          <CommentComposer matte onSubmit={(text: string) => onAddComment(post.id, text)} />
         </Box>
       </Box>
     </Box>
   );
 });
+
 
 const Home = () => {
   const navigate = useNavigate();
@@ -996,6 +742,7 @@ const Home = () => {
   const [commentsByPost, setCommentsByPost] = useState<{ [postId: number]: any[] }>({});
   const [loadingComments, setLoadingComments] = useState<{ [postId: number]: boolean }>({});
   const [likedComments, setLikedComments] = useState<{ [commentId: number]: boolean }>({});
+  const [commentReactions, setCommentReactions] = useState<{ [commentId: number]: string }>({});
   const [commentLikeCounts, setCommentLikeCounts] = useState<{ [commentId: number]: number }>({});
   const [likingComment, setLikingComment] = useState(false);
   const [replyingCommentId, setReplyingCommentId] = useState<number | null>(null);
@@ -1056,6 +803,9 @@ const Home = () => {
   // GraphQL mutations
   const [createComment] = useMutation(CREATE_COMMENT_MUTATION);
   const [likeComment] = useMutation(LIKE_COMMENT_MUTATION);
+  const [unlikeComment] = useMutation(UNLIKE_COMMENT);
+  const [updateCommentMutation] = useMutation(UPDATE_COMMENT);
+  const [deleteCommentMutation] = useMutation(DELETE_COMMENT);
   const [likePost] = useMutation(LIKE_POST_MUTATION);
   const [unlikePost] = useMutation(UNLIKE_POST_MUTATION);
   const [createPostMutation] = useMutation(CREATE_POST);
@@ -1609,31 +1359,98 @@ const Home = () => {
     }
   }, [currentUser, createComment, client, data?.searchPosts]);
 
-  const handleLikeComment = useCallback(async (commentId: number) => {
+  const refreshPostComments = useCallback(async (postId: number) => {
+    const { data: commentsData } = await client.query({
+      query: GET_POST_COMMENTS_QUERY,
+      variables: { postId, page: 1, limit: 50 },
+      fetchPolicy: 'network-only',
+    });
+    if (commentsData?.postComments) {
+      setCommentsByPost(prev => ({ ...prev, [postId]: commentsData.postComments }));
+    }
+  }, [client]);
+
+  const handleReactComment = useCallback(async (commentId: number, emoji: string) => {
     if (!currentUser?.id) return;
+    const userId = parseInt(currentUser.id.toString());
+    const current = normalizeReactionEmoji(commentReactions[commentId]) || (likedComments[commentId] ? '❤️' : null);
+    const same = current === emoji;
 
     setLikingComment(true);
     try {
-      const { data: result } = await likeComment({
-        variables: {
-          commentId,
-          userId: parseInt(currentUser.id.toString())
+      if (same) {
+        const { data: result } = await unlikeComment({ variables: { commentId, userId } });
+        if (result?.unlikeComment?.success) {
+          setLikedComments(prev => ({ ...prev, [commentId]: false }));
+          setCommentReactions(prev => {
+            const next = { ...prev };
+            delete next[commentId];
+            return next;
+          });
+          setCommentLikeCounts(prev => ({
+            ...prev,
+            [commentId]: result.unlikeComment.comment?.likeCount ?? Math.max(0, (prev[commentId] || 1) - 1),
+          }));
         }
-      });
-
-      if (result?.likeComment?.success) {
-        setLikedComments(prev => ({ ...prev, [commentId]: !prev[commentId] }));
-        setCommentLikeCounts(prev => ({
-          ...prev,
-          [commentId]: (prev[commentId] || 0) + (prev[commentId] ? -1 : 1)
-        }));
+      } else {
+        const { data: result } = await likeComment({
+          variables: { commentId, userId, reactionType: emoji },
+        });
+        if (result?.likeComment?.success) {
+          const wasLiked = Boolean(current);
+          setLikedComments(prev => ({ ...prev, [commentId]: true }));
+          setCommentReactions(prev => ({ ...prev, [commentId]: emoji }));
+          setCommentLikeCounts(prev => ({
+            ...prev,
+            [commentId]: result.likeComment.comment?.likeCount ?? (prev[commentId] || 0) + (wasLiked ? 0 : 1),
+          }));
+        }
       }
     } catch (error) {
-      console.error('Error liking comment:', error);
+      console.error('Error reacting to comment:', error);
     } finally {
       setLikingComment(false);
     }
-  }, [currentUser, likeComment]);
+  }, [currentUser, commentReactions, likedComments, likeComment, unlikeComment]);
+
+  const handleEditComment = useCallback(async (commentId: number, text: string) => {
+    try {
+      const { data: result } = await updateCommentMutation({
+        variables: { commentId, comment: text },
+      });
+      if (result?.updateComment?.success) {
+        const postId = commentsModalOpen.postId;
+        if (postId) await refreshPostComments(postId);
+      }
+    } catch (error) {
+      console.error('Error editing comment:', error);
+    }
+  }, [updateCommentMutation, commentsModalOpen.postId, refreshPostComments]);
+
+  const handleDeleteComment = useCallback(async (commentId: number) => {
+    if (!window.confirm('Delete this comment?')) return;
+    const postId = commentsModalOpen.postId;
+    const existing = postId ? commentsByPost[postId] : null;
+    const wasTopLevel = Boolean(existing?.some((c: any) => c.id === commentId));
+    try {
+      const { data: result } = await deleteCommentMutation({
+        variables: { commentId },
+      });
+      if (result?.deleteComment?.success) {
+        if (postId) {
+          await refreshPostComments(postId);
+          if (wasTopLevel) {
+            setCommentCounts(prev => ({
+              ...prev,
+              [postId]: Math.max(0, (prev[postId] || 1) - 1),
+            }));
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting comment:', error);
+    }
+  }, [deleteCommentMutation, commentsModalOpen.postId, commentsByPost, refreshPostComments]);
 
 
   // Manual refresh handler
@@ -2524,8 +2341,12 @@ const Home = () => {
         comments={commentsByPost[commentsModalOpen.postId!]}
         loadingComments={loadingComments[commentsModalOpen.postId!]}
         onAddComment={handleAddComment}
-        onLikeComment={handleLikeComment}
+        onReactComment={handleReactComment}
+        onEditComment={handleEditComment}
+        onDeleteComment={handleDeleteComment}
+        currentUserId={currentUser?.id}
         likedComments={likedComments}
+        commentReactions={commentReactions}
         commentLikeCounts={commentLikeCounts}
         likingComment={likingComment}
         replyingCommentId={replyingCommentId}
