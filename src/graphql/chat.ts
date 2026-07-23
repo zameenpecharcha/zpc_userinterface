@@ -54,6 +54,45 @@ export const GET_USER_ROOMS = gql`
       lastMessageAt
       hasUnread
       memberIds
+      participants {
+        userId
+        firstName
+        lastName
+        avatarUrl
+      }
+    }
+  }
+`;
+
+export const GET_PRESENCE = gql`
+  query GetPresence($userIds: [String!]!) {
+    getPresence(userIds: $userIds) {
+      userId
+      isOnline
+      lastSeenUnixMs
+    }
+  }
+`;
+
+/** Presigned PUT URL for chat media (images/files). */
+export const REQUEST_CHAT_UPLOAD = gql`
+  mutation RequestChatUpload(
+    $userId: String!
+    $roomId: String!
+    $fileName: String!
+    $mimeType: String!
+    $fileSizeBytes: Int!
+  ) {
+    requestChatUpload(
+      userId: $userId
+      roomId: $roomId
+      fileName: $fileName
+      mimeType: $mimeType
+      fileSizeBytes: $fileSizeBytes
+    ) {
+      mediaKey
+      uploadUrl
+      expiresAtUnixMs
     }
   }
 `;

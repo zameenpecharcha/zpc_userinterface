@@ -30,9 +30,9 @@ import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
 import FavoriteIcon from '@mui/icons-material/Favorite';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
-import ShareIcon from '@mui/icons-material/Share';
 import AddIcon from '@mui/icons-material/Add';
 import ProfilePage from './ProfilePage';
+import ShareSymbol from './icons/ShareSymbol';
 
 const SEARCH_POSTS_QUERY = gql`
 query SearchPosts($page: Int, $limit: Int) {
@@ -213,7 +213,7 @@ const Post = memo(({ post, onLikeToggle, onCommentClick, likedPosts, likeCounts,
                         {post.commentCount || 0}
                     </Button>
                 </Box>
-                <Button startIcon={<ShareIcon />} sx={{ color: '#374151', textTransform: 'none', fontWeight: 600, fontSize: 15, transition: 'color 0.2s', '&:hover': { color: '#2563EB' } }}>Share</Button>
+                <Button startIcon={<ShareSymbol />} sx={{ color: '#374151', textTransform: 'none', fontWeight: 600, fontSize: 15, transition: 'color 0.2s', '&:hover': { color: '#2563EB' } }}>Share</Button>
             </Box>
         </Box>
     );

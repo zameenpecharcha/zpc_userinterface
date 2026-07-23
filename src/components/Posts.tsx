@@ -22,9 +22,9 @@ import {
   Favorite,
   FavoriteBorder,
   Comment as CommentIcon,
-  Share as ShareIcon,
   LocationOn,
 } from '@mui/icons-material';
+import ShareSymbol from './icons/ShareSymbol';
 import { PropertyType, PostStatus } from '../types/posts';
 
 const Posts: React.FC = () => {
@@ -265,7 +265,7 @@ const Posts: React.FC = () => {
                     </Typography>
 
                     <IconButton size="small" sx={{ ml: 1 }}>
-                      <ShareIcon />
+                      <ShareSymbol />
                     </IconButton>
                   </Box>
 

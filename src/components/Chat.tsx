@@ -1,13 +1,20 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useApolloClient } from '@apollo/client';
 import {
-  Box, Typography, TextField, IconButton, Avatar,
+  Box, Typography, TextField, IconButton, Avatar, Menu, MenuItem,
+  Popover, CircularProgress, InputAdornment,
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import DoneAllIcon from '@mui/icons-material/DoneAll';
 import DoneIcon from '@mui/icons-material/Done';
+import InsertEmoticonIcon from '@mui/icons-material/InsertEmoticon';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
+import CloseIcon from '@mui/icons-material/Close';
+import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined';
 import { WS_CHAT_URL } from '../apollo-client';
-import { GET_CHAT_MESSAGES } from '../graphql/chat';
+import { GET_CHAT_MESSAGES, REQUEST_CHAT_UPLOAD } from '../graphql/chat';
+import { nameInitials, stringToColor } from '../utils/mentions';
+import { MATTE_HEADER, MATTE_INSET } from '../theme/surfaces';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -17,12 +24,15 @@ export interface ChatMessage {
   text: string;
   sentAt: number;
   eventType: number;   // 0=msg 1=typing_start 2=typing_stop 3=read 4=react 5=delete 6=presence
-  status: number;      // 0=sent 1=delivered 2=read
+  status: number;      // proto: 0=SENDING 1=SENT 2=DELIVERED 3=READ
   isDeleted: boolean;
   reactionEmoji?: string;
   replyToMessageId?: string;
+  type?: number;       // 0=TEXT 1=IMAGE 2=VIDEO 3=AUDIO 4=FILE
+  mediaKey?: string;
   mediaUrl?: string;
   mediaName?: string;
+  mediaMimeType?: string;
   isOnline?: boolean;
 }
 
@@ -30,20 +40,29 @@ interface ChatProps {
   roomId: string;
   userId: string;
   onConnectionChange?: (connected: boolean) => void;
+  /** Presence updates for other users in this room (peer online/offline). */
+  onPeerPresenceChange?: (peerUserId: string, isOnline: boolean) => void;
+  /** Avatar URL map keyed by userId for message bubbles. */
+  userAvatars?: Record<string, string>;
+  /** Display name map keyed by userId — used for initials when photo missing. */
+  userNames?: Record<string, string>;
+  peerAvatarUrl?: string;
+  peerDisplayName?: string;
 }
+
+const QUICK_EMOJIS = [
+  '😀', '😁', '😂', '🤣', '😊', '😍', '🥰', '😘', '🤩', '😎',
+  '🤔', '😮', '😢', '😭', '😤', '😅', '🙄', '😴', '🥳', '😇',
+  '👍', '👎', '👏', '🙏', '🔥', '❤️', '💯', '✨', '🎉', '🏠',
+  '✅', '❌', '⭐', '💬', '📎', '📷', '📍', '💡', '🤝', '🙌',
+];
+
+const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 const fmtTime = (ms: number) =>
   new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-const stringToColor = (s: string) => {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = s.charCodeAt(i) + ((h << 5) - h);
-  return `hsl(${Math.abs(h) % 360},55%,40%)`;
-};
-
-const initials = (id: string) => id.slice(0, 2).toUpperCase();
 
 const normalizeRoomId = (id: string): string => {
   if (!id) return id;
@@ -98,21 +117,48 @@ const mapHistory = (rows: any[]): ChatMessage[] => (
       isDeleted: m.isDeleted,
       reactionEmoji: m.reactionEmoji,
       replyToMessageId: m.replyToMessageId,
+      type: m.type,
+      mediaKey: m.mediaKey,
       mediaUrl: m.mediaUrl,
       mediaName: m.mediaName,
+      mediaMimeType: m.mediaMimeType,
     }))
 );
 
+const mediaTypeFromMime = (mime: string): number => {
+  if (!mime) return 4;
+  if (mime.startsWith('image/')) return 1;
+  if (mime.startsWith('video/')) return 2;
+  if (mime.startsWith('audio/')) return 3;
+  return 4;
+};
+
 // ── Chat component ───────────────────────────────────────────────────────────
 
-const Chat: React.FC<ChatProps> = ({ roomId, userId, onConnectionChange }) => {
+const Chat: React.FC<ChatProps> = ({
+  roomId,
+  userId,
+  onConnectionChange,
+  onPeerPresenceChange,
+  userAvatars,
+  userNames,
+  peerAvatarUrl,
+  peerDisplayName,
+}) => {
   const apollo = useApolloClient();
   const [messages, setMessages]   = useState<ChatMessage[]>([]);
   const [input, setInput]         = useState('');
   const [connected, setConnected] = useState(false);
   const [typingSet, setTypingSet] = useState<Set<string>>(new Set());
+  const [msgMenu, setMsgMenu] = useState<{ anchor: HTMLElement; message: ChatMessage } | null>(null);
+  const [emojiAnchor, setEmojiAnchor] = useState<HTMLElement | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [pendingPreview, setPendingPreview] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const wsRef          = useRef<WebSocket | null>(null);
   const bottomRef      = useRef<HTMLDivElement | null>(null);
+  const inputRef       = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const fileInputRef   = useRef<HTMLInputElement | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shouldReconnectRef = useRef(true);
   const authReconnectAttemptedRef = useRef(false);
@@ -224,7 +270,11 @@ const Chat: React.FC<ChatProps> = ({ roomId, userId, onConnectionChange }) => {
         } else if (eventType === 3) {
           setMessages(prev => prev.map(m =>
             m.messageId === msg.messageId ? { ...m, status: 3 } : m));
-        } else if ((eventType === 0 || msg.text) && msg.messageId) {
+        } else if (eventType === 6) {
+          if (msg.userId && msg.userId !== userId) {
+            onPeerPresenceChange?.(msg.userId, !!msg.isOnline);
+          }
+        } else if ((eventType === 0 || msg.text || (msg as any).mediaKey || msg.mediaUrl) && msg.messageId) {
           setMessages(prev => {
             const exists = prev.some(m => m.messageId === msg.messageId);
             if (exists) {
@@ -239,7 +289,7 @@ const Chat: React.FC<ChatProps> = ({ roomId, userId, onConnectionChange }) => {
         }
       } catch { /* ignore malformed frames */ }
     };
-  }, [canonicalRoomId, userId, sendReadReceipt]);
+  }, [canonicalRoomId, userId, sendReadReceipt, onPeerPresenceChange]);
 
   useEffect(() => {
     connect();
@@ -267,99 +317,324 @@ const Chat: React.FC<ChatProps> = ({ roomId, userId, onConnectionChange }) => {
     setInput(e.target.value);
   };
 
-  // ── Send ───────────────────────────────────────────────────────────────────
+  const clearPendingFile = useCallback(() => {
+    if (pendingPreview) URL.revokeObjectURL(pendingPreview);
+    setPendingFile(null);
+    setPendingPreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, [pendingPreview]);
 
-  const send = () => {
-    const text = input.trim();
-    if (!text) return;
-    const messageId = crypto.randomUUID();
-    const now = Date.now();
-    const payload = JSON.stringify({ text, messageId, sentAt: now });
-    // Show message immediately (optimistic)
-    setMessages(prev => [...prev, {
-      messageId, userId, text, sentAt: now,
-      eventType: 0, status: 0, isDeleted: false,
-    }]);
+  const insertEmoji = useCallback((emoji: string) => {
+    const el = inputRef.current;
+    const start = el?.selectionStart ?? input.length;
+    const end = el?.selectionEnd ?? input.length;
+    const next = `${input.slice(0, start)}${emoji}${input.slice(end)}`;
+    setInput(next);
+    setEmojiAnchor(null);
+    setTimeout(() => {
+      if (!inputRef.current) return;
+      inputRef.current.focus();
+      const pos = start + emoji.length;
+      inputRef.current.setSelectionRange(pos, pos);
+    }, 0);
+  }, [input]);
+
+  const sendPayload = useCallback((payloadObj: Record<string, unknown>, optimistic: ChatMessage) => {
+    const payload = JSON.stringify(payloadObj);
+    setMessages(prev => {
+      const exists = prev.some(m => m.messageId === optimistic.messageId);
+      return exists ? prev : [...prev, optimistic];
+    });
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(payload);
     } else {
       pendingMessagesRef.current.push(payload);
     }
+  }, []);
+
+  // ── Send ───────────────────────────────────────────────────────────────────
+
+  const send = useCallback(async () => {
+    const text = input.trim();
+    if ((!text && !pendingFile) || uploading) return;
+
+    if (pendingFile) {
+      setUploading(true);
+      try {
+        const file = pendingFile;
+        const { data } = await apollo.mutate({
+          mutation: REQUEST_CHAT_UPLOAD,
+          variables: {
+            userId,
+            roomId: canonicalRoomId,
+            fileName: file.name,
+            mimeType: file.type || 'application/octet-stream',
+            fileSizeBytes: file.size,
+          },
+        });
+        const upload = data?.requestChatUpload;
+        if (!upload?.uploadUrl || !upload?.mediaKey) {
+          throw new Error('Failed to get upload URL');
+        }
+        const putRes = await fetch(upload.uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': file.type || 'application/octet-stream' },
+          body: file,
+        });
+        if (!putRes.ok) {
+          throw new Error(`Upload failed (${putRes.status})`);
+        }
+        const messageId = crypto.randomUUID();
+        const now = Date.now();
+        const msgType = mediaTypeFromMime(file.type);
+        sendPayload(
+          {
+            type: msgType,
+            text,
+            messageId,
+            sentAt: now,
+            mediaKey: upload.mediaKey,
+            mediaName: file.name,
+            mediaSizeBytes: file.size,
+            mediaMimeType: file.type || 'application/octet-stream',
+          },
+          {
+            messageId,
+            userId,
+            text,
+            sentAt: now,
+            eventType: 0,
+            status: 0,
+            isDeleted: false,
+            type: msgType,
+            mediaKey: upload.mediaKey,
+            mediaName: file.name,
+            mediaMimeType: file.type || 'application/octet-stream',
+            mediaUrl: pendingPreview || undefined,
+          }
+        );
+        setInput('');
+        clearPendingFile();
+      } catch (err) {
+        console.error('Chat media upload failed:', err);
+        window.alert(err instanceof Error ? err.message : 'Failed to upload media');
+      } finally {
+        setUploading(false);
+      }
+      return;
+    }
+
+    const messageId = crypto.randomUUID();
+    const now = Date.now();
+    sendPayload(
+      { text, messageId, sentAt: now },
+      {
+        messageId, userId, text, sentAt: now,
+        eventType: 0, status: 0, isDeleted: false, type: 0,
+      }
+    );
     setInput('');
-  };
+  }, [
+    input, pendingFile, uploading, apollo, userId, canonicalRoomId,
+    sendPayload, clearPendingFile, pendingPreview,
+  ]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); }
   };
+
+  const onPickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 25 * 1024 * 1024) {
+      window.alert('File is too large (max 25 MB)');
+      e.target.value = '';
+      return;
+    }
+    if (pendingPreview) URL.revokeObjectURL(pendingPreview);
+    setPendingFile(file);
+    setPendingPreview(file.type.startsWith('image/') ? URL.createObjectURL(file) : null);
+  };
+
+  const reactToMessage = useCallback((msg: ChatMessage, emoji: string) => {
+    setMsgMenu(null);
+    if (!msg.messageId || msg.isDeleted) return;
+    const payload = JSON.stringify({
+      eventType: 4,
+      messageId: msg.messageId,
+      reactionEmoji: emoji,
+    });
+    setMessages(prev => prev.map(m =>
+      m.messageId === msg.messageId ? { ...m, reactionEmoji: emoji } : m));
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(payload);
+    } else {
+      pendingMessagesRef.current.push(payload);
+    }
+  }, []);
+
+  const displayNameFor = useCallback((uid: string) => {
+    if (userNames?.[uid]) return userNames[uid];
+    if (peerDisplayName && uid !== userId) return peerDisplayName;
+    return uid;
+  }, [userNames, peerDisplayName, userId]);
+
+  const initialsFor = useCallback((uid: string) => {
+    return nameInitials(displayNameFor(uid), uid);
+  }, [displayNameFor]);
+
+  const deleteMessage = useCallback((msg: ChatMessage) => {
+    setMsgMenu(null);
+    if (!msg.messageId || msg.isDeleted) return;
+    const payload = JSON.stringify({
+      eventType: 5,
+      messageId: msg.messageId,
+      sentAt: msg.sentAt,
+    });
+    setMessages(prev => prev.map(m =>
+      m.messageId === msg.messageId ? { ...m, isDeleted: true } : m));
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(payload);
+    } else {
+      pendingMessagesRef.current.push(payload);
+    }
+  }, []);
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
   const otherTyping = Array.from(typingSet).filter(u => u !== userId);
 
-  return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: '#ECE5DD' }}>
+  const LI_BLUE = '#0A66C2';
 
-      {/* Messages */}
-      <Box sx={{ flex: 1, overflowY: 'auto', px: 2, py: 1.5, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+  const avatarFor = (uid: string) =>
+    userAvatars?.[uid] || (peerAvatarUrl && uid !== userId ? peerAvatarUrl : undefined);
+
+  return (
+    <Box sx={{
+      display: 'flex',
+      flexDirection: 'column',
+      height: '100%',
+      bgcolor: '#F3EFE8',
+      backgroundImage: 'linear-gradient(165deg, #F6F2EB 0%, #EFEAE2 55%, #EAE4DB 100%)',
+    }}>
+
+      {/* Messages — LinkedIn-style thread */}
+      <Box sx={{
+        flex: 1,
+        overflowY: 'auto',
+        px: 2,
+        py: 2,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 1.25,
+        bgcolor: 'transparent',
+      }}>
         {messages.length === 0 && (
-          <Box sx={{ m: 'auto', textAlign: 'center', color: '#777', userSelect: 'none' }}>
-            <Typography variant="body2">No messages yet — say hello! 👋</Typography>
+          <Box sx={{ m: 'auto', textAlign: 'center', color: '#666', userSelect: 'none', px: 2 }}>
+            <Typography variant="body2" fontWeight={600} color="#191919" mb={0.5}>No messages yet</Typography>
+            <Typography variant="caption" color="#666">Send a message to start the conversation.</Typography>
           </Box>
         )}
 
         {messages.map((msg) => {
           const isMe = msg.userId === userId;
+          const otherAvatar = avatarFor(msg.userId);
           return (
             <Box key={msg.messageId}
-              sx={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start', alignItems: 'flex-end', gap: 0.75 }}
+              sx={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start', alignItems: 'flex-end', gap: 1 }}
             >
               {!isMe && (
-                <Avatar sx={{ width: 30, height: 30, fontSize: 11, bgcolor: stringToColor(msg.userId), flexShrink: 0, mb: '2px' }}>
-                  {initials(msg.userId)}
+                <Avatar
+                  src={otherAvatar || undefined}
+                  sx={{ width: 28, height: 28, fontSize: 10, fontWeight: 700, bgcolor: stringToColor(displayNameFor(msg.userId)), flexShrink: 0 }}
+                >
+                  {initialsFor(msg.userId)}
                 </Avatar>
               )}
-              <Box sx={{
-                maxWidth: '70%',
-                bgcolor: isMe ? '#DCF8C6' : '#fff',
-                color: '#111',
-                borderRadius: isMe ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
-                px: 1.5, py: 0.75,
-                boxShadow: '0 1px 2px rgba(0,0,0,0.13)',
+              <Box
+                onContextMenu={(e) => {
+                  if (msg.isDeleted) return;
+                  e.preventDefault();
+                  setMsgMenu({ anchor: e.currentTarget as HTMLElement, message: msg });
+                }}
+                sx={{
+                maxWidth: '78%',
+                bgcolor: isMe ? LI_BLUE : 'rgba(255,255,255,0.72)',
+                color: isMe ? '#fff' : '#191919',
+                borderRadius: isMe ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
+                border: isMe ? 'none' : '1px solid rgba(90, 70, 50, 0.08)',
+                px: 1.5,
+                py: 1,
+                boxShadow: 'none',
                 position: 'relative',
                 wordBreak: 'break-word',
+                cursor: !msg.isDeleted ? 'context-menu' : 'default',
               }}>
-                {!isMe && (
-                  <Typography variant="caption" sx={{ fontWeight: 700, color: stringToColor(msg.userId), display: 'block', mb: 0.25, fontSize: 11 }}>
-                    {msg.userId}
-                  </Typography>
-                )}
-
                 {msg.isDeleted ? (
-                  <Typography variant="body2" sx={{ fontStyle: 'italic', color: '#999', fontSize: 13 }}>
-                    🚫 This message was deleted
+                  <Typography variant="body2" sx={{ fontStyle: 'italic', color: isMe ? 'rgba(255,255,255,0.75)' : '#999', fontSize: 13 }}>
+                    This message was deleted
                   </Typography>
                 ) : (
-                  <Typography variant="body2" sx={{ lineHeight: 1.45, fontSize: 14 }}>
-                    {msg.text}
-                  </Typography>
+                  <>
+                    {(msg.mediaUrl || msg.mediaKey || msg.mediaName) && (
+                      <Box sx={{ mb: msg.text ? 1 : 0 }}>
+                        {(msg.mediaMimeType?.startsWith('image/') || msg.type === 1 || (!!msg.mediaUrl && !msg.mediaMimeType)) && msg.mediaUrl ? (
+                          <Box
+                            component="img"
+                            src={msg.mediaUrl}
+                            alt={msg.mediaName || 'Shared image'}
+                            sx={{
+                              display: 'block',
+                              maxWidth: '100%',
+                              maxHeight: 220,
+                              borderRadius: 1.5,
+                              objectFit: 'cover',
+                            }}
+                          />
+                        ) : (
+                          <Box
+                            sx={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 1,
+                              px: 1,
+                              py: 0.75,
+                              borderRadius: 1,
+                              bgcolor: isMe ? 'rgba(255,255,255,0.15)' : '#F4F2EE',
+                            }}
+                          >
+                            <InsertDriveFileOutlinedIcon sx={{ fontSize: 20, opacity: 0.85 }} />
+                            <Typography variant="body2" sx={{ fontSize: 13, fontWeight: 600 }} noWrap>
+                              {msg.mediaName || 'Attachment'}
+                            </Typography>
+                          </Box>
+                        )}
+                      </Box>
+                    )}
+                    {msg.text ? (
+                      <Typography variant="body2" sx={{ lineHeight: 1.45, fontSize: 14, fontWeight: 400 }}>
+                        {msg.text}
+                      </Typography>
+                    ) : null}
+                  </>
                 )}
 
                 {msg.reactionEmoji && (
-                  <Box sx={{ position: 'absolute', bottom: -10, right: 6, bgcolor: '#fff', borderRadius: 3, px: 0.5, fontSize: 13, boxShadow: 1 }}>
+                  <Box sx={{ position: 'absolute', bottom: -10, right: 6, ...MATTE_INSET, borderRadius: 3, px: 0.5, fontSize: 13 }}>
                     {msg.reactionEmoji}
                   </Box>
                 )}
 
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '2px', mt: 0.5 }}>
-                  <Typography variant="caption" sx={{ color: '#aaa', fontSize: 10, lineHeight: 1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '3px', mt: 0.5 }}>
+                  <Typography variant="caption" sx={{ color: isMe ? 'rgba(255,255,255,0.7)' : '#8C8C8C', fontSize: 10, lineHeight: 1 }}>
                     {fmtTime(msg.sentAt)}
                   </Typography>
                   {isMe && (
-                    msg.status >= 2
-                      ? <DoneAllIcon sx={{ fontSize: 13, color: '#53bdeb' }} />
-                      : msg.status >= 1
-                        ? <DoneAllIcon sx={{ fontSize: 13, color: '#aaa' }} />
-                        : <DoneIcon sx={{ fontSize: 13, color: '#aaa' }} />
+                    msg.status >= 3
+                      ? <DoneAllIcon sx={{ fontSize: 13, color: '#fff' }} />
+                      : msg.status >= 2
+                        ? <DoneAllIcon sx={{ fontSize: 13, color: 'rgba(255,255,255,0.65)' }} />
+                        : <DoneIcon sx={{ fontSize: 13, color: 'rgba(255,255,255,0.65)' }} />
                   )}
                 </Box>
               </Box>
@@ -367,17 +642,19 @@ const Chat: React.FC<ChatProps> = ({ roomId, userId, onConnectionChange }) => {
           );
         })}
 
-        {/* Typing indicator */}
         {otherTyping.length > 0 && (
-          <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 0.75 }}>
-            <Avatar sx={{ width: 30, height: 30, fontSize: 11, bgcolor: stringToColor(otherTyping[0]) }}>
-              {initials(otherTyping[0])}
+          <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 1 }}>
+            <Avatar
+              src={avatarFor(otherTyping[0]) || undefined}
+              sx={{ width: 28, height: 28, fontSize: 10, fontWeight: 700, bgcolor: stringToColor(displayNameFor(otherTyping[0])) }}
+            >
+              {initialsFor(otherTyping[0])}
             </Avatar>
-            <Box sx={{ bgcolor: '#fff', borderRadius: '18px 18px 18px 4px', px: 1.5, py: 0.75, boxShadow: '0 1px 2px rgba(0,0,0,0.13)' }}>
-              <Box sx={{ display: 'flex', gap: '4px', alignItems: 'center', height: 18 }}>
+            <Box sx={{ ...MATTE_INSET, bgcolor: 'rgba(255,255,255,0.72)', borderRadius: '12px 12px 12px 2px', px: 1.5, py: 1 }}>
+              <Box sx={{ display: 'flex', gap: '4px', alignItems: 'center', height: 16 }}>
                 {[0, 0.2, 0.4].map((delay, i) => (
                   <Box key={i} sx={{
-                    width: 6, height: 6, borderRadius: '50%', bgcolor: '#aaa',
+                    width: 5, height: 5, borderRadius: '50%', bgcolor: '#8C8C8C',
                     animation: 'typingBounce 1.2s infinite',
                     animationDelay: `${delay}s`,
                     '@keyframes typingBounce': {
@@ -394,41 +671,203 @@ const Chat: React.FC<ChatProps> = ({ roomId, userId, onConnectionChange }) => {
         <div ref={bottomRef} />
       </Box>
 
-      {/* Input bar */}
-      <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 1, px: 1.5, py: 1, bgcolor: '#F0F0F0', borderTop: '1px solid #ddd' }}>
-        <TextField
-          fullWidth
-          multiline
-          maxRows={4}
-          size="small"
-          placeholder={connected ? 'Type a message' : 'Connecting…'}
-          value={input}
-          onChange={handleInputChange}
-          onKeyDown={handleKeyDown}
-          disabled={!connected}
-          variant="outlined"
+      <Menu
+        anchorEl={msgMenu?.anchor}
+        open={Boolean(msgMenu)}
+        onClose={() => setMsgMenu(null)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+        transformOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Box sx={{ display: 'flex', gap: 0.25, px: 1, py: 0.5 }}>
+          {REACTION_EMOJIS.map((emoji) => (
+            <IconButton
+              key={emoji}
+              size="small"
+              onClick={() => msgMenu && reactToMessage(msgMenu.message, emoji)}
+              sx={{ fontSize: 18 }}
+            >
+              {emoji}
+            </IconButton>
+          ))}
+        </Box>
+        {msgMenu?.message.userId === userId && (
+          <MenuItem
+            onClick={() => msgMenu && deleteMessage(msgMenu.message)}
+            sx={{ color: '#DC2626', fontSize: 14 }}
+          >
+            Delete message
+          </MenuItem>
+        )}
+      </Menu>
+
+      {/* Composer */}
+      <Box sx={{
+        ...MATTE_HEADER,
+        borderBottom: 'none',
+        borderTop: '1px solid rgba(90, 70, 50, 0.1)',
+        boxShadow: 'none',
+        color: 'inherit',
+        flexShrink: 0,
+      }}>
+        {pendingFile && (
+          <Box sx={{ px: 1.5, pt: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+            {pendingPreview ? (
+              <Box
+                component="img"
+                src={pendingPreview}
+                alt="Preview"
+                sx={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 1, border: '1px solid #E0E0E0' }}
+              />
+            ) : (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, px: 1, py: 0.75, bgcolor: '#F4F2EE', borderRadius: 1 }}>
+                <InsertDriveFileOutlinedIcon sx={{ fontSize: 18, color: '#666' }} />
+                <Typography fontSize={12} fontWeight={600} color="#333" noWrap sx={{ maxWidth: 180 }}>
+                  {pendingFile.name}
+                </Typography>
+              </Box>
+            )}
+            <IconButton size="small" onClick={clearPendingFile} disabled={uploading} aria-label="Remove attachment">
+              <CloseIcon sx={{ fontSize: 16 }} />
+            </IconButton>
+          </Box>
+        )}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 1.25 }}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            hidden
+            accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip"
+            onChange={onPickFile}
+          />
+          <TextField
+            fullWidth
+            multiline
+            maxRows={4}
+            size="small"
+            placeholder={connected ? 'Write a message…' : 'Write a message… (connecting)'}
+            value={input}
+            onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
+            disabled={uploading}
+            variant="outlined"
+            inputRef={inputRef}
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end" sx={{ alignSelf: 'center', ml: 0.25, gap: 0.15 }}>
+                  <IconButton
+                    size="small"
+                    disabled={uploading}
+                    onClick={() => fileInputRef.current?.click()}
+                    aria-label="Attach file"
+                    sx={{ color: '#666', p: 0.45, '&:hover': { color: LI_BLUE } }}
+                  >
+                    <AttachFileIcon sx={{ fontSize: 20 }} />
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    disabled={uploading}
+                    onClick={(e) => setEmojiAnchor(e.currentTarget)}
+                    aria-label="Insert emoji"
+                    edge="end"
+                    sx={{ color: '#666', p: 0.45, '&:hover': { color: LI_BLUE } }}
+                  >
+                    <InsertEmoticonIcon sx={{ fontSize: 20 }} />
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }}
+            sx={{
+              bgcolor: '#F4F2EE',
+              borderRadius: 1.5,
+              '& .MuiOutlinedInput-root': {
+                borderRadius: 1.5,
+                pl: 1.25,
+                pr: 0.5,
+                py: 0.35,
+                minHeight: 40,
+                fontSize: 14,
+                alignItems: 'center',
+                '& fieldset': { borderColor: '#E0E0E0' },
+                '&:hover fieldset': { borderColor: '#B0B0B0' },
+                '&.Mui-focused fieldset': { borderColor: LI_BLUE, borderWidth: 1 },
+              },
+              '& .MuiOutlinedInput-input': {
+                py: 0.75,
+              },
+            }}
+          />
+          <IconButton
+            onClick={() => { void send(); }}
+            disabled={uploading || (!input.trim() && !pendingFile)}
+            sx={{
+              bgcolor: !uploading && (input.trim() || pendingFile) ? LI_BLUE : '#E0E0E0',
+              color: !uploading && (input.trim() || pendingFile) ? '#fff' : '#8C8C8C',
+              width: 40,
+              height: 40,
+              flexShrink: 0,
+              borderRadius: 1.5,
+              alignSelf: 'center',
+              '&:hover': { bgcolor: !uploading && (input.trim() || pendingFile) ? '#004182' : '#E0E0E0' },
+              '&:disabled': { bgcolor: '#E0E0E0', color: '#8C8C8C' },
+              transition: 'background-color 0.15s',
+            }}
+          >
+            {uploading ? <CircularProgress size={18} sx={{ color: '#8C8C8C' }} /> : <SendIcon sx={{ fontSize: 18 }} />}
+          </IconButton>
+        </Box>
+      </Box>
+
+      <Popover
+        open={Boolean(emojiAnchor)}
+        anchorEl={emojiAnchor}
+        onClose={() => setEmojiAnchor(null)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+        transformOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        disableScrollLock
+        slotProps={{
+          paper: {
+            sx: {
+              p: 1,
+              width: 280,
+              maxHeight: 220,
+              overflowY: 'auto',
+              zIndex: 10000,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+            },
+          },
+          root: { sx: { zIndex: 10000 } },
+        }}
+      >
+        <Box
           sx={{
-            bgcolor: '#fff',
-            borderRadius: 5,
-            '& .MuiOutlinedInput-root': { borderRadius: 5, px: 1.5, fontSize: 14 },
-            '& fieldset': { border: 'none' },
-          }}
-        />
-        <IconButton
-          onClick={send}
-          disabled={!connected || !input.trim()}
-          sx={{
-            bgcolor: connected && input.trim() ? '#25D366' : '#ccc',
-            color: '#fff',
-            width: 40, height: 40, flexShrink: 0,
-            '&:hover': { bgcolor: '#1ebe5d' },
-            '&:disabled': { bgcolor: '#ccc', color: '#fff' },
-            transition: 'background-color 0.2s',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(8, 1fr)',
+            gap: '2px',
           }}
         >
-          <SendIcon sx={{ fontSize: 18 }} />
-        </IconButton>
-      </Box>
+          {QUICK_EMOJIS.map((emoji) => (
+            <Box
+              key={emoji}
+              component="button"
+              type="button"
+              onClick={() => insertEmoji(emoji)}
+              sx={{
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                fontSize: 22,
+                lineHeight: 1.2,
+                p: 0.5,
+                borderRadius: 1,
+                fontFamily: 'Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji, sans-serif',
+                '&:hover': { bgcolor: '#F4F2EE' },
+              }}
+            >
+              {emoji}
+            </Box>
+          ))}
+        </Box>
+      </Popover>
     </Box>
   );
 };

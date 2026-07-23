@@ -113,6 +113,19 @@ export const GET_PROPERTY = gql`
   ${PROPERTY_FIELDS}
 `;
 
+/** Light search for @property mentions in posts/comments. */
+export const SEARCH_PROPERTIES = gql`
+  query SearchProperties($query: String) {
+    searchProperties(query: $query) {
+      propertyId
+      userId
+      title
+      location
+      city
+    }
+  }
+`;
+
 // Get User Properties Query
 export const GET_USER_PROPERTIES = gql`
   query GetUserProperties($userId: String!) {

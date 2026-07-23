@@ -54,6 +54,10 @@ export const GET_USER_PROFILE = gql`
         ratingType
         createdAt
         updatedAt
+        raterFirstName
+        raterLastName
+        raterProfilePhoto
+        raterProfilePhotoSignedUrl
       }
     }
   }

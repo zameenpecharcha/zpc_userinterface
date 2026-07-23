@@ -41,7 +41,6 @@ import {
   Visibility as ViewIcon,
   Phone as PhoneIcon,
   Email as EmailIcon,
-  Share as ShareIcon,
   Favorite as FavoriteIcon,
   FavoriteBorder as FavoriteBorderIcon,
   Bed as BedIcon,
@@ -72,6 +71,8 @@ import {
   PropertyFollow
 } from '../graphql/property';
 import { useAuth } from '../contexts/AuthContext';
+import { MATTE_SURFACE, MATTE_HEADER, PAGE_ATMOSPHERE } from '../theme/surfaces';
+import ShareSymbol from './icons/ShareSymbol';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -331,7 +332,7 @@ const PropertyPage: React.FC = () => {
     return (
       <Box sx={{ 
         minHeight: '100vh', 
-        bgcolor: '#F6F8FB',
+        ...PAGE_ATMOSPHERE,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center'
@@ -343,8 +344,8 @@ const PropertyPage: React.FC = () => {
 
   if (error || !data?.property) {
     return (
-      <Box sx={{ minHeight: '100vh', bgcolor: '#F6F8FB' }}>
-        <AppBar position="static" sx={{ bgcolor: 'white', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+      <Box sx={{ minHeight: '100vh', ...PAGE_ATMOSPHERE }}>
+        <AppBar position="static" elevation={0} sx={{ ...MATTE_HEADER }}>
           <Toolbar>
             <IconButton onClick={handleGoBack} sx={{ mr: 2, color: '#374151' }}>
               <ArrowBackIcon />
@@ -375,9 +376,9 @@ const PropertyPage: React.FC = () => {
   const averageRating = calculateAverageRating(ratings);
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: '#F6F8FB' }}>
+    <Box sx={{ minHeight: '100vh', ...PAGE_ATMOSPHERE }}>
       {/* Header */}
-      <AppBar position="static" sx={{ bgcolor: 'white', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+      <AppBar position="static" elevation={0} sx={{ ...MATTE_HEADER }}>
         <Toolbar>
           <IconButton onClick={handleGoBack} sx={{ mr: 2, color: '#374151' }}>
             <ArrowBackIcon />
@@ -386,7 +387,7 @@ const PropertyPage: React.FC = () => {
             {property.title}
           </Typography>
           <IconButton onClick={handleShare} sx={{ color: '#374151', mr: 1 }}>
-            <ShareIcon />
+            <ShareSymbol />
           </IconButton>
           <IconButton onClick={handleFavoriteToggle} sx={{ color: '#374151' }}>
             {isFavorite ? <FavoriteIcon sx={{ color: '#EF4444' }} /> : <FavoriteBorderIcon />}
@@ -399,7 +400,7 @@ const PropertyPage: React.FC = () => {
           {/* Main Content */}
           <Box>
             {/* Property Images */}
-            <Card sx={{ mb: 4, borderRadius: 3, overflow: 'hidden' }}>
+            <Card sx={{ mb: 4, borderRadius: 3, overflow: 'hidden', ...MATTE_SURFACE }}>
               {property.images && property.images.length > 0 ? (
                 <ImageList cols={2} rowHeight={300} sx={{ m: 0 }}>
                   {property.images.slice(0, 4).map((image, index) => (
@@ -425,7 +426,7 @@ const PropertyPage: React.FC = () => {
             </Card>
 
             {/* Property Details */}
-            <Card sx={{ mb: 4, borderRadius: 3 }}>
+            <Card sx={{ mb: 4, borderRadius: 3, ...MATTE_SURFACE }}>
               <CardContent sx={{ p: 4 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
                   {getPropertyIcon(property.propertyType)}
@@ -471,7 +472,7 @@ const PropertyPage: React.FC = () => {
                 {/* Property Features */}
                 <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(4, 1fr)' }, gap: 2, mb: 4 }}>
                   <Box>
-                    <Box sx={{ textAlign: 'center', p: 2, bgcolor: '#F9FAFB', borderRadius: 2 }}>
+                    <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'rgba(255,255,255,0.45)', border: '1px solid rgba(90, 70, 50, 0.07)', borderRadius: 2 }}>
                       <BedIcon sx={{ fontSize: 24, color: '#2563EB', mb: 1 }} />
                       <Typography variant="h6" sx={{ fontWeight: 700, color: '#111827' }}>
                         {property.bedrooms}
@@ -482,7 +483,7 @@ const PropertyPage: React.FC = () => {
                     </Box>
                   </Box>
                   <Box>
-                    <Box sx={{ textAlign: 'center', p: 2, bgcolor: '#F9FAFB', borderRadius: 2 }}>
+                    <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'rgba(255,255,255,0.45)', border: '1px solid rgba(90, 70, 50, 0.07)', borderRadius: 2 }}>
                       <BathIcon sx={{ fontSize: 24, color: '#2563EB', mb: 1 }} />
                       <Typography variant="h6" sx={{ fontWeight: 700, color: '#111827' }}>
                         {property.bathrooms}
@@ -493,7 +494,7 @@ const PropertyPage: React.FC = () => {
                     </Box>
                   </Box>
                   <Box>
-                    <Box sx={{ textAlign: 'center', p: 2, bgcolor: '#F9FAFB', borderRadius: 2 }}>
+                    <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'rgba(255,255,255,0.45)', border: '1px solid rgba(90, 70, 50, 0.07)', borderRadius: 2 }}>
                       <AreaIcon sx={{ fontSize: 24, color: '#2563EB', mb: 1 }} />
                       <Typography variant="h6" sx={{ fontWeight: 700, color: '#111827' }}>
                         {property.area}
@@ -504,7 +505,7 @@ const PropertyPage: React.FC = () => {
                     </Box>
                   </Box>
                   <Box>
-                    <Box sx={{ textAlign: 'center', p: 2, bgcolor: '#F9FAFB', borderRadius: 2 }}>
+                    <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'rgba(255,255,255,0.45)', border: '1px solid rgba(90, 70, 50, 0.07)', borderRadius: 2 }}>
                       <YearIcon sx={{ fontSize: 24, color: '#2563EB', mb: 1 }} />
                       <Typography variant="h6" sx={{ fontWeight: 700, color: '#111827' }}>
                         {property.yearBuilt}
@@ -634,7 +635,7 @@ const PropertyPage: React.FC = () => {
                   {ratings.length > 0 ? (
                     <List>
                       {ratings.map((rating) => (
-                        <Card key={rating.id} sx={{ mb: 2, borderRadius: 2 }}>
+                        <Card key={rating.id} sx={{ mb: 2, borderRadius: 2, ...MATTE_SURFACE }}>
                           <CardContent sx={{ p: 3 }}>
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
                               <Box>
@@ -710,7 +711,7 @@ const PropertyPage: React.FC = () => {
                   {followers.length > 0 ? (
                     <List>
                       {followers.map((follower) => (
-                        <Card key={follower.id} sx={{ mb: 2, borderRadius: 2 }}>
+                        <Card key={follower.id} sx={{ mb: 2, borderRadius: 2, ...MATTE_SURFACE }}>
                           <CardContent sx={{ p: 3 }}>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                               <Avatar sx={{ bgcolor: '#2563EB', width: 40, height: 40 }}>
@@ -770,7 +771,7 @@ const PropertyPage: React.FC = () => {
           {/* Sidebar */}
           <Box>
             {/* Contact Card */}
-            <Card sx={{ mb: 4, borderRadius: 3, position: 'sticky', top: 100 }}>
+            <Card sx={{ mb: 4, borderRadius: 3, position: 'sticky', top: 100, ...MATTE_SURFACE }}>
               <CardContent sx={{ p: 3 }}>
                 <Typography variant="h6" sx={{ fontWeight: 700, color: '#111827', mb: 3 }}>
                   Contact Owner
@@ -831,7 +832,7 @@ const PropertyPage: React.FC = () => {
             </Card>
 
             {/* Property Stats */}
-            <Card sx={{ borderRadius: 3 }}>
+            <Card sx={{ borderRadius: 3, ...MATTE_SURFACE }}>
               <CardContent sx={{ p: 3 }}>
                 <Typography variant="h6" sx={{ fontWeight: 700, color: '#111827', mb: 3 }}>
                   Property Stats
@@ -882,7 +883,7 @@ const PropertyPage: React.FC = () => {
       </Container>
 
       {/* Rating Dialog */}
-      <Dialog open={ratingDialogOpen} onClose={handleCloseRatingDialog} maxWidth="sm" fullWidth>
+      <Dialog open={ratingDialogOpen} onClose={handleCloseRatingDialog} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3, ...MATTE_SURFACE } }}>
         <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h6" sx={{ fontWeight: 700 }}>
             Rate This Property

@@ -20,6 +20,7 @@ export const POST_FIELDS = gql`
     price
     status
     createdAt
+    userProfilePhoto
     userProfilePhotoSignedUrl
     media {
       id
@@ -64,6 +65,7 @@ export const SEARCH_POSTS = gql`
       userFirstName
       userLastName
       userRole
+      userProfilePhoto
       userProfilePhotoSignedUrl
       title
       content
@@ -117,6 +119,8 @@ export const GET_POST_COMMENTS = gql`
       status
       addedAt
       commentedAt
+      profilePhoto
+      profilePhotoSignedUrl
       replies {
         id
         postId
@@ -130,6 +134,8 @@ export const GET_POST_COMMENTS = gql`
         addedAt
         commentedAt
         likeCount
+        profilePhoto
+        profilePhotoSignedUrl
       }
       likeCount
     }
