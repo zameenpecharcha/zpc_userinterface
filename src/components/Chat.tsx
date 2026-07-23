@@ -2,8 +2,9 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useApolloClient } from '@apollo/client';
 import {
   Box, Typography, TextField, IconButton, Avatar, Menu, MenuItem,
-  Popover, CircularProgress, InputAdornment,
+  Popover, CircularProgress, InputAdornment, Drawer, Divider, useMediaQuery,
 } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
 import SendIcon from '@mui/icons-material/Send';
 import DoneAllIcon from '@mui/icons-material/DoneAll';
 import DoneIcon from '@mui/icons-material/Done';
@@ -11,6 +12,9 @@ import InsertEmoticonIcon from '@mui/icons-material/InsertEmoticon';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import CloseIcon from '@mui/icons-material/Close';
 import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutlined';
+import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { WS_CHAT_URL } from '../apollo-client';
 import { GET_CHAT_MESSAGES, REQUEST_CHAT_UPLOAD } from '../graphql/chat';
 import { nameInitials, stringToColor } from '../utils/mentions';
@@ -23,9 +27,10 @@ export interface ChatMessage {
   userId: string;
   text: string;
   sentAt: number;
-  eventType: number;   // 0=msg 1=typing_start 2=typing_stop 3=read 4=react 5=delete 6=presence
+  eventType: number;   // 0=msg … 5=delete 6=presence 7=edit
   status: number;      // proto: 0=SENDING 1=SENT 2=DELIVERED 3=READ
   isDeleted: boolean;
+  editedAt?: number;
   reactionEmoji?: string;
   replyToMessageId?: string;
   type?: number;       // 0=TEXT 1=IMAGE 2=VIDEO 3=AUDIO 4=FILE
@@ -114,7 +119,8 @@ const mapHistory = (rows: any[]): ChatMessage[] => (
       sentAt: m.sentAt,
       eventType: m.eventType,
       status: m.status,
-      isDeleted: m.isDeleted,
+      isDeleted: !!m.isDeleted,
+      editedAt: m.editedAt || 0,
       reactionEmoji: m.reactionEmoji,
       replyToMessageId: m.replyToMessageId,
       type: m.type,
@@ -150,11 +156,22 @@ const Chat: React.FC<ChatProps> = ({
   const [input, setInput]         = useState('');
   const [connected, setConnected] = useState(false);
   const [typingSet, setTypingSet] = useState<Set<string>>(new Set());
-  const [msgMenu, setMsgMenu] = useState<{ anchor: HTMLElement; message: ChatMessage } | null>(null);
+  const [msgMenu, setMsgMenu] = useState<{
+    message: ChatMessage;
+    position: { top: number; left: number };
+  } | null>(null);
+  const [actionSheet, setActionSheet] = useState<ChatMessage | null>(null);
+  const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
+  const [hoveredMsgId, setHoveredMsgId] = useState<string | null>(null);
+  const [hiddenForMe, setHiddenForMe] = useState<Set<string>>(() => new Set());
   const [emojiAnchor, setEmojiAnchor] = useState<HTMLElement | null>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [pendingPreview, setPendingPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTriggered = useRef(false);
   const wsRef          = useRef<WebSocket | null>(null);
   const bottomRef      = useRef<HTMLDivElement | null>(null);
   const inputRef       = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
@@ -176,8 +193,12 @@ const Chat: React.FC<ChatProps> = ({
   useEffect(() => {
     setMessages([]);
     setTypingSet(new Set());
+    setHiddenForMe(new Set());
+    setEditingMessage(null);
+    setMsgMenu(null);
+    setActionSheet(null);
     setConnected(false);
-  }, [roomId]);
+  }, [canonicalRoomId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -262,8 +283,16 @@ const Chat: React.FC<ChatProps> = ({
         } else if (eventType === 2) {
           setTypingSet(s => { const n = new Set(s); n.delete(msg.userId); return n; });
         } else if (eventType === 5) {
+          // Only apply tombstone when the deleter owns the message
           setMessages(prev => prev.map(m =>
-            m.messageId === msg.messageId ? { ...m, isDeleted: true } : m));
+            m.messageId === msg.messageId && String(m.userId) === String(msg.userId)
+              ? { ...m, isDeleted: true, text: '' }
+              : m));
+        } else if (eventType === 7) {
+          setMessages(prev => prev.map(m =>
+            m.messageId === msg.messageId && String(m.userId) === String(msg.userId)
+              ? { ...m, text: msg.text, editedAt: (msg as any).editedAt || Date.now() }
+              : m));
         } else if (eventType === 4) {
           setMessages(prev => prev.map(m =>
             m.messageId === msg.messageId ? { ...m, reactionEmoji: msg.reactionEmoji } : m));
@@ -356,6 +385,34 @@ const Chat: React.FC<ChatProps> = ({
 
   const send = useCallback(async () => {
     const text = input.trim();
+
+    // Teams-style edit: save via eventType 7 instead of sending a new message
+    if (editingMessage) {
+      if (!text || editingMessage.isDeleted) {
+        setEditingMessage(null);
+        setInput('');
+        return;
+      }
+      const payload = JSON.stringify({
+        eventType: 7,
+        messageId: editingMessage.messageId,
+        text,
+      });
+      const editedAt = Date.now();
+      setMessages(prev => prev.map(m =>
+        m.messageId === editingMessage.messageId
+          ? { ...m, text, editedAt }
+          : m));
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(payload);
+      } else {
+        pendingMessagesRef.current.push(payload);
+      }
+      setEditingMessage(null);
+      setInput('');
+      return;
+    }
+
     if ((!text && !pendingFile) || uploading) return;
 
     if (pendingFile) {
@@ -436,10 +493,16 @@ const Chat: React.FC<ChatProps> = ({
     setInput('');
   }, [
     input, pendingFile, uploading, apollo, userId, canonicalRoomId,
-    sendPayload, clearPendingFile, pendingPreview,
+    sendPayload, clearPendingFile, pendingPreview, editingMessage,
   ]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape' && editingMessage) {
+      e.preventDefault();
+      setEditingMessage(null);
+      setInput('');
+      return;
+    }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); }
   };
 
@@ -458,6 +521,7 @@ const Chat: React.FC<ChatProps> = ({
 
   const reactToMessage = useCallback((msg: ChatMessage, emoji: string) => {
     setMsgMenu(null);
+    setActionSheet(null);
     if (!msg.messageId || msg.isDeleted) return;
     const payload = JSON.stringify({
       eventType: 4,
@@ -483,20 +547,89 @@ const Chat: React.FC<ChatProps> = ({
     return nameInitials(displayNameFor(uid), uid);
   }, [displayNameFor]);
 
+  const openMessageActions = useCallback((msg: ChatMessage, anchor?: HTMLElement | null, clientPoint?: { x: number; y: number }) => {
+    if (msg.isDeleted) return;
+    if (isMobile && !anchor && !clientPoint) {
+      setActionSheet(msg);
+      setMsgMenu(null);
+      return;
+    }
+    // Prefer click coordinates so the menu stays put even if the ⋯ button unmounts.
+    let top = clientPoint?.y ?? 0;
+    let left = clientPoint?.x ?? 0;
+    if (anchor) {
+      const rect = anchor.getBoundingClientRect();
+      top = rect.top;
+      left = rect.left + rect.width / 2;
+    }
+    if (!top && !left && typeof window !== 'undefined') {
+      // Fallback: open near the message via action sheet on tiny screens
+      setActionSheet(msg);
+      setMsgMenu(null);
+      return;
+    }
+    setMsgMenu({ message: msg, position: { top, left } });
+    setActionSheet(null);
+  }, [isMobile]);
+
+  const isOwnMessage = useCallback((msg: ChatMessage) => (
+    String(msg.userId) === String(userId)
+  ), [userId]);
+
+  const startEdit = useCallback((msg: ChatMessage) => {
+    setMsgMenu(null);
+    setActionSheet(null);
+    if (msg.isDeleted || !isOwnMessage(msg)) return;
+    // Only text (or caption) edits — media-only stays delete-only
+    if (!msg.text?.trim() && (msg.mediaKey || msg.mediaUrl)) {
+      window.alert('Media messages can be deleted, but not edited.');
+      return;
+    }
+    setEditingMessage(msg);
+    setInput(msg.text || '');
+    setTimeout(() => inputRef.current?.focus(), 50);
+  }, [isOwnMessage]);
+
+  /** Delete for everyone — own messages only (server-enforced). */
   const deleteMessage = useCallback((msg: ChatMessage) => {
     setMsgMenu(null);
-    if (!msg.messageId || msg.isDeleted) return;
+    setActionSheet(null);
+    if (!msg.messageId || msg.isDeleted || !isOwnMessage(msg)) return;
+    if (!window.confirm('Delete this message for everyone?')) return;
     const payload = JSON.stringify({
       eventType: 5,
       messageId: msg.messageId,
       sentAt: msg.sentAt,
     });
     setMessages(prev => prev.map(m =>
-      m.messageId === msg.messageId ? { ...m, isDeleted: true } : m));
+      m.messageId === msg.messageId ? { ...m, isDeleted: true, text: '' } : m));
+    if (editingMessage?.messageId === msg.messageId) {
+      setEditingMessage(null);
+      setInput('');
+    }
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(payload);
     } else {
       pendingMessagesRef.current.push(payload);
+    }
+  }, [isOwnMessage, editingMessage]);
+
+  /** Remove for me only — hides any message in this session (Teams-style). */
+  const removeForMe = useCallback((msg: ChatMessage) => {
+    setMsgMenu(null);
+    setActionSheet(null);
+    if (!msg.messageId) return;
+    setHiddenForMe(prev => {
+      const next = new Set(prev);
+      next.add(msg.messageId);
+      return next;
+    });
+  }, []);
+
+  const clearLongPress = useCallback(() => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
     }
   }, []);
 
@@ -536,12 +669,31 @@ const Chat: React.FC<ChatProps> = ({
           </Box>
         )}
 
-        {messages.map((msg) => {
-          const isMe = msg.userId === userId;
+        {messages.filter((msg) => !hiddenForMe.has(msg.messageId)).map((msg) => {
+          const isMe = isOwnMessage(msg);
           const otherAvatar = avatarFor(msg.userId);
+          const showActions = !msg.isDeleted && (
+            isMobile
+            || hoveredMsgId === msg.messageId
+            || msgMenu?.message.messageId === msg.messageId
+          );
           return (
-            <Box key={msg.messageId}
-              sx={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start', alignItems: 'flex-end', gap: 1 }}
+            <Box
+              key={msg.messageId}
+              sx={{
+                display: 'flex',
+                justifyContent: isMe ? 'flex-end' : 'flex-start',
+                alignItems: 'flex-end',
+                gap: 1,
+                '&:hover .msg-actions': { opacity: 1, pointerEvents: 'auto' },
+              }}
+              onMouseEnter={() => !isMobile && setHoveredMsgId(msg.messageId)}
+              onMouseLeave={() => {
+                if (isMobile) return;
+                // Keep hover while the options menu is open for this message
+                if (msgMenu?.message.messageId === msg.messageId) return;
+                setHoveredMsgId((id) => (id === msg.messageId ? null : id));
+              }}
             >
               {!isMe && (
                 <Avatar
@@ -551,91 +703,142 @@ const Chat: React.FC<ChatProps> = ({
                   {initialsFor(msg.userId)}
                 </Avatar>
               )}
-              <Box
-                onContextMenu={(e) => {
-                  if (msg.isDeleted) return;
-                  e.preventDefault();
-                  setMsgMenu({ anchor: e.currentTarget as HTMLElement, message: msg });
-                }}
-                sx={{
-                maxWidth: '78%',
-                bgcolor: isMe ? LI_BLUE : 'rgba(255,255,255,0.72)',
-                color: isMe ? '#fff' : '#191919',
-                borderRadius: isMe ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
-                border: isMe ? 'none' : '1px solid rgba(90, 70, 50, 0.08)',
-                px: 1.5,
-                py: 1,
-                boxShadow: 'none',
-                position: 'relative',
-                wordBreak: 'break-word',
-                cursor: !msg.isDeleted ? 'context-menu' : 'default',
-              }}>
-                {msg.isDeleted ? (
-                  <Typography variant="body2" sx={{ fontStyle: 'italic', color: isMe ? 'rgba(255,255,255,0.75)' : '#999', fontSize: 13 }}>
-                    This message was deleted
-                  </Typography>
-                ) : (
-                  <>
-                    {(msg.mediaUrl || msg.mediaKey || msg.mediaName) && (
-                      <Box sx={{ mb: msg.text ? 1 : 0 }}>
-                        {(msg.mediaMimeType?.startsWith('image/') || msg.type === 1 || (!!msg.mediaUrl && !msg.mediaMimeType)) && msg.mediaUrl ? (
-                          <Box
-                            component="img"
-                            src={msg.mediaUrl}
-                            alt={msg.mediaName || 'Shared image'}
-                            sx={{
-                              display: 'block',
-                              maxWidth: '100%',
-                              maxHeight: 220,
-                              borderRadius: 1.5,
-                              objectFit: 'cover',
-                            }}
-                          />
-                        ) : (
-                          <Box
-                            sx={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 1,
-                              px: 1,
-                              py: 0.75,
-                              borderRadius: 1,
-                              bgcolor: isMe ? 'rgba(255,255,255,0.15)' : '#F4F2EE',
-                            }}
-                          >
-                            <InsertDriveFileOutlinedIcon sx={{ fontSize: 20, opacity: 0.85 }} />
-                            <Typography variant="body2" sx={{ fontSize: 13, fontWeight: 600 }} noWrap>
-                              {msg.mediaName || 'Attachment'}
-                            </Typography>
-                          </Box>
-                        )}
-                      </Box>
-                    )}
-                    {msg.text ? (
-                      <Typography variant="body2" sx={{ lineHeight: 1.45, fontSize: 14, fontWeight: 400 }}>
-                        {msg.text}
-                      </Typography>
-                    ) : null}
-                  </>
-                )}
-
-                {msg.reactionEmoji && (
-                  <Box sx={{ position: 'absolute', bottom: -10, right: 6, ...MATTE_INSET, borderRadius: 3, px: 0.5, fontSize: 13 }}>
-                    {msg.reactionEmoji}
+              <Box sx={{ position: 'relative', maxWidth: '78%' }}>
+                {showActions && (
+                  <Box
+                    className="msg-actions"
+                    sx={{
+                      position: 'absolute',
+                      top: -14,
+                      ...(isMe ? { left: 4 } : { right: 4 }),
+                      display: 'flex',
+                      alignItems: 'center',
+                      bgcolor: '#fff',
+                      border: '1px solid rgba(90,70,50,0.12)',
+                      borderRadius: 2,
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+                      zIndex: 2,
+                      opacity: isMobile ? 1 : 0,
+                      pointerEvents: isMobile ? 'auto' : 'none',
+                      transition: 'opacity 0.12s',
+                    }}
+                  >
+                    <IconButton
+                      size="small"
+                      aria-label="Message options"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openMessageActions(msg, e.currentTarget, { x: e.clientX, y: e.clientY });
+                      }}
+                      sx={{ p: 0.45, color: '#555' }}
+                    >
+                      <MoreHorizIcon sx={{ fontSize: 18 }} />
+                    </IconButton>
                   </Box>
                 )}
-
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '3px', mt: 0.5 }}>
-                  <Typography variant="caption" sx={{ color: isMe ? 'rgba(255,255,255,0.7)' : '#8C8C8C', fontSize: 10, lineHeight: 1 }}>
-                    {fmtTime(msg.sentAt)}
-                  </Typography>
-                  {isMe && (
-                    msg.status >= 3
-                      ? <DoneAllIcon sx={{ fontSize: 13, color: '#fff' }} />
-                      : msg.status >= 2
-                        ? <DoneAllIcon sx={{ fontSize: 13, color: 'rgba(255,255,255,0.65)' }} />
-                        : <DoneIcon sx={{ fontSize: 13, color: 'rgba(255,255,255,0.65)' }} />
+                <Box
+                  onContextMenu={(e) => {
+                    if (msg.isDeleted) return;
+                    e.preventDefault();
+                    openMessageActions(msg, null, { x: e.clientX, y: e.clientY });
+                  }}
+                  onTouchStart={() => {
+                    if (msg.isDeleted) return;
+                    longPressTriggered.current = false;
+                    clearLongPress();
+                    longPressTimer.current = setTimeout(() => {
+                      longPressTriggered.current = true;
+                      openMessageActions(msg);
+                    }, 450);
+                  }}
+                  onTouchEnd={clearLongPress}
+                  onTouchMove={clearLongPress}
+                  sx={{
+                    bgcolor: isMe ? LI_BLUE : 'rgba(255,255,255,0.72)',
+                    color: isMe ? '#fff' : '#191919',
+                    borderRadius: isMe ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
+                    border: isMe ? 'none' : '1px solid rgba(90, 70, 50, 0.08)',
+                    px: 1.5,
+                    py: 1,
+                    boxShadow: 'none',
+                    position: 'relative',
+                    wordBreak: 'break-word',
+                    cursor: !msg.isDeleted ? 'pointer' : 'default',
+                    WebkitTouchCallout: 'none',
+                  }}
+                >
+                  {msg.isDeleted ? (
+                    <Typography variant="body2" sx={{ fontStyle: 'italic', color: isMe ? 'rgba(255,255,255,0.75)' : '#999', fontSize: 13 }}>
+                      This message was deleted
+                    </Typography>
+                  ) : (
+                    <>
+                      {(msg.mediaUrl || msg.mediaKey || msg.mediaName) && (
+                        <Box sx={{ mb: msg.text ? 1 : 0 }}>
+                          {(msg.mediaMimeType?.startsWith('image/') || msg.type === 1 || (!!msg.mediaUrl && !msg.mediaMimeType)) && msg.mediaUrl ? (
+                            <Box
+                              component="img"
+                              src={msg.mediaUrl}
+                              alt={msg.mediaName || 'Shared image'}
+                              sx={{
+                                display: 'block',
+                                maxWidth: '100%',
+                                maxHeight: 220,
+                                borderRadius: 1.5,
+                                objectFit: 'cover',
+                              }}
+                            />
+                          ) : (
+                            <Box
+                              sx={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 1,
+                                px: 1,
+                                py: 0.75,
+                                borderRadius: 1,
+                                bgcolor: isMe ? 'rgba(255,255,255,0.15)' : '#F4F2EE',
+                              }}
+                            >
+                              <InsertDriveFileOutlinedIcon sx={{ fontSize: 20, opacity: 0.85 }} />
+                              <Typography variant="body2" sx={{ fontSize: 13, fontWeight: 600 }} noWrap>
+                                {msg.mediaName || 'Attachment'}
+                              </Typography>
+                            </Box>
+                          )}
+                        </Box>
+                      )}
+                      {msg.text ? (
+                        <Typography variant="body2" sx={{ lineHeight: 1.45, fontSize: 14, fontWeight: 400, whiteSpace: 'pre-wrap' }}>
+                          {msg.text}
+                        </Typography>
+                      ) : null}
+                    </>
                   )}
+
+                  {msg.reactionEmoji && !msg.isDeleted && (
+                    <Box sx={{ position: 'absolute', bottom: -10, right: 6, ...MATTE_INSET, borderRadius: 3, px: 0.5, fontSize: 13 }}>
+                      {msg.reactionEmoji}
+                    </Box>
+                  )}
+
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '3px', mt: 0.5 }}>
+                    {!!msg.editedAt && !msg.isDeleted && (
+                      <Typography variant="caption" sx={{ color: isMe ? 'rgba(255,255,255,0.7)' : '#8C8C8C', fontSize: 10, fontStyle: 'italic', lineHeight: 1 }}>
+                        Edited
+                      </Typography>
+                    )}
+                    <Typography variant="caption" sx={{ color: isMe ? 'rgba(255,255,255,0.7)' : '#8C8C8C', fontSize: 10, lineHeight: 1 }}>
+                      {fmtTime(msg.sentAt)}
+                    </Typography>
+                    {isMe && !msg.isDeleted && (
+                      msg.status >= 3
+                        ? <DoneAllIcon sx={{ fontSize: 13, color: '#fff' }} />
+                        : msg.status >= 2
+                          ? <DoneAllIcon sx={{ fontSize: 13, color: 'rgba(255,255,255,0.65)' }} />
+                          : <DoneIcon sx={{ fontSize: 13, color: 'rgba(255,255,255,0.65)' }} />
+                    )}
+                  </Box>
                 </Box>
               </Box>
             </Box>
@@ -672,11 +875,22 @@ const Chat: React.FC<ChatProps> = ({
       </Box>
 
       <Menu
-        anchorEl={msgMenu?.anchor}
         open={Boolean(msgMenu)}
         onClose={() => setMsgMenu(null)}
-        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+        anchorReference="anchorPosition"
+        anchorPosition={
+          msgMenu
+            ? { top: msgMenu.position.top, left: msgMenu.position.left }
+            : undefined
+        }
         transformOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        disableScrollLock
+        slotProps={{
+          root: { sx: { zIndex: 10050 } },
+          paper: { sx: { zIndex: 10050 } },
+        }}
+        sx={{ zIndex: 10050 }}
+        MenuListProps={{ dense: true }}
       >
         <Box sx={{ display: 'flex', gap: 0.25, px: 1, py: 0.5 }}>
           {REACTION_EMOJIS.map((emoji) => (
@@ -690,15 +904,88 @@ const Chat: React.FC<ChatProps> = ({
             </IconButton>
           ))}
         </Box>
-        {msgMenu?.message.userId === userId && (
-          <MenuItem
-            onClick={() => msgMenu && deleteMessage(msgMenu.message)}
-            sx={{ color: '#DC2626', fontSize: 14 }}
-          >
-            Delete message
-          </MenuItem>
+        {msgMenu?.message && isOwnMessage(msgMenu.message) && (
+          <>
+            <Divider />
+            <MenuItem
+              onClick={() => msgMenu && startEdit(msgMenu.message)}
+              sx={{ fontSize: 14, gap: 1 }}
+            >
+              <EditOutlinedIcon sx={{ fontSize: 18 }} /> Edit
+            </MenuItem>
+            <MenuItem
+              onClick={() => msgMenu && deleteMessage(msgMenu.message)}
+              sx={{ color: '#DC2626', fontSize: 14, gap: 1 }}
+            >
+              <DeleteOutlineIcon sx={{ fontSize: 18 }} /> Delete for everyone
+            </MenuItem>
+          </>
+        )}
+        {msgMenu?.message && !isOwnMessage(msgMenu.message) && !msgMenu.message.isDeleted && (
+          <>
+            <Divider />
+            <MenuItem
+              onClick={() => msgMenu && removeForMe(msgMenu.message)}
+              sx={{ fontSize: 14, gap: 1 }}
+            >
+              <DeleteOutlineIcon sx={{ fontSize: 18 }} /> Remove for me
+            </MenuItem>
+          </>
         )}
       </Menu>
+
+      {/* Mobile Teams-style action sheet */}
+      <Drawer
+        anchor="bottom"
+        open={Boolean(actionSheet)}
+        onClose={() => setActionSheet(null)}
+        ModalProps={{ sx: { zIndex: 10050 } }}
+        PaperProps={{
+          sx: {
+            borderRadius: '16px 16px 0 0',
+            px: 1,
+            pb: 'max(12px, env(safe-area-inset-bottom))',
+            pt: 1,
+            zIndex: 10051,
+          },
+        }}
+      >
+        <Box sx={{ width: 36, height: 4, borderRadius: 2, bgcolor: '#D1D5DB', mx: 'auto', mb: 1.5 }} />
+        <Box sx={{ display: 'flex', justifyContent: 'center', gap: 0.5, px: 1, pb: 1 }}>
+          {REACTION_EMOJIS.map((emoji) => (
+            <IconButton
+              key={emoji}
+              size="small"
+              onClick={() => actionSheet && reactToMessage(actionSheet, emoji)}
+              sx={{ fontSize: 22 }}
+            >
+              {emoji}
+            </IconButton>
+          ))}
+        </Box>
+        {actionSheet && isOwnMessage(actionSheet) && (
+          <>
+            <Divider />
+            <MenuItem onClick={() => startEdit(actionSheet)} sx={{ py: 1.5, gap: 1.5 }}>
+              <EditOutlinedIcon /> Edit message
+            </MenuItem>
+            <MenuItem onClick={() => deleteMessage(actionSheet)} sx={{ py: 1.5, gap: 1.5, color: '#DC2626' }}>
+              <DeleteOutlineIcon /> Delete for everyone
+            </MenuItem>
+          </>
+        )}
+        {actionSheet && !isOwnMessage(actionSheet) && !actionSheet.isDeleted && (
+          <>
+            <Divider />
+            <MenuItem onClick={() => removeForMe(actionSheet)} sx={{ py: 1.5, gap: 1.5 }}>
+              <DeleteOutlineIcon /> Remove for me
+            </MenuItem>
+          </>
+        )}
+        <MenuItem onClick={() => setActionSheet(null)} sx={{ py: 1.5, justifyContent: 'center', color: '#64748B' }}>
+          Cancel
+        </MenuItem>
+      </Drawer>
 
       {/* Composer */}
       <Box sx={{
@@ -709,6 +996,26 @@ const Chat: React.FC<ChatProps> = ({
         color: 'inherit',
         flexShrink: 0,
       }}>
+        {editingMessage && (
+          <Box sx={{
+            px: 1.5, pt: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            borderBottom: '1px solid rgba(90,70,50,0.08)',
+          }}>
+            <Box sx={{ minWidth: 0, borderLeft: '3px solid #0A66C2', pl: 1 }}>
+              <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#0A66C2' }}>Editing message</Typography>
+              <Typography noWrap sx={{ fontSize: 12, color: '#666', maxWidth: 280 }}>
+                {editingMessage.text}
+              </Typography>
+            </Box>
+            <IconButton
+              size="small"
+              aria-label="Cancel edit"
+              onClick={() => { setEditingMessage(null); setInput(''); }}
+            >
+              <CloseIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Box>
+        )}
         {pendingFile && (
           <Box sx={{ px: 1.5, pt: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
             {pendingPreview ? (
@@ -744,7 +1051,13 @@ const Chat: React.FC<ChatProps> = ({
             multiline
             maxRows={4}
             size="small"
-            placeholder={connected ? 'Write a message…' : 'Write a message… (connecting)'}
+            placeholder={
+              editingMessage
+                ? 'Edit your message…'
+                : connected
+                  ? 'Write a message…'
+                  : 'Write a message… (connecting)'
+            }
             value={input}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}

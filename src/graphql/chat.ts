@@ -19,6 +19,7 @@ export const GET_CHAT_MESSAGES = gql`
         mediaUrl
         replyToMessageId
         isDeleted
+        editedAt
         eventType
         status
       }
