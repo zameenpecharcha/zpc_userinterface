@@ -20,6 +20,7 @@ export const POST_FIELDS = gql`
     price
     status
     createdAt
+    userProfilePhoto
     userProfilePhotoSignedUrl
     media {
       id
@@ -64,6 +65,7 @@ export const SEARCH_POSTS = gql`
       userFirstName
       userLastName
       userRole
+      userProfilePhoto
       userProfilePhotoSignedUrl
       title
       content
@@ -117,6 +119,9 @@ export const GET_POST_COMMENTS = gql`
       status
       addedAt
       commentedAt
+      editedAt
+      profilePhoto
+      profilePhotoSignedUrl
       replies {
         id
         postId
@@ -129,7 +134,10 @@ export const GET_POST_COMMENTS = gql`
         status
         addedAt
         commentedAt
+        editedAt
         likeCount
+        profilePhoto
+        profilePhotoSignedUrl
       }
       likeCount
     }
@@ -308,6 +316,7 @@ export const UPDATE_COMMENT = gql`
         id
         comment
         status
+        editedAt
       }
     }
   }
@@ -323,8 +332,8 @@ export const DELETE_COMMENT = gql`
 `;
 
 export const LIKE_COMMENT = gql`
-  mutation LikeComment($commentId: Int!, $userId: Int!) {
-    likeComment(commentId: $commentId, userId: $userId) {
+  mutation LikeComment($commentId: Int!, $userId: Int!, $reactionType: String) {
+    likeComment(commentId: $commentId, userId: $userId, reactionType: $reactionType) {
       success
       message
       comment {

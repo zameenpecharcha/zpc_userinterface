@@ -184,11 +184,11 @@ export class PostService {
     }
   }
 
-  async likeComment(commentId: number, userId: number): Promise<CommentResponse> {
+  async likeComment(commentId: number, userId: number, reactionType?: string): Promise<CommentResponse> {
     try {
       const { data } = await this.client.mutate({
         mutation: LIKE_COMMENT,
-        variables: { commentId, userId },
+        variables: { commentId, userId, reactionType: reactionType || 'like' },
       });
       return data.likeComment;
     } catch (error: any) {

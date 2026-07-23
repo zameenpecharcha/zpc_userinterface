@@ -33,6 +33,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@apollo/client';
 import { GET_USER_PROPERTIES, Property, PropertyType } from '../graphql/property';
 import { useAuth } from '../contexts/AuthContext';
+import { MATTE_SURFACE, MATTE_HEADER, PAGE_ATMOSPHERE } from '../theme/surfaces';
 
 const MyProperties: React.FC = () => {
   const navigate = useNavigate();
@@ -117,7 +118,7 @@ const MyProperties: React.FC = () => {
     return (
       <Box sx={{ 
         minHeight: '100vh', 
-        bgcolor: '#F6F8FB',
+        ...PAGE_ATMOSPHERE,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center'
@@ -129,8 +130,8 @@ const MyProperties: React.FC = () => {
 
   if (error) {
     return (
-      <Box sx={{ minHeight: '100vh', bgcolor: '#F6F8FB' }}>
-        <AppBar position="static" sx={{ bgcolor: 'white', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+      <Box sx={{ minHeight: '100vh', ...PAGE_ATMOSPHERE }}>
+        <AppBar position="static" elevation={0} sx={{ ...MATTE_HEADER }}>
           <Toolbar>
             <IconButton onClick={handleGoBack} sx={{ mr: 2, color: '#374151' }}>
               <ArrowBackIcon />
@@ -158,9 +159,9 @@ const MyProperties: React.FC = () => {
   const properties = data?.userProperties || [];
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: '#F6F8FB' }}>
+    <Box sx={{ minHeight: '100vh', ...PAGE_ATMOSPHERE }}>
       {/* Header */}
-      <AppBar position="static" sx={{ bgcolor: 'white', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+      <AppBar position="static" elevation={0} sx={{ ...MATTE_HEADER }}>
         <Toolbar>
           <IconButton onClick={handleGoBack} sx={{ mr: 2, color: '#374151' }}>
             <ArrowBackIcon />
@@ -229,12 +230,12 @@ const MyProperties: React.FC = () => {
                     sx={{
                       height: '100%',
                       borderRadius: 3,
-                      boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                      ...MATTE_SURFACE,
                       transition: 'all 0.3s ease',
                       cursor: 'pointer',
                       '&:hover': {
                         transform: 'translateY(-4px)',
-                        boxShadow: '0 8px 25px rgba(0,0,0,0.15)'
+                        boxShadow: '0 8px 25px rgba(60, 45, 30, 0.12)'
                       }
                     }}
                     onClick={() => handlePropertyClick(property.propertyId)}

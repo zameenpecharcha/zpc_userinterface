@@ -5,6 +5,7 @@ import { useApolloClient } from '@apollo/client';
 import { UserService } from '../services/userService';
 import ProfilePage from './ProfilePage';
 import { Box, CircularProgress, Typography, Alert } from '@mui/material';
+import { PAGE_ATMOSPHERE } from '../theme/surfaces';
 
 interface ProfileProps {}
 
@@ -87,10 +88,11 @@ const Profile: React.FC<ProfileProps> = () => {
         flexDirection: 'column',
         alignItems: 'center', 
         justifyContent: 'center', 
-        height: '100vh' 
+        height: '100vh',
+        ...PAGE_ATMOSPHERE,
       }}>
-        <CircularProgress />
-        <Typography sx={{ mt: 2 }}>Loading profile...</Typography>
+        <CircularProgress sx={{ color: '#2563EB' }} />
+        <Typography sx={{ mt: 2, color: '#374151' }}>Loading profile...</Typography>
       </Box>
     );
   }

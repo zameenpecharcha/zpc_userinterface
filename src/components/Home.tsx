@@ -1,10 +1,14 @@
 import React, { useState, useMemo, useCallback, memo, useEffect, useRef } from 'react';
 import { gql, useQuery, useMutation, useApolloClient } from '@apollo/client';
-import { SEARCH_POSTS, CREATE_POST, TRENDING_POSTS } from '../graphql/posts';
-import { GET_SUGGESTED_USERS, FOLLOW_USER, CREATE_NOTIFICATION, GET_USER_NOTIFICATIONS, MARK_NOTIFICATION_READ } from '../graphql/user';
+import { SEARCH_POSTS, CREATE_POST, TRENDING_POSTS, DELETE_POST, UPDATE_POST, UPDATE_COMMENT, DELETE_COMMENT, UNLIKE_COMMENT } from '../graphql/posts';
+import { GET_SUGGESTED_USERS, FOLLOW_USER, GET_USER_NOTIFICATIONS, MARK_NOTIFICATION_READ } from '../graphql/user';
 import CreatePost from './CreatePost';
 import { PostService } from '../services/postService';
 import { useAuth } from '../contexts/AuthContext';
+import { renderMentionContent, nameInitials, stringToColor } from '../utils/mentions';
+import CommentListItem from './comments/CommentListItem';
+import CommentComposer from './comments/CommentComposer';
+import { normalizeReactionEmoji } from './comments/commentReactions';
 // import { styled } from '@mui/material/styles';
 import {
   AppBar,
@@ -28,8 +32,9 @@ import {
   DialogActions,
   Drawer,
   Divider,
+  TextField,
 } from '@mui/material';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import HomeIcon from '@mui/icons-material/Home';
 import PeopleIcon from '@mui/icons-material/People';
 import GroupIcon from '@mui/icons-material/Group';
@@ -44,9 +49,12 @@ import WhatshotIcon from '@mui/icons-material/Whatshot';
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
 import FavoriteIcon from '@mui/icons-material/Favorite';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
-import ShareIcon from '@mui/icons-material/Share';
+import ShareSymbol from './icons/ShareSymbol';
 import CloseIcon from '@mui/icons-material/Close';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
 import ProfilePage from './ProfilePage';
+import ChatPage from './ChatPage';
+import { MATTE_SURFACE, MATTE_HEADER, PAGE_ATMOSPHERE, MATTE_INSET, MATTE_PANEL } from '../theme/surfaces';
 
 const GRAPHQL_URL = process.env.REACT_APP_GRAPHQL_URL || 'http://localhost:8080/api/v1/graphql';
 const API_GATEWAY_URL = (process.env.REACT_APP_API_GATEWAY_URL || 'http://localhost:8080').replace(/\/$/, '');
@@ -68,6 +76,9 @@ query GetPostComments($postId: Int!, $page: Int, $limit: Int) {
     status
     addedAt
     commentedAt
+    editedAt
+    profilePhoto
+    profilePhotoSignedUrl
     replies {
       id
       postId
@@ -80,7 +91,10 @@ query GetPostComments($postId: Int!, $page: Int, $limit: Int) {
       status
       addedAt
       commentedAt
+      editedAt
       likeCount
+      profilePhoto
+      profilePhotoSignedUrl
     }
     likeCount
   }
@@ -109,6 +123,7 @@ mutation CreateComment($postId: Int!, $userId: Int!, $comment: String!, $parentC
       status
       addedAt
       commentedAt
+      editedAt
       likeCount
     }
   }
@@ -116,8 +131,8 @@ mutation CreateComment($postId: Int!, $userId: Int!, $comment: String!, $parentC
 `;
 
 const LIKE_COMMENT_MUTATION = gql`
-mutation LikeComment($commentId: Int!, $userId: Int!) {
-  likeComment(commentId: $commentId, userId: $userId) {
+mutation LikeComment($commentId: Int!, $userId: Int!, $reactionType: String) {
+  likeComment(commentId: $commentId, userId: $userId, reactionType: $reactionType) {
     success
     message
     comment {
@@ -206,49 +221,8 @@ const leftNav = [
   { icon: <EventIcon />, label: 'Events' },
 ];
 
-const MENTION_PATTERN = /@\[(\d+):([^\]]+)\]/g;
-
-const renderPostContent = (content: string, onOpenProfile: (userId: number) => void) => {
-  const parts: React.ReactNode[] = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-  const regex = new RegExp(MENTION_PATTERN);
-  while ((match = regex.exec(content)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push(content.slice(lastIndex, match.index));
-    }
-    const userId = parseInt(match[1], 10);
-    const name = match[2];
-    parts.push(
-      <Box
-        component="span"
-        key={`mention-${match.index}-${userId}`}
-        onClick={(e) => {
-          e.stopPropagation();
-          onOpenProfile(userId);
-        }}
-        sx={{ color: '#2563EB', fontWeight: 600, cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
-      >
-        @{name}
-      </Box>
-    );
-    lastIndex = regex.lastIndex;
-  }
-  if (lastIndex < content.length) {
-    parts.push(content.slice(lastIndex));
-  }
-  return parts.length > 0 ? parts : content;
-};
-
-const extractMentionedUserIds = (content: string, extraIds: number[] = []) => {
-  const ids = new Set<number>(extraIds);
-  const regex = new RegExp(MENTION_PATTERN);
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(content)) !== null) {
-    ids.add(parseInt(match[1], 10));
-  }
-  return Array.from(ids);
-};
+/** Soft matte card surface (not flat white). */
+const MATTE_POST_SX = MATTE_SURFACE;
 
 // Memoized Post component to prevent unnecessary re-renders
 interface PostProps {
@@ -283,12 +257,16 @@ interface PostProps {
   onLikeToggle: (postId: number) => void;
   onCommentClick: (postId: number) => void;
   onOpenProfile: (userId: number) => void;
+  onEditPost?: (post: PostProps['post']) => void;
+  onDeletePost?: (postId: number) => void;
+  currentUserId?: number | string | null;
   likedPosts: { [postId: number]: boolean };
   likeCounts: { [postId: number]: number };
+  commentCounts: { [postId: number]: number };
 }
 
 const PostSkeleton = () => (
-  <Box sx={{ bgcolor: '#fff', borderRadius: 3, p: 3, mb: 3, boxShadow: '0 2px 12px rgba(37,99,235,0.08)' }}>
+  <Box sx={{ ...MATTE_POST_SX, borderRadius: 3, p: 3, mb: 3 }}>
     <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
       <Skeleton variant="circular" width={44} height={44} sx={{ mr: 2 }} />
       <Box sx={{ flex: 1 }}>
@@ -306,12 +284,16 @@ const PostSkeleton = () => (
   </Box>
 );
 
-const Post = memo(({ post, onLikeToggle, onCommentClick, onOpenProfile, likedPosts, likeCounts }: PostProps) => {
+const Post = memo(({ post, onLikeToggle, onCommentClick, onOpenProfile, onEditPost, onDeletePost, currentUserId, likedPosts, likeCounts, commentCounts }: PostProps) => {
   const formatDate = useCallback((dateString: string) => {
     return new Date(dateString).toLocaleString();
   }, []);
 
   const [isAnimating, setIsAnimating] = useState(false);
+  const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
+  const isOwner = currentUserId != null && String(currentUserId) === String(post.userId);
+  const authorName = `${post.userFirstName || ''} ${post.userLastName || ''}`.trim();
+  const photoUrl = (post as any).userProfilePhotoSignedUrl || (post as any).userProfilePhoto || post.profilePhoto || undefined;
 
   const handleLikeClick = useCallback(() => {
     setIsAnimating(true);
@@ -325,25 +307,29 @@ const Post = memo(({ post, onLikeToggle, onCommentClick, onOpenProfile, likedPos
     <Box
       id={`post-${post.id}`}
       sx={{
-      bgcolor: '#fff',
+      ...MATTE_POST_SX,
       borderRadius: 4,
-      boxShadow: '0 2px 16px rgba(37,99,235,0.10)',
       p: 3,
       transition: 'box-shadow 0.2s, transform 0.2s',
-      '&:hover': { boxShadow: 6, transform: 'translateY(-2px)' },
+      '&:hover': {
+        boxShadow: '0 2px 4px rgba(60, 45, 30, 0.06), 0 12px 28px rgba(60, 45, 30, 0.1), inset 0 1px 0 rgba(255,255,255,0.55)',
+        transform: 'translateY(-2px)',
+      },
       display: 'flex',
       flexDirection: 'column',
       gap: 1.5,
     }}>
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
         <Avatar
-          src={(post as any).userProfilePhotoSignedUrl || post.profilePhoto || `https://randomuser.me/api/portraits/lego/${post.userId % 10}.jpg`}
-          sx={{ mr: 2, width: 44, height: 44, boxShadow: 1, cursor: 'pointer' }}
+          src={photoUrl}
+          sx={{ mr: 2, width: 44, height: 44, boxShadow: 1, cursor: 'pointer', bgcolor: stringToColor(authorName || String(post.userId)), fontWeight: 700 }}
           onClick={() => onOpenProfile(post.userId)}
-        />
+        >
+          {nameInitials(authorName, String(post.userId))}
+        </Avatar>
         <Box
           onClick={() => onOpenProfile(post.userId)}
-          sx={{ cursor: 'pointer' }}
+          sx={{ cursor: 'pointer', flex: 1, minWidth: 0 }}
           role="button"
           aria-label={`Open profile of ${post.userFirstName} ${post.userLastName}`}
         >
@@ -357,10 +343,29 @@ const Post = memo(({ post, onLikeToggle, onCommentClick, onOpenProfile, likedPos
             {formatDate(post.createdAt)}
           </Typography>
         </Box>
+        {isOwner && (
+          <>
+            <IconButton size="small" onClick={(e) => setMenuAnchor(e.currentTarget)} aria-label="Post options">
+              <MoreVertIcon />
+            </IconButton>
+            <Menu anchorEl={menuAnchor} open={Boolean(menuAnchor)} onClose={() => setMenuAnchor(null)}>
+              <MenuItem onClick={() => { setMenuAnchor(null); onEditPost?.(post); }}>Edit</MenuItem>
+              <MenuItem
+                sx={{ color: '#DC2626' }}
+                onClick={() => {
+                  setMenuAnchor(null);
+                  if (window.confirm('Delete this post?')) onDeletePost?.(post.id);
+                }}
+              >
+                Delete
+              </MenuItem>
+            </Menu>
+          </>
+        )}
       </Box>
       <Typography sx={{ color: '#2563EB', fontWeight: 700, fontSize: 17, mb: 1 }}>{post.title}</Typography>
       <Typography sx={{ color: '#374151', fontSize: 16, mb: 2, whiteSpace: 'pre-wrap' }}>
-        {renderPostContent(post.content, onOpenProfile)}
+        {renderMentionContent(post.content, { onOpenProfile })}
       </Typography>
       <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', mb: 1 }}>
         <Typography sx={{ fontSize: 14, color: '#6B7280', bgcolor: 'rgba(37,99,235,0.06)', px: 1.5, py: 0.5, borderRadius: 2 }}>Location: {post.location}</Typography>
@@ -424,56 +429,89 @@ const Post = memo(({ post, onLikeToggle, onCommentClick, onOpenProfile, likedPos
           )}
         </Box>
       )}
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 2 }}>
-        <Box sx={{ display: 'flex', gap: 2 }}>
-          <Button
-            startIcon={
-              likedPosts[post.id] ? (
-                <FavoriteIcon
-                  className={`liked-heart-icon ${isAnimating ? 'liked-heart-icon-clicked' : ''}`}
-                />
-              ) : (
-                <FavoriteBorderIcon
-                  className={isAnimating ? 'liked-heart-icon-clicked' : ''}
-                  sx={{ color: '#6B7280' }}
-                />
-              )
-            }
-            sx={{
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          mt: 1.75,
+          pt: 1.25,
+          borderTop: '1.5px solid #E8EDF5',
+          gap: 0.25,
+        }}
+      >
+        <Button
+          startIcon={
+            likedPosts[post.id] ? (
+              <FavoriteIcon
+                className={`liked-heart-icon ${isAnimating ? 'liked-heart-icon-clicked' : ''}`}
+                sx={{ fontSize: 22 }}
+              />
+            ) : (
+              <FavoriteBorderIcon
+                className={isAnimating ? 'liked-heart-icon-clicked' : ''}
+                sx={{ color: '#64748B', fontSize: 22 }}
+              />
+            )
+          }
+          sx={{
+            minWidth: 0,
+            bgcolor: 'transparent',
+            color: likedPosts[post.id] ? '#EF4444' : '#64748B',
+            textTransform: 'none',
+            fontWeight: 500,
+            fontSize: 14,
+            borderRadius: 2,
+            py: 0.5,
+            px: 0.75,
+            gap: 0.25,
+            boxShadow: 'none',
+            '& .MuiButton-startIcon': { mr: 0.35 },
+            '&:hover': {
               bgcolor: 'transparent',
-              color: '#374151',
-              textTransform: 'none',
-              fontWeight: 600,
-              fontSize: 15,
-              transition: 'background 0.2s, color 0.2s',
-              '&:hover': {
-                bgcolor: '#EEF2FB',
-                color: '#2563EB'
-              },
-              borderRadius: 2,
-              px: 2,
-            }}
-            onClick={handleLikeClick}
-          >
-            <span style={{ color: '#222', fontWeight: 600 }}>
-              {likeCounts[post.id] !== undefined ? likeCounts[post.id] : post.likeCount || 0}
-            </span>
-          </Button>
-          <Button
-            startIcon={<ChatBubbleOutlineIcon />}
-            sx={{ color: '#374151', textTransform: 'none', fontWeight: 600, fontSize: 15, transition: 'color 0.2s', '&:hover': { color: '#2563EB' } }}
-            onClick={() => onCommentClick(post.id)}
-          >
-            {post.commentCount || 0}
-          </Button>
-        </Box>
-        <Button startIcon={<ShareIcon />} sx={{ color: '#374151', textTransform: 'none', fontWeight: 600, fontSize: 15, transition: 'color 0.2s', '&:hover': { color: '#2563EB' } }}>Share</Button>
+              color: likedPosts[post.id] ? '#DC2626' : '#334155',
+            },
+          }}
+          onClick={handleLikeClick}
+        >
+          {likeCounts[post.id] !== undefined ? likeCounts[post.id] : post.likeCount || 0}
+        </Button>
+        <Button
+          startIcon={<ChatBubbleOutlineIcon sx={{ fontSize: 21, color: 'inherit' }} />}
+          sx={{
+            minWidth: 0,
+            bgcolor: 'transparent',
+            color: '#64748B',
+            textTransform: 'none',
+            fontWeight: 500,
+            fontSize: 14,
+            borderRadius: 2,
+            py: 0.5,
+            px: 0.75,
+            gap: 0.25,
+            '& .MuiButton-startIcon': { mr: 0.35 },
+            '&:hover': { bgcolor: 'transparent', color: '#2563EB' },
+          }}
+          onClick={() => onCommentClick(post.id)}
+        >
+          {commentCounts[post.id] !== undefined ? commentCounts[post.id] : (post.commentCount || 0)}
+        </Button>
+        <IconButton
+          aria-label="Share"
+          sx={{
+            color: '#64748B',
+            borderRadius: 2,
+            p: 0.65,
+            bgcolor: 'transparent',
+            '&:hover': { bgcolor: 'transparent', color: '#2563EB' },
+          }}
+        >
+          <ShareSymbol sx={{ fontSize: 21 }} />
+        </IconButton>
       </Box>
     </Box>
   );
 });
 
-// Optimized Comments Modal with actual comments functionality
 const CommentsModal = memo(({
   open,
   post,
@@ -481,8 +519,12 @@ const CommentsModal = memo(({
   comments,
   loadingComments,
   onAddComment,
-  onLikeComment,
+  onReactComment,
+  onEditComment,
+  onDeleteComment,
+  currentUserId,
   likedComments,
+  commentReactions,
   commentLikeCounts,
   likingComment,
   replyingCommentId,
@@ -491,318 +533,175 @@ const CommentsModal = memo(({
   setReplyingCommentId,
   replying
 }: any) => {
-  const [newComment, setNewComment] = useState('');
-  const [addingComment, setAddingComment] = useState(false);
-  const [animatingComments, setAnimatingComments] = useState<{ [commentId: number]: boolean }>({});
-
-  const handleLikeCommentClick = useCallback((commentId: number) => {
-    setAnimatingComments(prev => ({ ...prev, [commentId]: true }));
-    setTimeout(() => {
-      setAnimatingComments(prev => ({ ...prev, [commentId]: false }));
-    }, 600);
-    onLikeComment(commentId);
-  }, [onLikeComment]);
-
-  const handleSubmitComment = useCallback(async () => {
-    if (!newComment.trim() || !post) return;
-
-    setAddingComment(true);
-    try {
-      await onAddComment(post.id, newComment);
-      setNewComment('');
-    } catch (error) {
-      console.error('Error adding comment:', error);
-    } finally {
-      setAddingComment(false);
-    }
-  }, [newComment, post, onAddComment]);
-
   if (!open || !post) {
-    console.log('CommentsModal not rendering:', { open, post: !!post });
     return null;
   }
 
-  console.log('CommentsModal rendering for post:', post.id);
+  const commentCount = comments?.length || 0;
 
   return (
     <Box
       sx={{
         position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100vw',
-        height: '100vh',
-        bgcolor: 'rgba(30,41,59,0.8)',
+        inset: 0,
+        width: '100%',
+        height: '100%',
+        bgcolor: 'rgba(15, 23, 42, 0.55)',
+        backdropFilter: 'blur(4px)',
         zIndex: 9999,
         display: 'flex',
-        alignItems: 'center',
+        alignItems: { xs: 'flex-end', sm: 'center' },
         justifyContent: 'center',
-        transition: 'background 0.3s',
+        p: { xs: 0, sm: 2 },
       }}
       onClick={onClose}
     >
       <Box
         sx={{
-          bgcolor: '#fff',
-          borderRadius: 6,
-          p: 7,
-          width: { xs: '95vw', sm: '80vw', md: '60vw' },
-          height: { xs: '90vh', sm: '80vh', md: '60vh' },
-          maxWidth: '900px',
-          maxHeight: '900px',
-          overflowY: 'auto',
-          boxShadow: '0 16px 48px 0 rgba(30,41,59,0.18)',
-          textAlign: 'left',
+          ...MATTE_SURFACE,
+          borderRadius: { xs: '20px 20px 0 0', sm: '20px' },
+          width: { xs: '100%', sm: 'min(560px, 92vw)' },
+          height: { xs: 'min(90dvh, 90vh)', sm: 'min(720px, 86vh)' },
+          overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          gap: 2,
-          position: 'relative',
+          minWidth: 0,
         }}
         onClick={e => e.stopPropagation()}
       >
-        {/* Close Icon */}
-        <IconButton
-          onClick={onClose}
+        <Box
           sx={{
-            position: 'sticky',
-            top: 16,
-            right: 16,
-            alignSelf: 'flex-end',
-            color: '#6B7280',
-            bgcolor: '#F3F4F6',
-            zIndex: 10,
-            mb: -6, // Negative margin to overlap content
-            '&:hover': {
-              bgcolor: '#E5E7EB',
-              color: '#374151'
-            }
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            px: { xs: 2, sm: 2.5 },
+            py: 1.75,
+            flexShrink: 0,
+            ...MATTE_HEADER,
+            boxShadow: 'none',
+            color: 'inherit',
           }}
         >
-          <CloseIcon />
-        </IconButton>
-
-        {/* Post Details */}
-        <Box sx={{ mb: 3 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-            <Avatar src={post.profilePhoto || `https://randomuser.me/api/portraits/lego/${post.userId % 10}.jpg`} sx={{ mr: 2, width: 44, height: 44, boxShadow: 1 }} />
-            <Box>
-              <Typography sx={{ fontWeight: 700, fontSize: 18, color: '#2563EB', ...interFont }}>
-                {post.userFirstName} {post.userLastName}
-              </Typography>
-              <Typography sx={{ fontSize: 13, color: '#6B7280', fontWeight: 500 }}>
-                {post.userRole}
-              </Typography>
-              <Typography sx={{ fontSize: 13, color: '#6B7280' }}>
-                {new Date(post.createdAt).toLocaleString()}
-              </Typography>
-            </Box>
+          <Box>
+            <Typography sx={{ fontWeight: 900, color: '#0F172A', fontSize: { xs: '1.15rem', sm: '1.3rem' }, letterSpacing: '-0.03em', lineHeight: 1.2 }}>
+              Comments
+            </Typography>
+            <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#64748B', mt: 0.25 }}>
+              {commentCount} {commentCount === 1 ? 'reply' : 'replies'}
+            </Typography>
           </Box>
-          <Typography sx={{ color: '#2563EB', fontWeight: 700, fontSize: 17, mb: 1 }}>{post.title}</Typography>
-          <Typography sx={{ color: '#374151', fontSize: 16, mb: 2 }}>{post.content}</Typography>
-          <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', mb: 1 }}>
-            <Typography sx={{ fontSize: 14, color: '#6B7280', bgcolor: 'rgba(37,99,235,0.06)', px: 1.5, py: 0.5, borderRadius: 2 }}>Location: {post.location}</Typography>
-            <Typography sx={{ fontSize: 14, color: '#6B7280', bgcolor: 'rgba(99,102,241,0.06)', px: 1.5, py: 0.5, borderRadius: 2 }}>Type: {post.propertyType}</Typography>
-            <Typography sx={{ fontSize: 14, color: '#6B7280', bgcolor: 'rgba(239,68,68,0.06)', px: 1.5, py: 0.5, borderRadius: 2 }}>Price: ₹{post.price}</Typography>
-          </Box>
+          <IconButton
+            onClick={onClose}
+            size="small"
+            sx={{
+              color: '#0F172A',
+              bgcolor: '#F1F5F9',
+              width: 36,
+              height: 36,
+              '&:hover': { bgcolor: '#E2E8F0' },
+            }}
+          >
+            <CloseIcon sx={{ fontSize: 20 }} />
+          </IconButton>
         </Box>
 
-        {/* Add Comment Section */}
-        <Box sx={{ mb: 3, p: 2, bgcolor: '#F6F8FB', borderRadius: 3 }}>
-          <Typography variant="h6" sx={{ mb: 2, fontWeight: 700, color: '#2563EB' }}>Add a Comment</Typography>
-          <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-end' }}>
-            <InputBase
-              value={newComment}
-              onChange={(e) => setNewComment(e.target.value)}
-              placeholder="Write a comment..."
-              sx={{
-                bgcolor: '#fff',
-                px: 2,
-                py: 1.5,
-                borderRadius: 2,
-                fontSize: 15,
-                flex: 1,
-                boxShadow: 1,
-                border: '1px solid #E5E7EB',
-              }}
-              multiline
-              minRows={2}
-              maxRows={4}
-            />
-            <Button
-              variant="contained"
-              sx={{ bgcolor: '#2563EB', fontWeight: 600, borderRadius: 2, px: 3, py: 1.5, minWidth: 0, '&:hover': { bgcolor: '#1D4ED8' } }}
-              onClick={handleSubmitComment}
-              disabled={addingComment || !newComment.trim()}
-            >
-              {addingComment ? 'Posting...' : 'Post'}
-            </Button>
-          </Box>
-        </Box>
-
-        <Typography variant="h6" sx={{ mb: 2, fontWeight: 700, color: '#2563EB' }}>Comments</Typography>
-
-        {loadingComments ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
-        ) : comments && comments.length > 0 ? (
-          <Stack spacing={2}>
-            {comments.map((comment: any) => (
-              <Box key={comment.id} sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, bgcolor: '#F6F8FB', borderRadius: 3, p: 1.5, boxShadow: 1 }}>
-                <Avatar src={comment.profilePhoto || `https://randomuser.me/api/portraits/lego/${comment.userId % 10}.jpg`} sx={{ width: 32, height: 32, mr: 1 }} />
-                <Box sx={{ flex: 1 }}>
-                  <Typography sx={{ fontWeight: 600, fontSize: 15, color: '#2563EB' }}>{comment.userFirstName} {comment.userLastName}</Typography>
-                  <Typography sx={{ fontSize: 12, color: '#6366F1', fontWeight: 500 }}>{comment.userRole}</Typography>
-                  <Typography sx={{ fontSize: 14, color: '#374151', mt: 0.5 }}>{comment.comment}</Typography>
-                  <Typography sx={{ fontSize: 12, color: '#6B7280', mt: 0.5 }}>{new Date(comment.addedAt).toLocaleString()}</Typography>
-                  <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
-                    <Button
-                      startIcon={
-                        likedComments[comment.id] ? (
-                          <FavoriteIcon
-                            className={`liked-heart-icon ${animatingComments[comment.id] ? 'liked-heart-icon-clicked' : ''}`}
-                          />
-                        ) : (
-                          <FavoriteBorderIcon
-                            className={animatingComments[comment.id] ? 'liked-heart-icon-clicked' : ''}
-                            sx={{ color: '#6B7280' }}
-                          />
-                        )
-                      }
-                      sx={{
-                        color: '#374151',
-                        bgcolor: 'transparent',
-                        textTransform: 'none',
-                        fontWeight: 600,
-                        fontSize: 14,
-                        px: 1.5,
-                        borderRadius: 2,
-                        '&:hover': { bgcolor: '#EEF2FB', color: '#EF4444' }
-                      }}
-                      onClick={() => handleLikeCommentClick(comment.id)}
-                      disabled={likingComment}
-                    >
-                      {commentLikeCounts[comment.id] !== undefined ? commentLikeCounts[comment.id] : comment.likeCount || 0}
-                    </Button>
-                    <Button
-                      sx={{ color: '#2563EB', textTransform: 'none', fontWeight: 600, fontSize: 14, px: 1.5, borderRadius: 2, bgcolor: 'rgba(37,99,235,0.06)', '&:hover': { bgcolor: 'rgba(37,99,235,0.18)' } }}
-                      onClick={() => setReplyingCommentId(comment.id)}
-                    >
-                      Reply
-                    </Button>
-                  </Box>
-
-                  {/* Display Replies */}
-                  {comment.replies && comment.replies.length > 0 && (
-                    <Box sx={{ mt: 2, ml: 2, borderLeft: '2px solid #E5E7EB', pl: 2 }}>
-                      {comment.replies.map((reply: any) => (
-                        <Box key={reply.id} sx={{ mb: 2, display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
-                          <Avatar src={reply.profilePhoto || `https://randomuser.me/api/portraits/lego/${reply.userId % 10}.jpg`} sx={{ width: 28, height: 28 }} />
-                          <Box sx={{ flex: 1 }}>
-                            <Typography sx={{ fontWeight: 600, fontSize: 14, color: '#2563EB' }}>
-                              {reply.userFirstName} {reply.userLastName}
-                            </Typography>
-                            <Typography sx={{ fontSize: 11, color: '#6366F1', fontWeight: 500 }}>{reply.userRole}</Typography>
-                            <Typography sx={{ fontSize: 13, color: '#374151', mt: 0.5 }}>{reply.comment}</Typography>
-                            <Typography sx={{ fontSize: 11, color: '#6B7280', mt: 0.5 }}>
-                              {new Date(reply.addedAt).toLocaleString()}
-                            </Typography>
-                            <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
-                              <Button
-                                startIcon={
-                                  likedComments[reply.id] ? (
-                                    <FavoriteIcon
-                                      className={`liked-heart-icon ${animatingComments[reply.id] ? 'liked-heart-icon-clicked' : ''}`}
-                                    />
-                                  ) : (
-                                    <FavoriteBorderIcon
-                                      className={animatingComments[reply.id] ? 'liked-heart-icon-clicked' : ''}
-                                      sx={{ color: '#6B7280' }}
-                                    />
-                                  )
-                                }
-                                sx={{
-                                  color: '#374151',
-                                  bgcolor: 'transparent',
-                                  textTransform: 'none',
-                                  fontWeight: 600,
-                                  fontSize: 12,
-                                  px: 1,
-                                  py: 0.5,
-                                  borderRadius: 1,
-                                  minHeight: 24,
-                                  '&:hover': { bgcolor: '#EEF2FB', color: '#EF4444' }
-                                }}
-                                onClick={() => handleLikeCommentClick(reply.id)}
-                                disabled={likingComment}
-                              >
-                                {commentLikeCounts[reply.id] !== undefined ? commentLikeCounts[reply.id] : reply.likeCount || 0}
-                              </Button>
-                            </Box>
-                          </Box>
-                        </Box>
-                      ))}
-                    </Box>
-                  )}
-
-                  {/* Reply input/modal */}
-                  {replyingCommentId === comment.id && (
-                    <Box sx={{ mt: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
-                      <InputBase
-                        value={replyText}
-                        onChange={e => setReplyText(e.target.value)}
-                        placeholder="Write a reply..."
-                        sx={{
-                          bgcolor: '#F3F4F6',
-                          px: 2,
-                          py: 1,
-                          borderRadius: 2,
-                          fontSize: 15,
-                          flex: 1,
-                          boxShadow: 1,
-                        }}
-                        multiline
-                        minRows={1}
-                        maxRows={4}
-                      />
-                      <Button
-                        variant="contained"
-                        sx={{ bgcolor: '#2563EB', fontWeight: 600, borderRadius: 2, px: 2, py: 1, minWidth: 0, '&:hover': { bgcolor: '#1D4ED8' } }}
-                        onClick={() => onAddComment(post.id, replyText, comment.id)}
-                        disabled={replying}
-                      >
-                        Send
-                      </Button>
-                      <Button
-                        sx={{ color: '#6B7280', fontWeight: 500, borderRadius: 2, px: 2, py: 1, minWidth: 0 }}
-                        onClick={() => { setReplyingCommentId(null); setReplyText(''); }}
-                      >
-                        Cancel
-                      </Button>
-                    </Box>
-                  )}
-                </Box>
+        <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto', px: { xs: 2, sm: 2.5 }, py: 2 }}>
+          <Box sx={{ mb: 2.5 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, mb: 1.25, minWidth: 0 }}>
+              <Avatar
+                src={(post as any).userProfilePhotoSignedUrl || (post as any).userProfilePhoto || post.profilePhoto || `https://randomuser.me/api/portraits/lego/${post.userId % 10}.jpg`}
+                sx={{ width: 44, height: 44, flexShrink: 0, fontWeight: 800, bgcolor: '#2563EB' }}
+              />
+              <Box sx={{ minWidth: 0, flex: 1 }}>
+                <Typography sx={{ fontWeight: 800, fontSize: 15, color: '#0F172A', ...interFont, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {post.userFirstName} {post.userLastName}
+                </Typography>
+                <Typography sx={{ fontSize: 12, color: '#64748B', fontWeight: 600 }}>
+                  {post.userRole} · {new Date(post.createdAt).toLocaleString()}
+                </Typography>
               </Box>
-            ))}
-          </Stack>
-        ) : (
-          <Typography sx={{ fontSize: 13, color: '#6B7280', mb: 1 }}>No comments yet. Be the first to comment!</Typography>
-        )}
+            </Box>
+            {post.title && (
+              <Typography sx={{ color: '#0F172A', fontWeight: 900, fontSize: 17, mb: 0.5, letterSpacing: '-0.02em', wordBreak: 'break-word' }}>
+                {post.title}
+              </Typography>
+            )}
+            <Typography sx={{ color: '#334155', fontSize: 15, fontWeight: 500, lineHeight: 1.55, wordBreak: 'break-word' }}>
+              {renderMentionContent(post.content, {})}
+            </Typography>
+          </Box>
 
+          <Typography sx={{ fontWeight: 900, color: '#0F172A', fontSize: 13, letterSpacing: '0.06em', textTransform: 'uppercase', mb: 1.5 }}>
+            All comments
+          </Typography>
+
+          {loadingComments ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={28} sx={{ color: '#2563EB' }} /></Box>
+          ) : comments && comments.length > 0 ? (
+            <Stack spacing={1.75}>
+              {comments.map((comment: any) => (
+                <CommentListItem
+                  key={comment.id}
+                  comment={comment}
+                  currentUserId={currentUserId}
+                  likedComments={likedComments}
+                  commentReactions={commentReactions}
+                  commentLikeCounts={commentLikeCounts}
+                  likingComment={likingComment}
+                  replyingCommentId={replyingCommentId}
+                  replyText={replyText}
+                  setReplyText={setReplyText}
+                  setReplyingCommentId={setReplyingCommentId}
+                  replying={replying}
+                  onReply={(text: string) => onAddComment(post.id, text, comment.id)}
+                  onReactComment={onReactComment}
+                  onEditComment={onEditComment}
+                  onDeleteComment={onDeleteComment}
+                />
+              ))}
+            </Stack>
+          ) : (
+            <Box sx={{ textAlign: 'center', py: 5 }}>
+              <Typography sx={{ fontSize: 15, fontWeight: 800, color: '#0F172A', mb: 0.5 }}>No comments yet</Typography>
+              <Typography sx={{ fontSize: 13, color: '#64748B', fontWeight: 600 }}>Be the first to start the thread.</Typography>
+            </Box>
+          )}
+        </Box>
+
+        <Box
+          sx={{
+            flexShrink: 0,
+            px: { xs: 2, sm: 2.5 },
+            pt: 1.5,
+            pb: { xs: 'max(14px, env(safe-area-inset-bottom))', sm: 2 },
+            ...MATTE_HEADER,
+            borderBottom: 'none',
+            borderTop: '1px solid rgba(90, 70, 50, 0.1)',
+            boxShadow: 'none',
+            color: 'inherit',
+          }}
+        >
+          <CommentComposer matte onSubmit={(text: string) => onAddComment(post.id, text)} />
+        </Box>
       </Box>
     </Box>
   );
 });
 
+
 const Home = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user: authUser, isAuthenticated } = useAuth();
   const { data, loading, error, refetch } = useQuery(SEARCH_POSTS, {
     variables: { page: 1, limit: 10 },
-    fetchPolicy: 'network-only',
+    fetchPolicy: 'cache-and-network',
   });
 
   const { data: trendingData, loading: trendingLoading } = useQuery(TRENDING_POSTS, {
     variables: { limit: 5 },
-    fetchPolicy: 'network-only',
+    fetchPolicy: 'cache-and-network',
+    errorPolicy: 'ignore',
   });
 
   const client = useApolloClient();
@@ -813,18 +712,24 @@ const Home = () => {
   const [commentsModalOpen, setCommentsModalOpen] = useState<{ open: boolean; postId: number | null }>({ open: false, postId: null });
   const [likedPosts, setLikedPosts] = useState<{ [postId: number]: boolean }>({});
   const [likeCounts, setLikeCounts] = useState<{ [postId: number]: number }>({});
+  const [commentCounts, setCommentCounts] = useState<{ [postId: number]: number }>({});
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatRoomId, setChatRoomId] = useState<string | null>(null);
 
   // Hydrate liked state from server (persists across refresh)
   useEffect(() => {
     if (!data?.searchPosts) return;
     const nextLiked: { [postId: number]: boolean } = {};
     const nextCounts: { [postId: number]: number } = {};
+    const nextCommentCounts: { [postId: number]: number } = {};
     data.searchPosts.forEach((p: any) => {
       if (p.isLiked) nextLiked[p.id] = true;
       nextCounts[p.id] = p.likeCount || 0;
+      nextCommentCounts[p.id] = p.commentCount || 0;
     });
     setLikedPosts(prev => ({ ...nextLiked, ...prev }));
     setLikeCounts(prev => ({ ...nextCounts, ...prev }));
+    setCommentCounts(prev => ({ ...nextCommentCounts, ...prev }));
   }, [data?.searchPosts]);
 
   const [likingPost, setLikingPost] = useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars
@@ -837,6 +742,7 @@ const Home = () => {
   const [commentsByPost, setCommentsByPost] = useState<{ [postId: number]: any[] }>({});
   const [loadingComments, setLoadingComments] = useState<{ [postId: number]: boolean }>({});
   const [likedComments, setLikedComments] = useState<{ [commentId: number]: boolean }>({});
+  const [commentReactions, setCommentReactions] = useState<{ [commentId: number]: string }>({});
   const [commentLikeCounts, setCommentLikeCounts] = useState<{ [commentId: number]: number }>({});
   const [likingComment, setLikingComment] = useState(false);
   const [replyingCommentId, setReplyingCommentId] = useState<number | null>(null);
@@ -852,15 +758,15 @@ const Home = () => {
   const activeUserId = currentUser?.id || authUser?.id || storedUser?.id;
 
   const { data: suggestedData, loading: suggestedLoading, refetch: refetchSuggested } = useQuery(GET_SUGGESTED_USERS, {
-    variables: { userId: parseInt(String(activeUserId || 0)), limit: 12 },
+    variables: { userId: parseInt(String(activeUserId || 0)), limit: 8 },
     skip: !activeUserId,
-    fetchPolicy: 'network-only',
+    fetchPolicy: 'cache-and-network',
   });
 
   const { data: notifData, refetch: refetchNotifs } = useQuery(GET_USER_NOTIFICATIONS, {
     variables: { userId: parseInt(String(activeUserId || 0)), page: 1, limit: 20 },
     skip: !activeUserId,
-    fetchPolicy: 'network-only',
+    fetchPolicy: 'cache-and-network',
     pollInterval: 60000,
   });
   const [markNotificationRead] = useMutation(MARK_NOTIFICATION_READ);
@@ -881,17 +787,39 @@ const Home = () => {
 
   const isMobile = useMediaQuery('(max-width:900px)');
 
+  // Open messaging dock on Home (desktop) from /chat redirect or Profile DM
+  useEffect(() => {
+    const state = location.state as { openChat?: boolean; autoSelectRoomId?: string } | null;
+    if (!state?.openChat && !state?.autoSelectRoomId) return;
+    if (isMobile) {
+      navigate('/chat', { replace: true, state: { autoSelectRoomId: state.autoSelectRoomId } });
+      return;
+    }
+    setChatRoomId(state.autoSelectRoomId || null);
+    setChatOpen(true);
+    window.history.replaceState({}, '');
+  }, [location.state, isMobile, navigate]);
+
   // GraphQL mutations
   const [createComment] = useMutation(CREATE_COMMENT_MUTATION);
   const [likeComment] = useMutation(LIKE_COMMENT_MUTATION);
+  const [unlikeComment] = useMutation(UNLIKE_COMMENT);
+  const [updateCommentMutation] = useMutation(UPDATE_COMMENT);
+  const [deleteCommentMutation] = useMutation(DELETE_COMMENT);
   const [likePost] = useMutation(LIKE_POST_MUTATION);
   const [unlikePost] = useMutation(UNLIKE_POST_MUTATION);
   const [createPostMutation] = useMutation(CREATE_POST);
+  const [updatePostMutation] = useMutation(UPDATE_POST);
+  const [deletePostMutation] = useMutation(DELETE_POST);
   const [followUserMutation] = useMutation(FOLLOW_USER);
-  const [createNotificationMutation] = useMutation(CREATE_NOTIFICATION);
+  // Mention notifications are created server-side on createPost / createComment.
 
   // Create Post form state (simplified for new component)
   const [cpSubmitting, setCpSubmitting] = useState(false);
+  const [editPost, setEditPost] = useState<any | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editContent, setEditContent] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
 
   // Function to fetch fresh user data from backend
   const fetchAndUpdateUserData = useCallback(async () => {
@@ -981,16 +909,19 @@ const Home = () => {
       }
     };
 
-    // Fetch fresh user data once on mount
-    fetchAndUpdateUserData();
+    // Defer profile refresh so it doesn't compete with feed/trending/suggested
+    const t = window.setTimeout(() => {
+      fetchAndUpdateUserData();
+    }, 1500);
 
     // Check user data on focus (when user comes back to the tab)
     window.addEventListener('focus', checkUserData);
 
     // Also check periodically
-    const userCheckInterval = setInterval(checkUserData, 1000);
+    const userCheckInterval = setInterval(checkUserData, 5000);
 
     return () => {
+      window.clearTimeout(t);
       window.removeEventListener('focus', checkUserData);
       clearInterval(userCheckInterval);
     };
@@ -1208,29 +1139,7 @@ const Home = () => {
 
       if (data?.createPost?.success) {
         setCreateOpen(false);
-
-        const mentionedIds = extractMentionedUserIds(
-          postData.content,
-          postData.mentionedUserIds || []
-        ).filter((id) => id !== parseInt(String(currentUser.id)));
-
-        for (const mentionedId of mentionedIds) {
-          try {
-            await createNotificationMutation({
-              variables: {
-                userId: mentionedId,
-                title: 'You were mentioned',
-                message: `${currentUser.firstName || 'Someone'} mentioned you in a post: ${postData.title}`,
-                type: 'mention',
-                metadata: JSON.stringify({ postTitle: postData.title }),
-              },
-            });
-          } catch (notifyError) {
-            console.error('Failed to create mention notification:', notifyError);
-          }
-        }
-
-        // Refresh posts
+        // Mentions are notified server-side in createPost (users + property owners).
         await refetch();
       } else {
         throw new Error(data?.createPost?.message || 'Failed to create post');
@@ -1241,7 +1150,54 @@ const Home = () => {
     } finally {
       setCpSubmitting(false);
     }
-  }, [currentUser, createPostMutation, createNotificationMutation, refetch]);
+  }, [currentUser, createPostMutation, refetch]);
+
+  const handleEditPost = useCallback((post: any) => {
+    setEditPost(post);
+    setEditTitle(post.title || '');
+    setEditContent(post.content || '');
+  }, []);
+
+  const handleSaveEditPost = useCallback(async () => {
+    if (!editPost?.id) return;
+    setEditSaving(true);
+    try {
+      const { data: result } = await updatePostMutation({
+        variables: {
+          postId: Number(editPost.id),
+          title: editTitle.trim(),
+          content: editContent.trim(),
+        },
+      });
+      if (result?.updatePost?.success) {
+        setEditPost(null);
+        await refetch();
+      } else {
+        window.alert(result?.updatePost?.message || 'Failed to update post');
+      }
+    } catch (err) {
+      console.error('Error updating post:', err);
+      window.alert('Failed to update post');
+    } finally {
+      setEditSaving(false);
+    }
+  }, [editPost, editTitle, editContent, updatePostMutation, refetch]);
+
+  const handleDeletePost = useCallback(async (postId: number) => {
+    try {
+      const { data: result } = await deletePostMutation({
+        variables: { postId: Number(postId) },
+      });
+      if (result?.deletePost?.success) {
+        await refetch();
+      } else {
+        window.alert(result?.deletePost?.message || 'Failed to delete post');
+      }
+    } catch (err) {
+      console.error('Error deleting post:', err);
+      window.alert('Failed to delete post');
+    }
+  }, [deletePostMutation, refetch]);
 
   const handleLikeToggle = useCallback(async (postId: number) => {
     if (!currentUser?.id) return;
@@ -1314,11 +1270,13 @@ const Home = () => {
       try {
         const { data: commentsData } = await client.query({
           query: GET_POST_COMMENTS_QUERY,
-          variables: { postId, page: 1, limit: 50 }
+          variables: { postId, page: 1, limit: 50 },
+          fetchPolicy: 'network-only',
         });
 
         if (commentsData?.postComments) {
           setCommentsByPost(prev => ({ ...prev, [postId]: commentsData.postComments }));
+          setCommentCounts(prev => ({ ...prev, [postId]: commentsData.postComments.length }));
         }
       } catch (error) {
         console.error('Error fetching comments:', error);
@@ -1338,6 +1296,7 @@ const Home = () => {
 
         if (commentsData?.postComments) {
           setCommentsByPost(prev => ({ ...prev, [postId]: commentsData.postComments }));
+          setCommentCounts(prev => ({ ...prev, [postId]: commentsData.postComments.length }));
         }
       } catch (error) {
         console.error('Comments auto-refresh failed:', error);
@@ -1371,11 +1330,22 @@ const Home = () => {
         // Refresh comments for this post
         const { data: commentsData } = await client.query({
           query: GET_POST_COMMENTS_QUERY,
-          variables: { postId, page: 1, limit: 50 }
+          variables: { postId, page: 1, limit: 50 },
+          fetchPolicy: 'network-only',
         });
 
         if (commentsData?.postComments) {
           setCommentsByPost(prev => ({ ...prev, [postId]: commentsData.postComments }));
+        }
+
+        // Bump count for top-level comments
+        if (!parentCommentId) {
+          setCommentCounts(prev => {
+            const current = prev[postId] !== undefined
+              ? prev[postId]
+              : (data?.searchPosts?.find((p: any) => p.id === postId)?.commentCount || 0);
+            return { ...prev, [postId]: current + 1 };
+          });
         }
 
         // Clear reply text if it was a reply
@@ -1387,33 +1357,100 @@ const Home = () => {
     } catch (error) {
       console.error('Error creating comment:', error);
     }
-  }, [currentUser, createComment, client]);
+  }, [currentUser, createComment, client, data?.searchPosts]);
 
-  const handleLikeComment = useCallback(async (commentId: number) => {
+  const refreshPostComments = useCallback(async (postId: number) => {
+    const { data: commentsData } = await client.query({
+      query: GET_POST_COMMENTS_QUERY,
+      variables: { postId, page: 1, limit: 50 },
+      fetchPolicy: 'network-only',
+    });
+    if (commentsData?.postComments) {
+      setCommentsByPost(prev => ({ ...prev, [postId]: commentsData.postComments }));
+    }
+  }, [client]);
+
+  const handleReactComment = useCallback(async (commentId: number, emoji: string) => {
     if (!currentUser?.id) return;
+    const userId = parseInt(currentUser.id.toString());
+    const current = normalizeReactionEmoji(commentReactions[commentId]) || (likedComments[commentId] ? '❤️' : null);
+    const same = current === emoji;
 
     setLikingComment(true);
     try {
-      const { data: result } = await likeComment({
-        variables: {
-          commentId,
-          userId: parseInt(currentUser.id.toString())
+      if (same) {
+        const { data: result } = await unlikeComment({ variables: { commentId, userId } });
+        if (result?.unlikeComment?.success) {
+          setLikedComments(prev => ({ ...prev, [commentId]: false }));
+          setCommentReactions(prev => {
+            const next = { ...prev };
+            delete next[commentId];
+            return next;
+          });
+          setCommentLikeCounts(prev => ({
+            ...prev,
+            [commentId]: result.unlikeComment.comment?.likeCount ?? Math.max(0, (prev[commentId] || 1) - 1),
+          }));
         }
-      });
-
-      if (result?.likeComment?.success) {
-        setLikedComments(prev => ({ ...prev, [commentId]: !prev[commentId] }));
-        setCommentLikeCounts(prev => ({
-          ...prev,
-          [commentId]: (prev[commentId] || 0) + (prev[commentId] ? -1 : 1)
-        }));
+      } else {
+        const { data: result } = await likeComment({
+          variables: { commentId, userId, reactionType: emoji },
+        });
+        if (result?.likeComment?.success) {
+          const wasLiked = Boolean(current);
+          setLikedComments(prev => ({ ...prev, [commentId]: true }));
+          setCommentReactions(prev => ({ ...prev, [commentId]: emoji }));
+          setCommentLikeCounts(prev => ({
+            ...prev,
+            [commentId]: result.likeComment.comment?.likeCount ?? (prev[commentId] || 0) + (wasLiked ? 0 : 1),
+          }));
+        }
       }
     } catch (error) {
-      console.error('Error liking comment:', error);
+      console.error('Error reacting to comment:', error);
     } finally {
       setLikingComment(false);
     }
-  }, [currentUser, likeComment]);
+  }, [currentUser, commentReactions, likedComments, likeComment, unlikeComment]);
+
+  const handleEditComment = useCallback(async (commentId: number, text: string) => {
+    try {
+      const { data: result } = await updateCommentMutation({
+        variables: { commentId, comment: text },
+      });
+      if (result?.updateComment?.success) {
+        const postId = commentsModalOpen.postId;
+        if (postId) await refreshPostComments(postId);
+      }
+    } catch (error) {
+      console.error('Error editing comment:', error);
+    }
+  }, [updateCommentMutation, commentsModalOpen.postId, refreshPostComments]);
+
+  const handleDeleteComment = useCallback(async (commentId: number) => {
+    if (!window.confirm('Delete this comment?')) return;
+    const postId = commentsModalOpen.postId;
+    const existing = postId ? commentsByPost[postId] : null;
+    const wasTopLevel = Boolean(existing?.some((c: any) => c.id === commentId));
+    try {
+      const { data: result } = await deleteCommentMutation({
+        variables: { commentId },
+      });
+      if (result?.deleteComment?.success) {
+        if (postId) {
+          await refreshPostComments(postId);
+          if (wasTopLevel) {
+            setCommentCounts(prev => ({
+              ...prev,
+              [postId]: Math.max(0, (prev[postId] || 1) - 1),
+            }));
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting comment:', error);
+    }
+  }, [deleteCommentMutation, commentsModalOpen.postId, commentsByPost, refreshPostComments]);
 
 
   // Manual refresh handler
@@ -1446,26 +1483,57 @@ const Home = () => {
     }
 
     return (
-      <ProfilePage
-      onGoBack={handleGoHome}
-        userId={selectedProfileId}
-        currentUserId={authUserId}
-        onOpenProfile={handleOpenProfile}
-      />
+      <>
+        <ProfilePage
+          onGoBack={handleGoHome}
+          userId={selectedProfileId}
+          currentUserId={authUserId}
+          onOpenProfile={handleOpenProfile}
+        />
+        {!isMobile && chatOpen && (
+          <ChatPage
+            embedded
+            initialRoomId={chatRoomId}
+            onClose={() => {
+              setChatOpen(false);
+              setChatRoomId(null);
+            }}
+          />
+        )}
+      </>
     );
   }
 
   // Render Home Page
   return (
-    <Box sx={{ bgcolor: '#F6F8FB', minHeight: '100vh', ...interFont }}>
+    <Box
+      sx={{
+        minHeight: '100vh',
+        ...interFont,
+        ...PAGE_ATMOSPHERE,
+      }}
+    >
       {/* Header */}
-      <AppBar position="fixed" elevation={1} sx={{ bgcolor: '#fff', color: '#2563EB', zIndex: 1201 }}>
+      <AppBar
+        position="fixed"
+        elevation={0}
+        sx={{
+          ...MATTE_HEADER,
+          zIndex: 1201,
+          bgcolor: '#F3EFE8 !important',
+          backgroundColor: '#F3EFE8 !important',
+          backgroundImage: 'linear-gradient(180deg, #F6F2EB 0%, #EFEAE2 100%) !important',
+        }}
+      >
         <Toolbar
           sx={{
             justifyContent: 'space-between',
             px: { xs: 1, sm: 2, md: 4 },
             minHeight: { xs: 56, sm: 64 },
             gap: { xs: 0.5, sm: 2 },
+            display: 'grid',
+            gridTemplateColumns: { xs: 'auto 1fr auto', md: '1fr minmax(280px, 480px) 1fr' },
+            alignItems: 'center',
           }}
         >
           {isMobile && (
@@ -1474,13 +1542,13 @@ const Home = () => {
               aria-label="Open menu"
               onClick={() => setMobileMenuOpen(true)}
               size="small"
-              sx={{ mr: 0.25, color: '#2563EB' }}
+              sx={{ mr: 0.25, color: '#2563EB', gridColumn: '1' }}
             >
               <MenuIcon />
             </IconButton>
           )}
 
-          {/* Logo — single line; never stacks on mobile */}
+          {/* Logo */}
           <Typography
             component="div"
             title="Zameen pe charcha"
@@ -1492,19 +1560,28 @@ const Home = () => {
               fontSize: { xs: 'clamp(0.9rem, 3.8vw, 1.1rem)', sm: '1.35rem', md: '1.5rem' },
               whiteSpace: 'nowrap',
               lineHeight: 1.2,
-              flex: '1 1 auto',
               minWidth: 0,
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               pr: 0.5,
+              gridColumn: { xs: '2', md: '1' },
+              justifySelf: { xs: 'start', md: 'start' },
             }}
           >
             Zameen pe charcha
           </Typography>
 
-          {/* Search — desktop only in this row */}
+          {/* Search — centered on desktop */}
           {!isMobile && (
-            <Box sx={{ flex: 1, mx: 2, display: 'flex', justifyContent: 'center', minWidth: 0 }}>
+            <Box
+              sx={{
+                gridColumn: '2',
+                justifySelf: 'center',
+                width: '100%',
+                display: 'flex',
+                justifyContent: 'center',
+              }}
+            >
               <Box
                 sx={{
                   display: 'flex',
@@ -1515,7 +1592,7 @@ const Home = () => {
                   py: 0.75,
                   borderRadius: 3,
                   width: '100%',
-                  maxWidth: 420,
+                  maxWidth: 480,
                   boxShadow: 1,
                   transition: 'box-shadow 0.2s, background 0.2s',
                   '&:hover': { boxShadow: 3, bgcolor: '#EEF2FB' },
@@ -1542,12 +1619,19 @@ const Home = () => {
               alignItems: 'center',
               gap: { xs: 0.15, sm: 1 },
               flexShrink: 0,
-              ml: 'auto',
+              gridColumn: { xs: '3', md: '3' },
+              justifySelf: 'end',
             }}
           >
             <IconButton
               title="Messages"
-              onClick={() => navigate('/chat')}
+              onClick={() => {
+                if (isMobile) {
+                  navigate('/chat');
+                } else {
+                  setChatOpen(true);
+                }
+              }}
               size={isMobile ? 'small' : 'medium'}
               sx={{ transition: 'background 0.2s', '&:hover': { bgcolor: '#EEF2FB' } }}
             >
@@ -1761,9 +1845,8 @@ const Home = () => {
               mb: { xs: 2, sm: 4 },
               mx: { xs: 1.25, sm: 0 },
               p: { xs: 1.5, sm: 3 },
-              bgcolor: '#fff',
+              ...MATTE_POST_SX,
               borderRadius: { xs: 3, sm: 4 },
-              boxShadow: '0 2px 12px rgba(37,99,235,0.08)',
             }}
           >
             <Box
@@ -1843,8 +1926,12 @@ const Home = () => {
                   onLikeToggle={handleLikeToggle}
                   onCommentClick={handleCommentClick}
                   onOpenProfile={handleOpenProfile}
+                  onEditPost={handleEditPost}
+                  onDeletePost={handleDeletePost}
+                  currentUserId={activeUserId}
                   likedPosts={likedPosts}
                   likeCounts={likeCounts}
+                  commentCounts={commentCounts}
                 />
               ))}
             </Stack>
@@ -1855,14 +1942,14 @@ const Home = () => {
         {!isMobile && (
           <Box sx={{ width: 280, ml: 3, display: 'flex', flexDirection: 'column', gap: 3, position: 'sticky', top: 88, alignSelf: 'flex-start', height: 'fit-content', zIndex: 2 }}>
             {/* People You May Know */}
-            <Box sx={{ bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 4, boxShadow: '0 2px 12px rgba(37,99,235,0.08)', p: 2.5 }}>
+            <Box sx={{ ...MATTE_PANEL, borderRadius: 4, p: 2.5 }}>
               <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2, color: '#2563EB', ...interFont }}>People You May Know</Typography>
               {suggestedLoading ? (
                 <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}><CircularProgress size={24} /></Box>
               ) : (
                 <Stack spacing={2}>
                   {(suggestedData?.suggestedUsers ?? []).map((friend: any) => (
-                    <Box key={friend.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, bgcolor: '#F6F8FB', borderRadius: 3, p: 1.2, boxShadow: 1 }}>
+                    <Box key={friend.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, ...MATTE_INSET, borderRadius: 3, p: 1.2 }}>
                       <Avatar
                         src={friend.profilePhotoSignedUrl || friend.profilePhoto || `https://randomuser.me/api/portraits/lego/${friend.id % 10}.jpg`}
                         sx={{ width: 38, height: 38, mr: 1, cursor: 'pointer' }}
@@ -1901,7 +1988,7 @@ const Home = () => {
               )}
             </Box>
             {/* Trending Posts */}
-            <Box sx={{ bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 4, boxShadow: '0 2px 12px rgba(37,99,235,0.08)', p: 2.5 }}>
+            <Box sx={{ ...MATTE_PANEL, borderRadius: 4, p: 2.5 }}>
               <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2, color: '#2563EB', ...interFont }}>Trending</Typography>
               {trendingLoading ? (
                 <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}><CircularProgress size={24} /></Box>
@@ -1914,12 +2001,11 @@ const Home = () => {
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
-                        bgcolor: '#F6F8FB',
+                        ...MATTE_INSET,
                         borderRadius: 3,
                         p: 1,
-                        boxShadow: 1,
                         cursor: 'pointer',
-                        '&:hover': { bgcolor: '#EEF2FB' },
+                        '&:hover': { bgcolor: 'rgba(255,255,255,0.65)' },
                       }}
                       onClick={() => handleTrendingPostClick(trend.id)}
                     >
@@ -1951,6 +2037,8 @@ const Home = () => {
             width: 'min(300px, 86vw)',
             pt: 'env(safe-area-inset-top)',
             pb: 'env(safe-area-inset-bottom)',
+            ...MATTE_PANEL,
+            borderRadius: 0,
           },
         }}
       >
@@ -2003,6 +2091,8 @@ const Home = () => {
             width: 'min(340px, 92vw)',
             pt: 'env(safe-area-inset-top)',
             pb: 'env(safe-area-inset-bottom)',
+            ...MATTE_PANEL,
+            borderRadius: 0,
           },
         }}
       >
@@ -2027,7 +2117,7 @@ const Home = () => {
                     display: 'flex',
                     alignItems: 'center',
                     gap: 1.25,
-                    bgcolor: '#F6F8FB',
+                    ...MATTE_INSET,
                     borderRadius: 2,
                     p: 1.1,
                   }}
@@ -2105,11 +2195,11 @@ const Home = () => {
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     gap: 1,
-                    bgcolor: '#F6F8FB',
+                    ...MATTE_INSET,
                     borderRadius: 2,
                     p: 1.1,
                     cursor: 'pointer',
-                    '&:active': { bgcolor: '#EEF2FB' },
+                    '&:active': { bgcolor: 'rgba(255,255,255,0.65)' },
                   }}
                   onClick={() => {
                     setMobileDiscoverOpen(false);
@@ -2154,6 +2244,7 @@ const Home = () => {
             borderRadius: { xs: 2, sm: 3 },
             m: { xs: 1.5, sm: 2 },
             maxHeight: { xs: '85vh', sm: 520 },
+            ...MATTE_SURFACE,
           },
         }}
       >
@@ -2178,7 +2269,7 @@ const Home = () => {
                     display: 'flex',
                     alignItems: 'center',
                     gap: 1.5,
-                    bgcolor: '#F6F8FB',
+                    ...MATTE_INSET,
                     borderRadius: 2,
                     p: 1.25,
                   }}
@@ -2250,8 +2341,12 @@ const Home = () => {
         comments={commentsByPost[commentsModalOpen.postId!]}
         loadingComments={loadingComments[commentsModalOpen.postId!]}
         onAddComment={handleAddComment}
-        onLikeComment={handleLikeComment}
+        onReactComment={handleReactComment}
+        onEditComment={handleEditComment}
+        onDeleteComment={handleDeleteComment}
+        currentUserId={currentUser?.id}
         likedComments={likedComments}
+        commentReactions={commentReactions}
         commentLikeCounts={commentLikeCounts}
         likingComment={likingComment}
         replyingCommentId={replyingCommentId}
@@ -2268,6 +2363,52 @@ const Home = () => {
         onSubmit={handleCreatePost}
         loading={cpSubmitting}
       />
+
+      <Dialog open={Boolean(editPost)} onClose={() => !editSaving && setEditPost(null)} fullWidth maxWidth="sm">
+        <DialogTitle>Edit post</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+          <TextField
+            label="Title"
+            value={editTitle}
+            onChange={(e) => setEditTitle(e.target.value)}
+            fullWidth
+            disabled={editSaving}
+          />
+          <TextField
+            label="Content"
+            value={editContent}
+            onChange={(e) => setEditContent(e.target.value)}
+            fullWidth
+            multiline
+            minRows={4}
+            disabled={editSaving}
+            helperText="Use @[userId:Name] or @[p:propertyId:Title] for mentions"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditPost(null)} disabled={editSaving} sx={{ textTransform: 'none' }}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleSaveEditPost}
+            disabled={editSaving || !editTitle.trim() || !editContent.trim()}
+            sx={{ textTransform: 'none' }}
+          >
+            {editSaving ? 'Saving…' : 'Save'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* LinkedIn-style messaging dock on desktop Home */}
+      {!isMobile && chatOpen && (
+        <ChatPage
+          embedded
+          initialRoomId={chatRoomId}
+          onClose={() => {
+            setChatOpen(false);
+            setChatRoomId(null);
+          }}
+        />
+      )}
     </Box>
   );
 };

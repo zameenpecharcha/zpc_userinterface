@@ -12,6 +12,14 @@ import {
     CircularProgress,
     Alert,
     Skeleton,
+    useMediaQuery,
+    Menu,
+    MenuItem,
+    Dialog,
+    DialogTitle,
+    DialogContent,
+    DialogActions,
+    TextField,
 } from '@mui/material';
 import Rating from '@mui/material/Rating';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -19,15 +27,21 @@ import CameraAltIcon from '@mui/icons-material/CameraAlt';
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
 import FavoriteIcon from '@mui/icons-material/Favorite';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
-import ShareIcon from '@mui/icons-material/Share';
+import ShareSymbol from './icons/ShareSymbol';
 import StarIcon from '@mui/icons-material/Star';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import MessageIcon from '@mui/icons-material/Message';
 import CloseIcon from '@mui/icons-material/Close';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
 import { useApolloClient, useMutation } from '@apollo/client';
 import { useNavigate } from 'react-router-dom';
-import { GET_POSTS_BY_USER } from '../graphql/posts';
+import { GET_POSTS_BY_USER, DELETE_POST, UPDATE_POST } from '../graphql/posts';
 import { CREATE_DM_ROOM_MUTATION } from '../graphql/chat';
+import { renderMentionContent, nameInitials, stringToColor } from '../utils/mentions';
+import CommentListItem from './comments/CommentListItem';
+import CommentComposer from './comments/CommentComposer';
+import { normalizeReactionEmoji } from './comments/commentReactions';
+import { MATTE_SURFACE, MATTE_HEADER, PAGE_ATMOSPHERE, MATTE_INSET } from '../theme/surfaces';
 
 const GRAPHQL_URL = process.env.REACT_APP_GRAPHQL_URL || 'http://localhost:8080/api/v1/graphql';
 
@@ -35,8 +49,11 @@ const interFont = {
     fontFamily: 'Inter, Roboto, Arial, sans-serif',
 };
 
+/** Soft matte card surface (not flat white). */
+const MATTE_POST_SX = MATTE_SURFACE;
+
 const PostSkeleton = () => (
-  <Box sx={{ bgcolor: '#fff', borderRadius: 3, p: 3, mb: 3, boxShadow: '0 2px 12px rgba(37,99,235,0.08)' }}>
+  <Box sx={{ ...MATTE_POST_SX, borderRadius: { xs: 2, sm: 3 }, p: { xs: 1.5, sm: 3 }, mb: 3 }}>
     <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
       <Skeleton variant="circular" width={44} height={44} sx={{ mr: 2 }} />
       <Box sx={{ flex: 1 }}>
@@ -87,239 +104,7 @@ const formatDate = (dateValue: any): string => {
     }
 };
 
-// Comments Form Component
-const CommentsForm: React.FC<{ onSubmit: (text: string) => void }> = ({ onSubmit }) => {
-    const [newComment, setNewComment] = useState('');
-    const [addingComment, setAddingComment] = useState(false);
-
-    const handleSubmitComment = async () => {
-        if (!newComment.trim()) return;
-
-        setAddingComment(true);
-        try {
-            await onSubmit(newComment);
-            setNewComment('');
-        } catch (error) {
-            console.error('Error adding comment:', error);
-        } finally {
-            setAddingComment(false);
-        }
-    };
-
-    return (
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-end' }}>
-            <InputBase
-                value={newComment}
-                onChange={(e) => setNewComment(e.target.value)}
-                placeholder="Write a comment..."
-                sx={{
-                    bgcolor: '#fff',
-                    px: 2,
-                    py: 1.5,
-                    borderRadius: 2,
-                    fontSize: 15,
-                    flex: 1,
-                    boxShadow: 1,
-                    border: '1px solid #E5E7EB',
-                }}
-                multiline
-                minRows={2}
-                maxRows={4}
-            />
-            <Button
-                variant="contained"
-                sx={{ bgcolor: '#2563EB', fontWeight: 600, borderRadius: 2, px: 3, py: 1.5, '&:hover': { bgcolor: '#1D4ED8' } }}
-                onClick={handleSubmitComment}
-                disabled={addingComment || !newComment.trim()}
-            >
-                {addingComment ? 'Posting...' : 'Post'}
-            </Button>
-        </Box>
-    );
-};
-
-// Comment Item Component
-const CommentItem: React.FC<{
-    comment: any;
-    onLikeComment: (commentId: number) => void;
-    onReply: (text: string) => void;
-    likedComments: { [commentId: number]: boolean };
-    commentLikeCounts: { [commentId: number]: number };
-    likingComment: boolean;
-    replyingCommentId: number | null;
-    setReplyingCommentId: (id: number | null) => void;
-    replyText: string;
-    setReplyText: (text: string) => void;
-    replying: boolean;
-}> = ({
-    comment,
-    onLikeComment,
-    onReply,
-    likedComments,
-    commentLikeCounts,
-    likingComment,
-    replyingCommentId,
-    setReplyingCommentId,
-    replyText,
-    setReplyText,
-    replying
-}) => {
-    const [animatingComments, setAnimatingComments] = useState<{ [id: number]: boolean }>({});
-
-    const handleLikeClick = (id: number) => {
-        setAnimatingComments(prev => ({ ...prev, [id]: true }));
-        setTimeout(() => {
-            setAnimatingComments(prev => ({ ...prev, [id]: false }));
-        }, 600);
-        onLikeComment(id);
-    };
-
-        return (
-            <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, bgcolor: '#F6F8FB', borderRadius: 3, p: 1.5, boxShadow: 1 }}>
-                <Avatar src={`https://randomuser.me/api/portraits/lego/${comment.userId % 10}.jpg`} sx={{ width: 32, height: 32 }} />
-                <Box sx={{ flex: 1 }}>
-                    <Typography sx={{ fontWeight: 600, fontSize: 15, color: '#2563EB' }}>
-                        {comment.userFirstName} {comment.userLastName}
-                    </Typography>
-                    <Typography sx={{ fontSize: 12, color: '#6366F1', fontWeight: 500 }}>{comment.userRole}</Typography>
-                    <Typography sx={{ fontSize: 14, color: '#374151', mt: 0.5 }}>{comment.comment}</Typography>
-                    <Typography sx={{ fontSize: 12, color: '#6B7280', mt: 0.5 }}>
-                        {(() => {
-                            console.log('Comment date debug:', { addedAt: comment.addedAt, type: typeof comment.addedAt });
-                            return formatDate(comment.addedAt);
-                        })()}
-                    </Typography>
-
-                    <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
-                        <Button
-                            startIcon={
-                                likedComments[comment.id] ? (
-                                    <FavoriteIcon
-                                        className={`liked-heart-icon ${animatingComments[comment.id] ? 'liked-heart-icon-clicked' : ''}`}
-                                    />
-                                ) : (
-                                    <FavoriteBorderIcon
-                                        className={animatingComments[comment.id] ? 'liked-heart-icon-clicked' : ''}
-                                        sx={{ color: '#6B7280' }}
-                                    />
-                                )
-                            }
-                            sx={{
-                                color: '#374151',
-                                bgcolor: 'transparent',
-                                textTransform: 'none',
-                                fontWeight: 600,
-                                fontSize: 14,
-                                px: 1.5,
-                                borderRadius: 2,
-                                '&:hover': { bgcolor: '#EEF2FB', color: '#EF4444' }
-                            }}
-                            onClick={() => handleLikeClick(comment.id)}
-                            disabled={likingComment}
-                        >
-                            {commentLikeCounts[comment.id] !== undefined ? commentLikeCounts[comment.id] : comment.likeCount || 0}
-                        </Button>
-                        <Button
-                            sx={{ color: '#2563EB', textTransform: 'none', fontWeight: 600, fontSize: 14, px: 1.5, borderRadius: 2, bgcolor: 'rgba(37,99,235,0.06)', '&:hover': { bgcolor: 'rgba(37,99,235,0.18)' } }}
-                            onClick={() => setReplyingCommentId(comment.id)}
-                        >
-                            Reply
-                        </Button>
-                    </Box>
-
-                    {/* Display Replies */}
-                    {comment.replies && comment.replies.length > 0 && (
-                        <Box sx={{ mt: 2, ml: 2, borderLeft: '2px solid #E5E7EB', pl: 2 }}>
-                            {comment.replies.map((reply: any) => (
-                                <Box key={reply.id} sx={{ mb: 2, display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
-                                    <Avatar src={`https://randomuser.me/api/portraits/lego/${reply.userId % 10}.jpg`} sx={{ width: 28, height: 28 }} />
-                                    <Box sx={{ flex: 1 }}>
-                                        <Typography sx={{ fontWeight: 600, fontSize: 14, color: '#2563EB' }}>
-                                            {reply.userFirstName} {reply.userLastName}
-                                        </Typography>
-                                        <Typography sx={{ fontSize: 11, color: '#6366F1', fontWeight: 500 }}>{reply.userRole}</Typography>
-                                        <Typography sx={{ fontSize: 13, color: '#374151', mt: 0.5 }}>{reply.comment}</Typography>
-                                        <Typography sx={{ fontSize: 11, color: '#6B7280', mt: 0.5 }}>
-                                            {formatDate(reply.addedAt)}
-                                        </Typography>
-                                        <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
-                                            <Button
-                                                startIcon={
-                                                    likedComments[reply.id] ? (
-                                                        <FavoriteIcon
-                                                            className={`liked-heart-icon ${animatingComments[reply.id] ? 'liked-heart-icon-clicked' : ''}`}
-                                                        />
-                                                    ) : (
-                                                        <FavoriteBorderIcon
-                                                            className={animatingComments[reply.id] ? 'liked-heart-icon-clicked' : ''}
-                                                            sx={{ color: '#6B7280' }}
-                                                        />
-                                                    )
-                                                }
-                                                sx={{
-                                                    color: '#374151',
-                                                    bgcolor: 'transparent',
-                                                    textTransform: 'none',
-                                                    fontWeight: 600,
-                                                    fontSize: 12,
-                                                    px: 1,
-                                                    py: 0.5,
-                                                    borderRadius: 1,
-                                                    minHeight: 24,
-                                                    '&:hover': { bgcolor: '#EEF2FB', color: '#EF4444' }
-                                                }}
-                                                onClick={() => handleLikeClick(reply.id)}
-                                                disabled={likingComment}
-                                            >
-                                                {commentLikeCounts[reply.id] !== undefined ? commentLikeCounts[reply.id] : reply.likeCount || 0}
-                                            </Button>
-                                        </Box>
-                                    </Box>
-                                </Box>
-                            ))}
-                        </Box>
-                    )}
-
-                    {/* Reply input */}
-                    {replyingCommentId === comment.id && (
-                        <Box sx={{ mt: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
-                            <InputBase
-                                value={replyText}
-                                onChange={e => setReplyText(e.target.value)}
-                                placeholder="Write a reply..."
-                                sx={{
-                                    bgcolor: '#F3F4F6',
-                                    px: 2,
-                                    py: 1,
-                                    borderRadius: 2,
-                                    fontSize: 15,
-                                    flex: 1,
-                                    boxShadow: 1,
-                                }}
-                                multiline
-                                minRows={1}
-                                maxRows={4}
-                            />
-                            <Button
-                                variant="contained"
-                                sx={{ bgcolor: '#2563EB', fontWeight: 600, borderRadius: 2, px: 2, py: 1, '&:hover': { bgcolor: '#1D4ED8' } }}
-                                onClick={() => onReply(replyText)}
-                                disabled={replying || !replyText.trim()}
-                            >
-                                Send
-                            </Button>
-                            <Button
-                                sx={{ color: '#6B7280', fontWeight: 500, borderRadius: 2, px: 2, py: 1 }}
-                                onClick={() => { setReplyingCommentId(null); setReplyText(''); }}
-                            >
-                                Cancel
-                            </Button>
-                        </Box>
-                    )}
-                </Box>
-            </Box>
-        );
-    };
+// Comments UI uses shared CommentListItem + CommentComposer
 
 interface User {
     id: number;
@@ -343,6 +128,7 @@ interface Post {
     createdAt: string;
     user?: User;
     likesCount?: number;
+    commentCount?: number;
     commentsCount?: number;
     commentsList?: Comment[];
     isLiked?: boolean;
@@ -441,6 +227,10 @@ const GRAPHQL_QUERIES = {
                     ratingType
                     createdAt
                     updatedAt
+                    raterFirstName
+                    raterLastName
+                    raterProfilePhoto
+                    raterProfilePhotoSignedUrl
                 }
             }
         }
@@ -513,6 +303,10 @@ const GRAPHQL_QUERIES = {
                 ratingType
                 createdAt
                 updatedAt
+                raterFirstName
+                raterLastName
+                raterProfilePhoto
+                raterProfilePhotoSignedUrl
             }
         }
     `,
@@ -570,6 +364,10 @@ const GRAPHQL_QUERIES = {
                 ratingType
                 createdAt
                 updatedAt
+                raterFirstName
+                raterLastName
+                raterProfilePhoto
+                raterProfilePhotoSignedUrl
             }
         }
     `,
@@ -648,6 +446,9 @@ const GRAPHQL_QUERIES = {
                 status
                 addedAt
                 commentedAt
+                editedAt
+                profilePhoto
+                profilePhotoSignedUrl
                 replies {
                 id
                 postId
@@ -660,7 +461,10 @@ const GRAPHQL_QUERIES = {
                 status
                 addedAt
                 commentedAt
+                editedAt
                 likeCount
+                profilePhoto
+                profilePhotoSignedUrl
                 }
                 likeCount
             }
@@ -694,14 +498,50 @@ const GRAPHQL_QUERIES = {
     `,
 
     LIKE_COMMENT: `
-        mutation LikeComment($commentId: Int!, $userId: Int!) {
-            likeComment(commentId: $commentId, userId: $userId) {
+        mutation LikeComment($commentId: Int!, $userId: Int!, $reactionType: String) {
+            likeComment(commentId: $commentId, userId: $userId, reactionType: $reactionType) {
                 success
                 message
                 comment {
                     id
                     likeCount
                 }
+            }
+        }
+    `,
+
+    UNLIKE_COMMENT: `
+        mutation UnlikeComment($commentId: Int!, $userId: Int!) {
+            unlikeComment(commentId: $commentId, userId: $userId) {
+                success
+                message
+                comment {
+                    id
+                    likeCount
+                }
+            }
+        }
+    `,
+
+    UPDATE_COMMENT: `
+        mutation UpdateComment($commentId: Int!, $comment: String) {
+            updateComment(commentId: $commentId, comment: $comment) {
+                success
+                message
+                comment {
+                    id
+                    comment
+                    editedAt
+                }
+            }
+        }
+    `,
+
+    DELETE_COMMENT: `
+        mutation DeleteComment($commentId: Int!) {
+            deleteComment(commentId: $commentId) {
+                success
+                message
             }
         }
     `,
@@ -728,13 +568,13 @@ const GRAPHQL_QUERIES = {
                     status
                     addedAt
                     commentedAt
+                    editedAt
                     likeCount
                 }
             }
         }
     `,
 };
-
 // Remove these imports as they're not being used yet
 
 const apiService = {
@@ -818,7 +658,15 @@ const apiService = {
                     review: rating.review,
                     ratingType: rating.ratingType,
                     createdAt: rating.createdAt,
-                    updatedAt: rating.updatedAt
+                    updatedAt: rating.updatedAt,
+                    raterInfo: (rating.raterFirstName || rating.raterLastName || rating.raterProfilePhotoSignedUrl || rating.raterProfilePhoto)
+                        ? {
+                            id: rating.ratedByUserId,
+                            firstName: rating.raterFirstName || '',
+                            lastName: rating.raterLastName || '',
+                            profilePhoto: rating.raterProfilePhotoSignedUrl || rating.raterProfilePhoto || undefined,
+                        }
+                        : undefined,
                 })),
                 averageRating: parseFloat(averageRating.toFixed(1))
             };
@@ -897,6 +745,8 @@ const apiService = {
                 addedAt: comment.addedAt, // Keep as string, will be converted in component
                 commentedAt: comment.commentedAt, // Keep as string, will be converted in component
                 likeCount: comment.likeCount || 0,
+                profilePhoto: comment.profilePhoto,
+                profilePhotoSignedUrl: comment.profilePhotoSignedUrl,
                 replies: (comment.replies || []).map((reply: any) => ({
                     id: reply.id,
                     postId: reply.postId,
@@ -909,7 +759,9 @@ const apiService = {
                     status: reply.status,
                     addedAt: reply.addedAt, // Keep as string
                     commentedAt: reply.commentedAt, // Keep as string
-                    likeCount: reply.likeCount || 0
+                    likeCount: reply.likeCount || 0,
+                    profilePhoto: reply.profilePhoto,
+                    profilePhotoSignedUrl: reply.profilePhotoSignedUrl,
                 }))
             }));
         } catch (error) {
@@ -922,25 +774,6 @@ const apiService = {
         const data = await this.graphqlRequest(GRAPHQL_QUERIES.GET_USER_RATINGS, { userId });
         const list = (data.userRatings || []);
 
-        // Fetch rater info (first/last name, profilePhoto) for each unique ratedByUserId
-        const uniqueRaterIds: number[] = Array.from(
-            new Set<number>(
-                (list as any[])
-                    .map((r: any) => Number(r.ratedByUserId))
-                    .filter((x: number) => Number.isFinite(x) && x > 0)
-            )
-        );
-        const raterEntries = await Promise.all(uniqueRaterIds.map(async (rid) => {
-            try {
-                const u = await this.graphqlRequest(GRAPHQL_QUERIES.GET_USER_PROFILE, { id: rid });
-                const user = u.user;
-                return [rid, { firstName: user?.firstName, lastName: user?.lastName, profilePhoto: user?.profilePhotoSignedUrl || user?.profilePhoto }];
-            } catch {
-                return [rid, null];
-            }
-        }));
-        const raterMap = Object.fromEntries(raterEntries);
-
         return list.map((rating: any) => ({
             id: rating.id,
             ratedUserId: rating.ratedUserId,
@@ -950,7 +783,14 @@ const apiService = {
             ratingType: rating.ratingType,
             createdAt: rating.createdAt,
             updatedAt: rating.updatedAt,
-            raterInfo: raterMap[rating.ratedByUserId] || undefined,
+            raterInfo: (rating.raterFirstName || rating.raterLastName || rating.raterProfilePhotoSignedUrl || rating.raterProfilePhoto)
+                ? {
+                    id: rating.ratedByUserId,
+                    firstName: rating.raterFirstName || '',
+                    lastName: rating.raterLastName || '',
+                    profilePhoto: rating.raterProfilePhotoSignedUrl || rating.raterProfilePhoto || undefined,
+                }
+                : undefined,
         }));
     },
 
@@ -1039,12 +879,36 @@ const apiService = {
         return data.unlikePost;
     },
 
-    async likeComment(commentId: number, userId: number): Promise<any> {
+    async likeComment(commentId: number, userId: number, reactionType?: string): Promise<any> {
         const data = await this.graphqlRequest(GRAPHQL_QUERIES.LIKE_COMMENT, {
             commentId,
-            userId
+            userId,
+            reactionType: reactionType || 'like',
         });
         return data.likeComment;
+    },
+
+    async unlikeComment(commentId: number, userId: number): Promise<any> {
+        const data = await this.graphqlRequest(GRAPHQL_QUERIES.UNLIKE_COMMENT, {
+            commentId,
+            userId,
+        });
+        return data.unlikeComment;
+    },
+
+    async updateComment(commentId: number, comment: string): Promise<any> {
+        const data = await this.graphqlRequest(GRAPHQL_QUERIES.UPDATE_COMMENT, {
+            commentId,
+            comment,
+        });
+        return data.updateComment;
+    },
+
+    async deleteComment(commentId: number): Promise<any> {
+        const data = await this.graphqlRequest(GRAPHQL_QUERIES.DELETE_COMMENT, {
+            commentId,
+        });
+        return data.deleteComment;
     },
 
     async createComment(postId: number, userId: number, comment: string, parentCommentId?: number): Promise<any> {
@@ -1057,10 +921,12 @@ const apiService = {
         return data.createComment;
     },
 };
-
 const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUserId, onOpenProfile }) => {
     const navigate = useNavigate();
+    const isMobile = useMediaQuery('(max-width:900px)');
     const [createDmRoom] = useMutation(CREATE_DM_ROOM_MUTATION);
+    const [deletePostMutation] = useMutation(DELETE_POST);
+    const [updatePostMutation] = useMutation(UPDATE_POST);
     const [user, setUser] = useState<UserProfile | null>(null);
     const [posts, setPosts] = useState<Post[]>([]);
     const [reviews, setReviews] = useState<UserRating[]>([]);
@@ -1070,11 +936,17 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
     const [isFollowing, setIsFollowing] = useState(false);
     const [followingInProgress, setFollowingInProgress] = useState(false);
     const [postsLoading, setPostsLoading] = useState(false);
+    const [postMenu, setPostMenu] = useState<{ anchor: HTMLElement; post: any } | null>(null);
+    const [editPost, setEditPost] = useState<any | null>(null);
+    const [editTitle, setEditTitle] = useState('');
+    const [editContent, setEditContent] = useState('');
+    const [editSaving, setEditSaving] = useState(false);
 
     // Post likes and comments state
     const [likedPosts, setLikedPosts] = useState<{ [postId: string]: boolean }>({});
     const [postLikeCounts, setPostLikeCounts] = useState<{ [postId: string]: number }>({});
     const [likedComments, setLikedComments] = useState<{ [commentId: number]: boolean }>({});
+    const [commentReactions, setCommentReactions] = useState<{ [commentId: number]: string }>({});
     const [commentLikeCounts, setCommentLikeCounts] = useState<{ [commentId: number]: number }>({});
     const [commentsModalOpen, setCommentsModalOpen] = useState<{ open: boolean; postId: string | null }>({ open: false, postId: null });
     const [likingPost, setLikingPost] = useState(false);
@@ -1136,64 +1008,52 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
     const handleSnackClose = () => setSnack(prev => ({ ...prev, open: false }));
 
     useEffect(() => {
+        let cancelled = false;
+
         const fetchData = async () => {
             try {
                 setLoading(true);
                 setError(null);
 
-                console.log('Starting to fetch profile data for user ID:', userId);
-
+                // One profile call already includes counts + ratings — don't waterfall extra lists
                 const userProfile = await apiService.fetchUserProfile(userId);
-                console.log('User profile fetched successfully:', userProfile);
+                if (cancelled) return;
 
-                const followers = await apiService.fetchUserFollowers(userId);
-                console.log('Followers data:', followers);
+                setUser(userProfile);
+                setReviews(userProfile.ratings || []);
+                setLoading(false);
 
-                const following = await apiService.fetchUserFollowing(userId);
-                console.log('Following data:', following);
-
-                const ratings = await apiService.fetchUserReviews(userId);
-                console.log('Ratings data:', ratings);
-
-                const averageRating = ratings.length > 0
-                    ? ratings.reduce((sum: number, rating: any) => sum + rating.ratingValue, 0) / ratings.length
-                    : 0;
-
-                setUser({
-                    ...userProfile,
-                    followersCount: followers.length,
-                    followingCount: following.length,
-                    ratings,
-                    averageRating: parseFloat(averageRating.toFixed(1)),
-                });
-                setReviews(ratings);
+                // Non-blocking: posts + follow status
+                loadUserPosts();
 
                 if (currentUserId && currentUserId !== userId) {
-                    try {
-                        // Outgoing status (you -> profile user)
-                        const followStatus = await apiService.checkFollowingStatus(currentUserId, userId);
+                    Promise.all([
+                        apiService.checkFollowingStatus(currentUserId, userId),
+                        apiService.checkFollowingStatus(userId, currentUserId),
+                    ]).then(([followStatus, incoming]) => {
+                        if (cancelled) return;
                         setFollowingStatus(followStatus);
                         setIsFollowing(followStatus?.status === 'active');
-                        // Incoming status (profile user -> you) for accept/decline
-                        const incoming = await apiService.checkFollowingStatus(userId, currentUserId);
                         setIncomingFollowStatus(incoming);
-                    } catch (err) {
+                    }).catch((err) => {
                         console.warn('Error checking following status:', err);
-                        setIsFollowing(false);
-                        setIncomingFollowStatus(null);
-                    }
+                        if (!cancelled) {
+                            setIsFollowing(false);
+                            setIncomingFollowStatus(null);
+                        }
+                    });
                 }
-
-                loadUserPosts();
             } catch (err) {
                 console.error('Error fetching profile data:', err);
-                setError(err instanceof Error ? err.message : 'Failed to load profile data');
-            } finally {
-                setLoading(false);
+                if (!cancelled) {
+                    setError(err instanceof Error ? err.message : 'Failed to load profile data');
+                    setLoading(false);
+                }
             }
         };
 
         fetchData();
+        return () => { cancelled = true; };
     }, [userId, currentUserId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const client = useApolloClient();
@@ -1216,8 +1076,18 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                 // Comments load on demand when the user opens the comments UI.
                 const postsWithDetails = data.postsByUser.map((post: any) => ({
                     ...post,
+                    id: String(post.id),
                     likesCount: post.likeCount || 0,
+                    commentCount: post.commentCount ?? 0,
+                    commentsCount: post.commentCount ?? 0,
                     commentsList: [] as any[],
+                    userProfilePhotoSignedUrl: post.userProfilePhotoSignedUrl || post.userProfilePhoto,
+                    user: {
+                        id: post.userId,
+                        firstName: post.userFirstName || '',
+                        lastName: post.userLastName || '',
+                        profilePhoto: post.userProfilePhotoSignedUrl || post.userProfilePhoto || undefined,
+                    },
                 }));
                 setPosts(postsWithDetails);
 
@@ -1412,6 +1282,11 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
             try {
                 const commentsData = await apiService.fetchPostComments(postId, 50);
                 setCommentsByPost(prev => ({ ...prev, [postId]: commentsData }));
+                setPosts(prev => prev.map(p => {
+                    if (String(p.id) !== String(postId)) return p;
+                    const count = commentsData.length;
+                    return { ...p, commentCount: count, commentsCount: count };
+                }));
             } catch (error) {
                 console.error('Error fetching comments:', error);
             } finally {
@@ -1440,6 +1315,15 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                 const commentsData = await apiService.fetchPostComments(postId, 50);
                 setCommentsByPost(prev => ({ ...prev, [postId]: commentsData }));
 
+                // Bump visible count for top-level comments only
+                if (!parentCommentId) {
+                    setPosts(prev => prev.map(p => {
+                        if (String(p.id) !== String(postId)) return p;
+                        const next = (p.commentCount ?? p.commentsCount ?? 0) + 1;
+                        return { ...p, commentCount: next, commentsCount: next };
+                    }));
+                }
+
                 // Clear reply text if it was a reply
                 if (parentCommentId) {
                     setReplyText('');
@@ -1451,24 +1335,80 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
         }
     };
 
-    const handleLikeComment = async (commentId: number) => {
+    const handleReactComment = async (commentId: number, emoji: string) => {
         if (!currentUserId) return;
+
+        const current = normalizeReactionEmoji(commentReactions[commentId]) || (likedComments[commentId] ? '❤️' : null);
+        const same = current === emoji;
 
         setLikingComment(true);
         try {
-            const result = await apiService.likeComment(commentId, currentUserId);
-
-            if (result?.success) {
-                setLikedComments(prev => ({ ...prev, [commentId]: !prev[commentId] }));
-                setCommentLikeCounts(prev => ({
-                    ...prev,
-                    [commentId]: result.comment.likeCount
-                }));
+            if (same) {
+                const result = await apiService.unlikeComment(commentId, currentUserId);
+                if (result?.success) {
+                    setLikedComments(prev => ({ ...prev, [commentId]: false }));
+                    setCommentReactions(prev => {
+                        const next = { ...prev };
+                        delete next[commentId];
+                        return next;
+                    });
+                    setCommentLikeCounts(prev => ({
+                        ...prev,
+                        [commentId]: result.comment?.likeCount ?? Math.max(0, (prev[commentId] || 1) - 1),
+                    }));
+                }
+            } else {
+                const result = await apiService.likeComment(commentId, currentUserId, emoji);
+                if (result?.success) {
+                    const wasLiked = Boolean(current);
+                    setLikedComments(prev => ({ ...prev, [commentId]: true }));
+                    setCommentReactions(prev => ({ ...prev, [commentId]: emoji }));
+                    setCommentLikeCounts(prev => ({
+                        ...prev,
+                        [commentId]: result.comment?.likeCount ?? (prev[commentId] || 0) + (wasLiked ? 0 : 1),
+                    }));
+                }
             }
         } catch (error) {
-            console.error('Error liking comment:', error);
+            console.error('Error reacting to comment:', error);
         } finally {
             setLikingComment(false);
+        }
+    };
+
+    const handleEditComment = async (commentId: number, text: string) => {
+        try {
+            const result = await apiService.updateComment(commentId, text);
+            if (result?.success && commentsModalOpen.postId) {
+                const commentsData = await apiService.fetchPostComments(commentsModalOpen.postId, 50);
+                setCommentsByPost(prev => ({ ...prev, [commentsModalOpen.postId!]: commentsData }));
+            }
+        } catch (error) {
+            console.error('Error editing comment:', error);
+        }
+    };
+
+    const handleDeleteComment = async (commentId: number) => {
+        if (!window.confirm('Delete this comment?')) return;
+        const postId = commentsModalOpen.postId;
+        if (!postId) return;
+        const existing = commentsByPost[postId];
+        const wasTopLevel = Boolean(existing?.some((c: any) => c.id === commentId));
+        try {
+            const result = await apiService.deleteComment(commentId);
+            if (result?.success) {
+                const commentsData = await apiService.fetchPostComments(postId, 50);
+                setCommentsByPost(prev => ({ ...prev, [postId]: commentsData }));
+                if (wasTopLevel) {
+                    setPosts(prev => prev.map(p => {
+                        if (String(p.id) !== String(postId)) return p;
+                        const next = Math.max(0, (p.commentCount ?? p.commentsCount ?? 1) - 1);
+                        return { ...p, commentCount: next, commentsCount: next };
+                    }));
+                }
+            }
+        } catch (error) {
+            console.error('Error deleting comment:', error);
         }
     };
 
@@ -1487,7 +1427,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
     if (loading) {
         return (
             <Box sx={{
-                bgcolor: '#F6F8FB',
+                ...PAGE_ATMOSPHERE,
                 minHeight: '100vh',
                 display: 'flex',
                 alignItems: 'center',
@@ -1504,24 +1444,51 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
 
     if (error || !user) {
         return (
-            <Box sx={{ bgcolor: '#F6F8FB', minHeight: '100vh', ...interFont }}>
-                <AppBar position="fixed" elevation={1} sx={{ bgcolor: '#fff', color: '#2563EB', zIndex: 1201 }}>
-                    <Toolbar sx={{ justifyContent: 'space-between', px: 2 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                            <IconButton onClick={onGoBack} sx={{ color: '#2563EB' }}>
+            <Box sx={{
+                ...PAGE_ATMOSPHERE,
+                minHeight: '100vh',
+                ...interFont,
+            }}>
+                <AppBar
+                    position="fixed"
+                    elevation={0}
+                    sx={{
+                        ...MATTE_HEADER,
+                        zIndex: 1201,
+                        bgcolor: '#F3EFE8 !important',
+                        backgroundColor: '#F3EFE8 !important',
+                        backgroundImage: 'linear-gradient(180deg, #F6F2EB 0%, #EFEAE2 100%) !important',
+                    }}
+                >
+                    <Toolbar sx={{ justifyContent: 'space-between', px: { xs: 1, sm: 2 }, minHeight: { xs: 56, sm: 64 }, gap: 1 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.5, sm: 2 }, minWidth: 0 }}>
+                            <IconButton onClick={onGoBack} size={isMobile ? 'small' : 'medium'} sx={{ color: '#2563EB' }}>
                                 <ArrowBackIcon />
                             </IconButton>
-                            <Typography variant="h6" sx={{ fontWeight: 700, color: '#2563EB' }}>
+                            <Typography variant="h6" sx={{ fontWeight: 700, color: '#2563EB', fontSize: { xs: '1rem', sm: '1.25rem' } }}>
                                 Profile
                             </Typography>
                         </Box>
-                        <Typography variant="h5" sx={{ fontWeight: 900, color: '#2563EB', letterSpacing: 1 }}>
+                        <Typography
+                            variant="h5"
+                            sx={{
+                                fontWeight: 900,
+                                color: '#2563EB',
+                                letterSpacing: 1,
+                                fontSize: { xs: 'clamp(0.85rem, 3.5vw, 1.1rem)', sm: '1.5rem' },
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                minWidth: 0,
+                                maxWidth: { xs: '48%', sm: 'none' },
+                            }}
+                        >
                             Zameen pe charcha
                         </Typography>
                     </Toolbar>
                 </AppBar>
-                <Box sx={{ pt: 10, px: 2, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 'calc(100vh - 80px)' }}>
-                    <Alert severity="error" sx={{ maxWidth: 400 }}>
+                <Box sx={{ pt: { xs: 9, sm: 10 }, px: { xs: 1.25, sm: 2 }, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 'calc(100vh - 80px)' }}>
+                    <Alert severity="error" sx={{ maxWidth: 400, width: '100%' }}>
                         {error || 'User profile not found'}
                     </Alert>
                 </Box>
@@ -1532,48 +1499,85 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
     const isOwnProfile = currentUserId === userId;
 
     return (
-        <Box sx={{ bgcolor: '#F6F8FB', minHeight: '100vh', ...interFont }}>
-            <AppBar position="fixed" elevation={1} sx={{ bgcolor: '#fff', color: '#2563EB', zIndex: 1201 }}>
-                <Toolbar sx={{ justifyContent: 'space-between', px: 2 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <IconButton onClick={onGoBack} sx={{ color: '#2563EB' }}>
+        <>
+        <Box sx={{
+            ...PAGE_ATMOSPHERE,
+            minHeight: '100vh',
+            ...interFont,
+        }}>
+            <AppBar
+                position="fixed"
+                elevation={0}
+                sx={{
+                    ...MATTE_HEADER,
+                    zIndex: 1201,
+                    bgcolor: '#F3EFE8 !important',
+                    backgroundColor: '#F3EFE8 !important',
+                    backgroundImage: 'linear-gradient(180deg, #F6F2EB 0%, #EFEAE2 100%) !important',
+                }}
+            >
+                <Toolbar sx={{ justifyContent: 'space-between', px: { xs: 1, sm: 2 }, minHeight: { xs: 56, sm: 64 }, gap: 1, bgcolor: 'transparent' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.5, sm: 2 }, minWidth: 0 }}>
+                        <IconButton onClick={onGoBack} size={isMobile ? 'small' : 'medium'} sx={{ color: '#2563EB' }}>
                             <ArrowBackIcon />
                         </IconButton>
-                        <Typography variant="h6" sx={{ fontWeight: 700, color: '#2563EB' }}>
+                        <Typography variant="h6" sx={{ fontWeight: 700, color: '#2563EB', fontSize: { xs: '1rem', sm: '1.25rem' } }}>
                             Profile
                         </Typography>
                     </Box>
-                    <Typography variant="h5" sx={{ fontWeight: 900, color: '#2563EB', letterSpacing: 1 }}>
+                    <Typography
+                        variant="h5"
+                        sx={{
+                            fontWeight: 900,
+                            color: '#2563EB',
+                            letterSpacing: 1,
+                            fontSize: { xs: 'clamp(0.85rem, 3.5vw, 1.1rem)', sm: '1.5rem' },
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            minWidth: 0,
+                            maxWidth: { xs: '48%', sm: 'none' },
+                        }}
+                    >
                         Zameen pe charcha
                     </Typography>
                 </Toolbar>
             </AppBar>
 
-            <Box sx={{ pt: 10, px: 2 }}>
-                <Box sx={{ position: 'relative', borderRadius: 2, overflow: 'hidden', mb: 3 }}>
-                    <img
+            <Box sx={{ pt: { xs: 9, sm: 10 }, px: { xs: 1.25, sm: 2 }, pb: { xs: 3, sm: 4 } }}>
+                <Box sx={{ position: 'relative', borderRadius: { xs: 1.5, sm: 2 }, overflow: 'hidden', mb: { xs: 2, sm: 3 } }}>
+                    <Box
+                        component="img"
                         src={(user as any).coverPhotoSignedUrl || 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&h=300&fit=crop'}
                         alt="Cover"
-                        style={{ width: '100%', height: 250, objectFit: 'cover' }}
-                        onError={(e) => {
-                            (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&h=300&fit=crop';
+                        sx={{
+                            width: '100%',
+                            height: { xs: 140, sm: 200, md: 250 },
+                            objectFit: 'cover',
+                            display: 'block',
+                        }}
+                        onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
+                            e.currentTarget.src = 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&h=300&fit=crop';
                         }}
                     />
                     {isOwnProfile && (
                         <Button
                             startIcon={<CameraAltIcon />}
+                            size={isMobile ? 'small' : 'medium'}
                             sx={{
                                 position: 'absolute',
-                                top: 16,
-                                right: 16,
+                                top: { xs: 8, sm: 16 },
+                                right: { xs: 8, sm: 16 },
                                 bgcolor: 'rgba(255,255,255,0.9)',
                                 color: '#2563EB',
                                 textTransform: 'none',
-                                fontWeight: 600
+                                fontWeight: 600,
+                                minWidth: { xs: 0, sm: 'auto' },
+                                px: { xs: 1.25, sm: 2 },
                             }}
                             onClick={handleChooseCoverPhoto}
                         >
-                            Edit Cover
+                            {isMobile ? 'Edit' : 'Edit Cover'}
                         </Button>
                     )}
                 </Box>
@@ -1588,13 +1592,30 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                     if (f) uploadWithPresign(f, false);
                 }} />
 
-                <Box sx={{ bgcolor: '#fff', borderRadius: 3, p: 3, mb: 3, boxShadow: '0 2px 12px rgba(37,99,235,0.08)' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 3 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                            <Box sx={{ position: 'relative' }}>
+                <Box
+                    sx={{
+                        ...MATTE_SURFACE,
+                        borderRadius: { xs: 2, sm: 3 },
+                        p: { xs: 1.5, sm: 3 },
+                        mb: { xs: 2, sm: 3 },
+                        bgcolor: '#F3EFE8',
+                        backgroundColor: '#F3EFE8',
+                        backgroundImage: 'linear-gradient(165deg, #F6F2EB 0%, #EFEAE2 55%, #EAE4DB 100%)',
+                    }}
+                >
+                    <Box sx={{
+                        display: 'flex',
+                        flexDirection: { xs: 'column', sm: 'row' },
+                        alignItems: { xs: 'stretch', sm: 'flex-start' },
+                        justifyContent: 'space-between',
+                        gap: 2,
+                        mb: { xs: 2, sm: 3 },
+                    }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1.5, sm: 2 }, minWidth: 0 }}>
+                            <Box sx={{ position: 'relative', flexShrink: 0 }}>
                                 <Avatar
                                     src={(user as any).profilePhotoSignedUrl || user.profilePhoto || 'https://randomuser.me/api/portraits/lego/1.jpg'}
-                                    sx={{ width: 100, height: 100, border: '4px solid white', boxShadow: 2 }}
+                                    sx={{ width: { xs: 72, sm: 100 }, height: { xs: 72, sm: 100 }, border: '4px solid white', boxShadow: 2 }}
                                     onError={(e) => {
                                         (e.target as HTMLImageElement).src = 'https://randomuser.me/api/portraits/lego/1.jpg';
                                     }}
@@ -1602,36 +1623,50 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                 {user.isActive && (
                                     <Box sx={{
                                         position: 'absolute',
-                                        bottom: 8,
-                                        right: 8,
-                                        width: 16,
-                                        height: 16,
+                                        bottom: { xs: 4, sm: 8 },
+                                        right: { xs: 4, sm: 8 },
+                                        width: { xs: 12, sm: 16 },
+                                        height: { xs: 12, sm: 16 },
                                         bgcolor: '#4CAF50',
                                         borderRadius: '50%',
                                         border: '2px solid white'
                                     }} />
                                 )}
                             </Box>
-                            <Box>
-                                <Typography variant="h4" sx={{ fontWeight: 700, color: '#2563EB', mb: 0.5 }}>
+                            <Box sx={{ minWidth: 0, flex: 1 }}>
+                                <Typography sx={{
+                                    fontWeight: 700,
+                                    color: '#2563EB',
+                                    mb: 0.5,
+                                    fontSize: { xs: '1.25rem', sm: '2.125rem' },
+                                    lineHeight: 1.2,
+                                    wordBreak: 'break-word',
+                                }}>
                                     {user.firstName} {user.lastName}
                                 </Typography>
-                                <Typography sx={{ color: '#6B7280', mb: 0.5 }}>{user.role || 'User'}</Typography>
+                                <Typography sx={{ color: '#6B7280', mb: 0.5, fontSize: { xs: '0.875rem', sm: '1rem' } }}>{user.role || 'User'}</Typography>
                                 <Typography sx={{ color: '#9CA3AF', fontSize: '0.875rem' }}>{user.address || 'No location provided'}</Typography>
                                 {user.bio && (
-                                    <Typography sx={{ color: '#6B7280', fontSize: '0.875rem', mt: 1, maxWidth: 300 }}>
+                                    <Typography sx={{ color: '#6B7280', fontSize: '0.875rem', mt: 1, maxWidth: { xs: '100%', sm: 300 } }}>
                                         {user.bio}
                                     </Typography>
                                 )}
                             </Box>
                         </Box>
                         {!isOwnProfile && (
-                            <Box sx={{ display: 'flex', gap: 1 }}>
+                            <Box sx={{
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                gap: 1,
+                                width: { xs: '100%', sm: 'auto' },
+                                flexShrink: 0,
+                            }}>
                                 {incomingFollowStatus?.status === 'pending' ? (
                                     <>
                                         <Button
                                             variant="contained"
-                                            sx={{ bgcolor: '#16A34A', '&:hover': { bgcolor: '#15803D' } }}
+                                            size={isMobile ? 'small' : 'medium'}
+                                            sx={{ bgcolor: '#16A34A', '&:hover': { bgcolor: '#15803D' }, flex: { xs: '1 1 auto', sm: '0 0 auto' } }}
                                             onClick={async () => {
                                                 try {
                                                     const data = await apiService.graphqlRequest(GRAPHQL_QUERIES.UPDATE_FOLLOW_STATUS, {
@@ -1648,7 +1683,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                         >Accept</Button>
                                         <Button
                                             variant="outlined"
-                                            sx={{ borderColor: '#EF4444', color: '#EF4444' }}
+                                            size={isMobile ? 'small' : 'medium'}
+                                            sx={{ borderColor: '#EF4444', color: '#EF4444', flex: { xs: '1 1 auto', sm: '0 0 auto' } }}
                                             onClick={async () => {
                                                 try {
                                                     const data = await apiService.graphqlRequest(GRAPHQL_QUERIES.UPDATE_FOLLOW_STATUS, {
@@ -1669,6 +1705,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                         <Button
                                             variant={isFollowing ? "outlined" : "contained"}
                                             startIcon={<PersonAddIcon />}
+                                            size={isMobile ? 'small' : 'medium'}
                                             onClick={handleFollow}
                                             disabled={followingInProgress}
                                             sx={{
@@ -1677,6 +1714,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                                 color: isFollowing ? '#2563EB' : 'white',
                                                 textTransform: 'none',
                                                 fontWeight: 600,
+                                                flex: { xs: '1 1 auto', sm: '0 0 auto' },
                                                 '&:hover': {
                                                     bgcolor: isFollowing ? 'rgba(37, 99, 235, 0.1)' : '#1D4ED8'
                                                 }
@@ -1690,6 +1728,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                         <Button
                                             variant="outlined"
                                             startIcon={<MessageIcon />}
+                                            size={isMobile ? 'small' : 'medium'}
                                             onClick={async () => {
                                                 if (!currentUserId || !user) return;
                                                 try {
@@ -1705,7 +1744,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                                         setSnack({ open: true, message: 'Failed to start conversation', severity: 'error' });
                                                         return;
                                                     }
-                                                    navigate('/chat', { state: { autoSelectRoomId: roomId } });
+                                                    navigate('/home', { state: { openChat: true, autoSelectRoomId: roomId } });
                                                 } catch (err) {
                                                     console.error('Failed to create DM room', err);
                                                     setSnack({ open: true, message: 'Failed to start conversation', severity: 'error' });
@@ -1715,7 +1754,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                                 borderColor: '#2563EB',
                                                 color: '#2563EB',
                                                 textTransform: 'none',
-                                                fontWeight: 600
+                                                fontWeight: 600,
+                                                flex: { xs: '1 1 auto', sm: '0 0 auto' },
                                             }}
                                         >
                                             Message
@@ -1725,10 +1765,11 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                             </Box>
                         )}
                         {isOwnProfile && followingStatus?.status === 'pending' && (
-                            <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, width: { xs: '100%', sm: 'auto' } }}>
                                 <Button
                                     variant="contained"
-                                    sx={{ bgcolor: '#16A34A', '&:hover': { bgcolor: '#15803D' } }}
+                                    size={isMobile ? 'small' : 'medium'}
+                                    sx={{ bgcolor: '#16A34A', '&:hover': { bgcolor: '#15803D' }, flex: { xs: '1 1 auto', sm: '0 0 auto' } }}
                                     onClick={async () => {
                                         try {
                                             const data = await apiService.graphqlRequest(GRAPHQL_QUERIES.UPDATE_FOLLOW_STATUS, {
@@ -1748,7 +1789,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                 >Accept</Button>
                                 <Button
                                     variant="outlined"
-                                    sx={{ borderColor: '#EF4444', color: '#EF4444' }}
+                                    size={isMobile ? 'small' : 'medium'}
+                                    sx={{ borderColor: '#EF4444', color: '#EF4444', flex: { xs: '1 1 auto', sm: '0 0 auto' } }}
                                     onClick={async () => {
                                         try {
                                             const data = await apiService.graphqlRequest(GRAPHQL_QUERIES.UPDATE_FOLLOW_STATUS, {
@@ -1768,11 +1810,25 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                             </Box>
                         )}
                         {isOwnProfile && (
-                            <Box sx={{ display: 'flex', gap: 1 }}>
-                                <Button variant="outlined" onClick={handleChooseProfilePhoto}>Change Profile Photo</Button>
+                            <Box sx={{
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                gap: 1,
+                                width: { xs: '100%', sm: 'auto' },
+                                flexShrink: 0,
+                            }}>
+                                <Button
+                                    variant="outlined"
+                                    size={isMobile ? 'small' : 'medium'}
+                                    sx={{ flex: { xs: '1 1 auto', sm: '0 0 auto' }, textTransform: 'none' }}
+                                    onClick={handleChooseProfilePhoto}
+                                >
+                                    {isMobile ? 'Change Photo' : 'Change Profile Photo'}
+                                </Button>
                                 <Button
                                     variant="contained"
-                                    sx={{ bgcolor: '#2563EB', '&:hover': { bgcolor: '#1D4ED8' } }}
+                                    size={isMobile ? 'small' : 'medium'}
+                                    sx={{ bgcolor: '#2563EB', '&:hover': { bgcolor: '#1D4ED8' }, flex: { xs: '1 1 auto', sm: '0 0 auto' }, textTransform: 'none' }}
                                     onClick={async () => {
                                         try {
                                             setLoadingFF(true);
@@ -1783,13 +1839,23 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                             setFollowersOpen(true);
                                         } finally { setLoadingFF(false); }
                                     }}
-                                >Pending requests</Button>
+                                >
+                                    {isMobile ? 'Pending' : 'Pending requests'}
+                                </Button>
                             </Box>
                         )}
                     </Box>
 
-                    <Box sx={{ display: 'flex', gap: 4, pt: 2, borderTop: '1px solid #E5E7EB' }}>
-                        <Box sx={{ textAlign: 'center', cursor: 'pointer' }} onClick={async () => {
+                    <Box sx={{
+                        display: 'flex',
+                        flexWrap: 'nowrap',
+                        justifyContent: 'space-between',
+                        alignItems: 'flex-start',
+                        gap: { xs: 0.5, sm: 4 },
+                        pt: 2,
+                        borderTop: '1px solid #E5E7EB',
+                    }}>
+                        <Box sx={{ textAlign: 'center', cursor: 'pointer', flex: 1, minWidth: 0 }} onClick={async () => {
                             try {
                                 setLoadingFF(true);
                                 const list = await apiService.fetchUserFollowers(userId);
@@ -1804,12 +1870,12 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                 setFollowersOpen(true);
                             } finally { setLoadingFF(false); }
                         }}>
-                            <Typography variant="h5" sx={{ fontWeight: 700, color: '#2563EB' }}>
+                            <Typography sx={{ fontWeight: 700, color: '#2563EB', fontSize: { xs: '1.05rem', sm: '1.5rem' }, lineHeight: 1.2 }}>
                                 {user.followersCount.toLocaleString()}
                             </Typography>
-                            <Typography sx={{ color: '#6B7280', fontSize: '0.875rem' }}>Followers</Typography>
+                            <Typography sx={{ color: '#6B7280', fontSize: { xs: '0.7rem', sm: '0.875rem' }, whiteSpace: 'nowrap' }}>Followers</Typography>
                         </Box>
-                        <Box sx={{ textAlign: 'center', cursor: 'pointer' }} onClick={async () => {
+                        <Box sx={{ textAlign: 'center', cursor: 'pointer', flex: 1, minWidth: 0 }} onClick={async () => {
                             try {
                                 setLoadingFF(true);
                                 const list = await apiService.fetchUserFollowing(userId);
@@ -1824,29 +1890,29 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                 setFollowingOpen(true);
                             } finally { setLoadingFF(false); }
                         }}>
-                            <Typography variant="h5" sx={{ fontWeight: 700, color: '#2563EB' }}>
+                            <Typography sx={{ fontWeight: 700, color: '#2563EB', fontSize: { xs: '1.05rem', sm: '1.5rem' }, lineHeight: 1.2 }}>
                                 {user.followingCount}
                             </Typography>
-                            <Typography sx={{ color: '#6B7280', fontSize: '0.875rem' }}>Following</Typography>
+                            <Typography sx={{ color: '#6B7280', fontSize: { xs: '0.7rem', sm: '0.875rem' }, whiteSpace: 'nowrap' }}>Following</Typography>
                         </Box>
-                        <Box sx={{ textAlign: 'center' }}>
-                            <Typography variant="h5" sx={{ fontWeight: 700, color: '#2563EB' }}>
+                        <Box sx={{ textAlign: 'center', flex: 1, minWidth: 0 }}>
+                            <Typography sx={{ fontWeight: 700, color: '#2563EB', fontSize: { xs: '1.05rem', sm: '1.5rem' }, lineHeight: 1.2 }}>
                                 {user.averageRating.toFixed(1)}
                             </Typography>
-                            <Typography sx={{ color: '#6B7280', fontSize: '0.875rem' }}>Rating</Typography>
+                            <Typography sx={{ color: '#6B7280', fontSize: { xs: '0.7rem', sm: '0.875rem' }, whiteSpace: 'nowrap' }}>Rating</Typography>
                         </Box>
-                        <Box sx={{ textAlign: 'center' }}>
-                            <Typography variant="h5" sx={{ fontWeight: 700, color: '#2563EB' }}>
+                        <Box sx={{ textAlign: 'center', flex: 1, minWidth: 0 }}>
+                            <Typography sx={{ fontWeight: 700, color: '#2563EB', fontSize: { xs: '1.05rem', sm: '1.5rem' }, lineHeight: 1.2 }}>
                                 {user.ratings.length}
                             </Typography>
-                            <Typography sx={{ color: '#6B7280', fontSize: '0.875rem' }}>Reviews</Typography>
+                            <Typography sx={{ color: '#6B7280', fontSize: { xs: '0.7rem', sm: '0.875rem' }, whiteSpace: 'nowrap' }}>Reviews</Typography>
                         </Box>
                     </Box>
                 </Box>
 
                 {/* User Posts Section */}
-                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '2fr 1fr' }, gap: 3 }}>
-                    <Box>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '2fr 1fr' }, gap: { xs: 2, sm: 3 } }}>
+                    <Box sx={{ minWidth: 0 }}>
                         {postsLoading ? (
                             <Stack spacing={4}>
                                 <PostSkeleton />
@@ -1854,7 +1920,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                 <PostSkeleton />
                             </Stack>
                         ) : posts.length === 0 ? (
-                            <Box sx={{ bgcolor: '#fff', borderRadius: 3, p: 4, textAlign: 'center', boxShadow: '0 2px 12px rgba(37,99,235,0.08)' }}>
+                            <Box sx={{ ...MATTE_POST_SX, borderRadius: { xs: 2, sm: 3 }, p: { xs: 2.5, sm: 4 }, textAlign: 'center' }}>
                                 <Typography variant="h6" sx={{ color: '#6B7280', mb: 1 }}>
                                     No Posts Yet
                                 </Typography>
@@ -1866,21 +1932,43 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                 </Typography>
                             </Box>
                         ) : (
-                            posts.map((post) => (
-                                <Box key={post.id} sx={{ bgcolor: '#fff', borderRadius: 3, p: 3, mb: 3, boxShadow: '0 2px 12px rgba(37,99,235,0.08)' }}>
-                                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                            posts.map((post) => {
+                                const authorName = `${(post as any).userFirstName || ''} ${(post as any).userLastName || ''}`.trim()
+                                    || `${user?.firstName || ''} ${user?.lastName || ''}`.trim();
+                                const photoUrl =
+                                    (post as any).userProfilePhotoSignedUrl ||
+                                    (post as any).userProfilePhoto ||
+                                    post.user?.profilePhoto ||
+                                    (user as any)?.profilePhotoSignedUrl ||
+                                    user?.profilePhoto ||
+                                    undefined;
+                                const canManage = currentUserId != null && String(currentUserId) === String((post as any).userId);
+                                return (
+                                <Box key={post.id} sx={{ ...MATTE_POST_SX, borderRadius: { xs: 2, sm: 3 }, p: { xs: 1.5, sm: 3 }, mb: { xs: 2, sm: 3 }, minWidth: 0 }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, minWidth: 0 }}>
                                         <Avatar
-                                            src={(post as any).userProfilePhotoSignedUrl || (post as any).profilePhoto || `https://randomuser.me/api/portraits/lego/${(post as any).userId % 10}.jpg`}
-                                            sx={{ width: 44, height: 44, mr: 2, boxShadow: 1, cursor: 'pointer' }}
+                                            src={photoUrl}
+                                            sx={{
+                                                width: 44,
+                                                height: 44,
+                                                mr: 2,
+                                                boxShadow: 1,
+                                                cursor: 'pointer',
+                                                flexShrink: 0,
+                                                bgcolor: stringToColor(authorName || String((post as any).userId)),
+                                                fontWeight: 700,
+                                            }}
                                             onClick={() => onOpenProfile && onOpenProfile((post as any).userId)}
-                                        />
+                                        >
+                                            {nameInitials(authorName, String((post as any).userId))}
+                                        </Avatar>
                                         <Box
                                             onClick={() => onOpenProfile && onOpenProfile((post as any).userId)}
-                                            sx={{ cursor: 'pointer' }}
+                                            sx={{ cursor: 'pointer', minWidth: 0, flex: 1 }}
                                             role="button"
                                             aria-label={`Open profile of ${(post as any).userFirstName} ${(post as any).userLastName}`}
                                         >
-                                            <Typography sx={{ fontWeight: 700, fontSize: 18, color: '#2563EB', ...interFont }}>
+                                            <Typography sx={{ fontWeight: 700, fontSize: { xs: 16, sm: 18 }, color: '#2563EB', ...interFont, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                                 {(post as any).userFirstName} {(post as any).userLastName}
                                             </Typography>
                                             <Typography sx={{ fontSize: 13, color: '#6B7280', fontWeight: 500 }}>
@@ -1890,10 +1978,23 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                                 {new Date(post.createdAt).toLocaleString()}
                                             </Typography>
                                         </Box>
+                                        {canManage && (
+                                            <IconButton
+                                                size="small"
+                                                onClick={(e) => setPostMenu({ anchor: e.currentTarget, post })}
+                                                aria-label="Post options"
+                                            >
+                                                <MoreVertIcon />
+                                            </IconButton>
+                                        )}
                                     </Box>
 
-                                    <Typography sx={{ color: '#2563EB', fontWeight: 700, fontSize: 17, mb: 1 }}>{(post as any).title}</Typography>
-                                    <Typography sx={{ color: '#374151', lineHeight: 1.6, mb: 2 }}>{(post as any).content}</Typography>
+                                    <Typography sx={{ color: '#2563EB', fontWeight: 700, fontSize: { xs: 15, sm: 17 }, mb: 1, wordBreak: 'break-word' }}>{(post as any).title}</Typography>
+                                    <Typography sx={{ color: '#374151', lineHeight: 1.6, mb: 2, wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
+                                        {renderMentionContent((post as any).content || '', {
+                                            onOpenProfile: onOpenProfile || undefined,
+                                        })}
+                                    </Typography>
                                     
                                     {(post as any).location && (
                                         <Typography sx={{ color: '#6B7280', fontSize: 14, mb: 2 }}>
@@ -1902,65 +2003,50 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                     )}
 
                                     {post.media && post.media.length > 0 && (
-                                        <Box sx={{ mb: 2 }}>
-                                            {post.media.slice(0, 4).map((media, index) => {
+                                        <Box sx={{
+                                            mb: 2,
+                                            display: 'grid',
+                                            gridTemplateColumns: post.media.length > 1
+                                                ? { xs: '1fr 1fr', sm: '1fr 1fr' }
+                                                : '1fr',
+                                            gap: 1,
+                                        }}>
+                                            {post.media.slice(0, 4).map((media) => {
                                                 const imageUrl = media.signedUrl || media.mediaUrl;
-                                                console.log(`Post ${post.id} Media ${index}:`, {
-                                                    mediaUrl: media.mediaUrl,
-                                                    signedUrl: media.signedUrl,
-                                                    finalUrl: imageUrl
-                                                });
                                                 return (
-                                                    <img
+                                                    <Box
                                                         key={media.id}
+                                                        component="img"
                                                         src={imageUrl}
                                                         alt={media.caption || 'Post media'}
-                                                        style={{ 
-                                                            width: (post.media && post.media.length > 1) ? '48%' : '100%', 
-                                                            borderRadius: 12, 
-                                                            maxHeight: 340, 
+                                                        sx={{
+                                                            width: '100%',
+                                                            borderRadius: 2,
+                                                            maxHeight: { xs: 180, sm: 340 },
                                                             objectFit: 'cover',
-                                                            marginRight: index % 2 === 0 ? '4%' : '0',
-                                                            marginBottom: '8px',
-                                                            display: 'inline-block'
+                                                            display: 'block',
                                                         }}
-                                                        onError={(e) => {
-                                                            console.error(`Failed to load image: ${imageUrl}`, e);
-                                                            console.error(`Image element:`, e.currentTarget);
-                                                            console.error(`Error details:`, {
-                                                                naturalWidth: e.currentTarget.naturalWidth,
-                                                                naturalHeight: e.currentTarget.naturalHeight,
-                                                                complete: e.currentTarget.complete
-                                                            });
-                                                            
-                                                            // Try fallback to mediaUrl if signedUrl fails
+                                                        onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
                                                             if (media.signedUrl && e.currentTarget.src === media.signedUrl) {
-                                                                console.log(`Trying fallback URL: ${media.mediaUrl}`);
                                                                 e.currentTarget.src = media.mediaUrl;
                                                             } else {
-                                                                // If even fallback fails, show a placeholder
-                                                                console.error(`Both URLs failed for media ${media.id}`);
                                                                 e.currentTarget.style.display = 'none';
                                                             }
-                                                        }}
-                                                        onLoad={() => {
-                                                            console.log(`Successfully loaded image: ${imageUrl}`);
                                                         }}
                                                     />
                                                 );
                                             })}
                                             {post.media && post.media.length > 4 && (
-                                                <Box sx={{ 
-                                                    position: 'relative', 
+                                                <Box sx={{
                                                     display: 'flex',
-                                                    width: '48%',
-                                                    height: '200px',
+                                                    width: '100%',
+                                                    minHeight: { xs: 120, sm: 200 },
                                                     backgroundColor: 'rgba(0,0,0,0.8)',
-                                                    borderRadius: 3,
+                                                    borderRadius: 2,
                                                     alignItems: 'center',
-                                                    justifyContent: 'center'
+                                                    justifyContent: 'center',
                                                 }}>
-                                                    <Typography sx={{ color: 'white', fontSize: '1.5rem', fontWeight: 'bold' }}>
+                                                    <Typography sx={{ color: 'white', fontSize: { xs: '1.25rem', sm: '1.5rem' }, fontWeight: 'bold' }}>
                                                         +{(post.media?.length || 0) - 4}
                                                     </Typography>
                                                 </Box>
@@ -1968,53 +2054,82 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                         </Box>
                                     )}
 
-                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
+                                    <Box
+                                        sx={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            mt: 1.75,
+                                            pt: 1.25,
+                                            borderTop: '1.5px solid #E8EDF5',
+                                            gap: 0.25,
+                                        }}
+                                    >
                                         <Button
                                             startIcon={
                                                 likedPosts[String(post.id)] ? (
                                                     <FavoriteIcon
                                                         className={`liked-heart-icon ${animatingPosts[String(post.id)] ? 'liked-heart-icon-clicked' : ''}`}
+                                                        sx={{ fontSize: 22 }}
                                                     />
                                                 ) : (
                                                     <FavoriteBorderIcon
                                                         className={animatingPosts[String(post.id)] ? 'liked-heart-icon-clicked' : ''}
-                                                        sx={{ color: '#6B7280' }}
+                                                        sx={{ color: '#64748B', fontSize: 22 }}
                                                     />
                                                 )
                                             }
-                                            size="small"
                                             onClick={() => handleLikePostWithAnimation(String(post.id))}
                                             disabled={likingPost}
                                             sx={{
+                                                minWidth: 0,
                                                 bgcolor: 'transparent',
-                                                color: '#374151',
+                                                color: likedPosts[String(post.id)] ? '#EF4444' : '#64748B',
+                                                textTransform: 'none',
+                                                fontWeight: 500,
+                                                fontSize: 14,
+                                                borderRadius: 2,
+                                                py: 0.5,
+                                                px: 0.75,
+                                                '& .MuiButton-startIcon': { mr: 0.35 },
                                                 '&:hover': {
-                                                    bgcolor: '#EEF2FB',
-                                                    color: '#2563EB'
-                                                }
+                                                    bgcolor: 'transparent',
+                                                    color: likedPosts[String(post.id)] ? '#DC2626' : '#334155',
+                                                },
                                             }}
                                         >
                                             {postLikeCounts[String(post.id)] !== undefined ? postLikeCounts[String(post.id)] : post.likesCount || 0}
                                         </Button>
                                         <Button
-                                            startIcon={<ChatBubbleOutlineIcon />}
-                                            size="small"
+                                            startIcon={<ChatBubbleOutlineIcon sx={{ fontSize: 21, color: 'inherit' }} />}
                                             onClick={() => handleCommentClick(post.id)}
                                             sx={{
-                                                '&:hover': { color: '#2563EB' }
+                                                minWidth: 0,
+                                                bgcolor: 'transparent',
+                                                color: '#64748B',
+                                                textTransform: 'none',
+                                                fontWeight: 500,
+                                                fontSize: 14,
+                                                borderRadius: 2,
+                                                py: 0.5,
+                                                px: 0.75,
+                                                '& .MuiButton-startIcon': { mr: 0.35 },
+                                                '&:hover': { bgcolor: 'transparent', color: '#2563EB' },
                                             }}
                                         >
-                                            {post.commentsCount || 0}
+                                            {post.commentCount ?? post.commentsCount ?? 0}
                                         </Button>
-                                        <Button
-                                            startIcon={<ShareIcon />}
-                                            size="small"
+                                        <IconButton
+                                            aria-label="Share"
                                             sx={{
-                                                '&:hover': { color: '#2563EB' }
+                                                color: '#64748B',
+                                                borderRadius: 2,
+                                                p: 0.65,
+                                                bgcolor: 'transparent',
+                                                '&:hover': { bgcolor: 'transparent', color: '#2563EB' },
                                             }}
                                         >
-                                            Share
-                                        </Button>
+                                            <ShareSymbol sx={{ fontSize: 21 }} />
+                                        </IconButton>
                                     </Box>
 
                                     {post.commentsList && post.commentsList.length > 0 && (
@@ -2036,27 +2151,37 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                         </Box>
                                     )}
                                 </Box>
-                            ))
+                                );
+                            })
                         )}
                     </Box>
 
-                    <Box>
-                        <Box sx={{ bgcolor: '#fff', borderRadius: 3, p: 3, boxShadow: '0 2px 12px rgba(37,99,235,0.08)' }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-                                <Typography variant="h6" sx={{ fontWeight: 700, color: '#2563EB' }}>
+                    <Box sx={{ minWidth: 0 }}>
+                        <Box
+                            sx={{
+                                ...MATTE_SURFACE,
+                                borderRadius: { xs: 2, sm: 3 },
+                                p: { xs: 1.5, sm: 3 },
+                                bgcolor: '#F3EFE8',
+                                backgroundColor: '#F3EFE8',
+                                backgroundImage: 'linear-gradient(165deg, #F6F2EB 0%, #EFEAE2 55%, #EAE4DB 100%)',
+                            }}
+                        >
+                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, mb: 3 }}>
+                                <Typography variant="h6" sx={{ fontWeight: 700, color: '#2563EB', fontSize: { xs: '1.05rem', sm: '1.25rem' } }}>
                                     Ratings & Reviews
                                 </Typography>
                                 {!isOwnProfile && currentUserId && (
-                                    <Button onClick={() => setRatingOpen(v => !v)} sx={{ color: '#2563EB', textTransform: 'none', fontWeight: 600 }}>
+                                    <Button size={isMobile ? 'small' : 'medium'} onClick={() => setRatingOpen(v => !v)} sx={{ color: '#2563EB', textTransform: 'none', fontWeight: 600 }}>
                                         {ratingOpen ? 'Close' : 'Rate User'}
                                     </Button>
                                 )}
                             </Box>
 
                             {!isOwnProfile && currentUserId && ratingOpen && (
-                                <Box sx={{ mb: 3, p: 2, bgcolor: '#F6F8FB', borderRadius: 2 }}>
+                                <Box sx={{ mb: 3, p: 2, ...MATTE_INSET, borderRadius: 2 }}>
                                     <Typography sx={{ fontWeight: 600, mb: 1 }}>Your rating</Typography>
-                                    <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1 }}>
+                                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ xs: 'flex-start', sm: 'center' }} sx={{ mb: 1 }}>
                                         <Rating value={ratingValue} onChange={(_, v) => setRatingValue(v || 5)} />
                                         <Typography sx={{ color: '#6B7280' }}>{ratingValue} / 5</Typography>
                                     </Stack>
@@ -2065,14 +2190,13 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                         value={ratingText}
                                         onChange={(e) => setRatingText(e.target.value)}
                                         sx={{
-                                            bgcolor: '#fff',
+                                            bgcolor: 'rgba(255,255,255,0.55)',
                                             px: 2,
                                             py: 1.2,
                                             borderRadius: 2,
                                             fontSize: 15,
                                             flex: 1,
-                                            boxShadow: 1,
-                                            border: '1px solid #E5E7EB',
+                                            border: '1px solid rgba(90, 70, 50, 0.12)',
                                             mb: 1
                                         }}
                                         multiline minRows={2} maxRows={4}
@@ -2088,6 +2212,26 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                                 try {
                                                     setRatingSubmitting(true);
                                                     const created = await apiService.createRating(userId, currentUserId, ratingValue, ratingText || undefined, undefined);
+                                                    let meInfo: { firstName: string; lastName: string; profilePhoto?: string } | undefined;
+                                                    try {
+                                                        const raw = localStorage.getItem('userInfo');
+                                                        if (raw) {
+                                                            const u = JSON.parse(raw);
+                                                            meInfo = {
+                                                                firstName: u.firstName || u.first_name || '',
+                                                                lastName: u.lastName || u.last_name || '',
+                                                                profilePhoto: u.profilePhotoSignedUrl || u.profilePhoto || u.profile_photo || undefined,
+                                                            };
+                                                        }
+                                                    } catch { /* ignore */ }
+                                                    const raterInfo = (created as any).raterFirstName || (created as any).raterLastName || meInfo
+                                                        ? {
+                                                            id: currentUserId,
+                                                            firstName: (created as any).raterFirstName || meInfo?.firstName || '',
+                                                            lastName: (created as any).raterLastName || meInfo?.lastName || '',
+                                                            profilePhoto: (created as any).raterProfilePhotoSignedUrl || (created as any).raterProfilePhoto || meInfo?.profilePhoto,
+                                                        }
+                                                        : undefined;
                                                     // Update local reviews and averages
                                                     setReviews(prev => [{
                                                         id: created.id,
@@ -2098,9 +2242,9 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                                         ratingType: undefined,
                                                         createdAt: created.createdAt || new Date().toISOString(),
                                                         updatedAt: created.updatedAt || new Date().toISOString(),
-                                                        raterInfo: undefined,
+                                                        raterInfo,
                                                     }, ...prev]);
-                                                    setUser(prev => prev ? { ...prev, averageRating: Number(((prev.averageRating * prev.ratings.length + ratingValue) / (prev.ratings.length + 1)).toFixed(1)), ratings: [{ id: created.id, ratedUserId: userId, ratedByUserId: currentUserId, ratingValue, review: ratingText || undefined, ratingType: undefined, createdAt: created.createdAt || new Date().toISOString(), updatedAt: created.updatedAt || new Date().toISOString() }, ...prev.ratings] } : prev);
+                                                    setUser(prev => prev ? { ...prev, averageRating: Number(((prev.averageRating * prev.ratings.length + ratingValue) / (prev.ratings.length + 1)).toFixed(1)), ratings: [{ id: created.id, ratedUserId: userId, ratedByUserId: currentUserId, ratingValue, review: ratingText || undefined, ratingType: undefined, createdAt: created.createdAt || new Date().toISOString(), updatedAt: created.updatedAt || new Date().toISOString(), raterInfo }, ...prev.ratings] } : prev);
                                                     setSnack({ open: true, message: 'Rating submitted', severity: 'success' });
                                                     setRatingText('');
                                                     setRatingValue(5);
@@ -2120,7 +2264,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                             )}
 
                             <Box sx={{ textAlign: 'center', mb: 3 }}>
-                                <Typography variant="h2" sx={{ fontWeight: 700, color: '#2563EB', mb: 1 }}>
+                                <Typography sx={{ fontWeight: 700, color: '#2563EB', mb: 1, fontSize: { xs: '2rem', sm: '3.75rem' }, lineHeight: 1.1 }}>
                                     {user.averageRating > 0 ? user.averageRating.toFixed(1) : 'N/A'}
                                 </Typography>
                                 <Box sx={{ display: 'flex', justifyContent: 'center', mb: 1 }}>
@@ -2168,18 +2312,20 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                         <Box key={review.id} sx={{ pb: 2, borderBottom: '1px solid #E5E7EB' }}>
                                             <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
                                                 <Avatar
-                                                    src={review.raterInfo?.profilePhoto || 'https://randomuser.me/api/portraits/lego/3.jpg'}
+                                                    src={review.raterInfo?.profilePhoto || `https://randomuser.me/api/portraits/lego/${review.ratedByUserId % 10}.jpg`}
                                                     sx={{ width: 32, height: 32 }}
                                                     onError={(e) => {
-                                                        (e.target as HTMLImageElement).src = 'https://randomuser.me/api/portraits/lego/3.jpg';
+                                                        (e.target as HTMLImageElement).src = `https://randomuser.me/api/portraits/lego/${review.ratedByUserId % 10}.jpg`;
                                                     }}
                                                 />
                                                 <Box sx={{ flex: 1 }}>
-                                                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                                                        <Typography sx={{ fontWeight: 600, fontSize: '0.875rem' }}>
-                                                            {review.raterInfo ? `${review.raterInfo.firstName} ${review.raterInfo.lastName}` : `User ${review.ratedByUserId}`}
+                                                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1, flexWrap: 'wrap', gap: 0.5 }}>
+                                                        <Typography sx={{ fontWeight: 600, fontSize: '0.875rem', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                            {review.raterInfo
+                                                                ? (`${review.raterInfo.firstName || ''} ${review.raterInfo.lastName || ''}`.trim() || `User ${review.ratedByUserId}`)
+                                                                : `User ${review.ratedByUserId}`}
                                                         </Typography>
-                                                        <Box sx={{ display: 'flex' }}>
+                                                        <Box sx={{ display: 'flex', flexShrink: 0 }}>
                                                             {renderStars(review.ratingValue)}
                                                         </Box>
                                                     </Box>
@@ -2211,13 +2357,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
 
             {/* Comments Modal */}
             {commentsModalOpen.open && commentsModalOpen.postId && (() => {
-                console.log('ProfilePage modal rendering:', {
-                    open: commentsModalOpen.open,
-                    postId: commentsModalOpen.postId,
-                    postsCount: posts.length
-                });
-                const currentPost = posts.find(p => p.id === commentsModalOpen.postId);
-                console.log('Current post found:', !!currentPost);
+                const currentPost = posts.find(p => String(p.id) === String(commentsModalOpen.postId));
                 const comments = commentsByPost[commentsModalOpen.postId!] || [];
                 const isLoadingComments = loadingComments[commentsModalOpen.postId!];
 
@@ -2225,117 +2365,154 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                     <Box
                         sx={{
                             position: 'fixed',
-                            top: 0,
-                            left: 0,
-                            width: '100vw',
-                            height: '100vh',
-                            bgcolor: 'rgba(30,41,59,0.8)',
+                            inset: 0,
+                            width: '100%',
+                            height: '100%',
+                            bgcolor: 'rgba(15, 23, 42, 0.55)',
+                            backdropFilter: 'blur(4px)',
                             zIndex: 9999,
                             display: 'flex',
-                            alignItems: 'center',
+                            alignItems: { xs: 'flex-end', sm: 'center' },
                             justifyContent: 'center',
+                            p: { xs: 0, sm: 2 },
                         }}
                         onClick={handleCommentsModalClose}
                     >
                         <Box
                             sx={{
-                                bgcolor: '#fff',
-                                borderRadius: 6,
-                                p: 4,
-                                width: { xs: '95vw', sm: '80vw', md: '60vw' },
-                                height: { xs: '90vh', sm: '80vh', md: '70vh' },
-                                maxWidth: '900px',
-                                overflowY: 'auto',
-                                boxShadow: '0 16px 48px 0 rgba(30,41,59,0.18)',
+                                ...MATTE_SURFACE,
+                                borderRadius: { xs: '20px 20px 0 0', sm: '20px' },
+                                width: { xs: '100%', sm: 'min(560px, 92vw)' },
+                                height: { xs: 'min(90dvh, 90vh)', sm: 'min(720px, 86vh)' },
+                                overflow: 'hidden',
                                 display: 'flex',
                                 flexDirection: 'column',
-                                gap: 2,
-                                position: 'relative',
+                                minWidth: 0,
                             }}
                             onClick={e => e.stopPropagation()}
                         >
-                            {/* Close Icon */}
-                            <IconButton
-                                onClick={handleCommentsModalClose}
+                            <Box
                                 sx={{
-                                    position: 'sticky',
-                                    top: 12,
-                                    right: 12,
-                                    alignSelf: 'flex-end',
-                                    color: '#6B7280',
-                                    bgcolor: '#F3F4F6',
-                                    zIndex: 10,
-                                    mb: -6, // Negative margin to overlap content
-                                    '&:hover': {
-                                        bgcolor: '#E5E7EB',
-                                        color: '#374151'
-                                    }
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    px: { xs: 2, sm: 2.5 },
+                                    py: 1.75,
+                                    flexShrink: 0,
+                                    ...MATTE_HEADER,
+                                    boxShadow: 'none',
+                                    color: 'inherit',
                                 }}
                             >
-                                <CloseIcon />
-                            </IconButton>
-
-                            {/* Post Details */}
-                            {currentPost && (
-                                <Box sx={{ mb: 3, pb: 2, borderBottom: '1px solid #E5E7EB' }}>
-                                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                                        <Avatar
-                                            src={currentPost.user?.profilePhoto || 'https://randomuser.me/api/portraits/lego/1.jpg'}
-                                            sx={{ mr: 2, width: 44, height: 44, boxShadow: 1 }}
-                                        />
-                                        <Box>
-                                            <Typography sx={{ fontWeight: 700, fontSize: 18, color: '#2563EB', ...interFont }}>
-                                                {currentPost.user?.firstName} {currentPost.user?.lastName}
-                                            </Typography>
-                                            <Typography sx={{ fontSize: 13, color: '#6B7280' }}>
-                                                {formatDate(currentPost.createdAt)}
-                                            </Typography>
-                                        </Box>
-                                    </Box>
-                                    <Typography sx={{ color: '#374151', fontSize: 16 }}>{currentPost.content}</Typography>
+                                <Box>
+                                    <Typography sx={{ fontWeight: 900, color: '#0F172A', fontSize: { xs: '1.15rem', sm: '1.3rem' }, letterSpacing: '-0.03em', lineHeight: 1.2 }}>
+                                        Comments
+                                    </Typography>
+                                    <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#64748B', mt: 0.25 }}>
+                                        {comments.length} {comments.length === 1 ? 'reply' : 'replies'}
+                                    </Typography>
                                 </Box>
-                            )}
+                                <IconButton
+                                    onClick={handleCommentsModalClose}
+                                    size="small"
+                                    sx={{
+                                        color: '#0F172A',
+                                        bgcolor: '#F1F5F9',
+                                        width: 36,
+                                        height: 36,
+                                        '&:hover': { bgcolor: '#E2E8F0' },
+                                    }}
+                                >
+                                    <CloseIcon sx={{ fontSize: 20 }} />
+                                </IconButton>
+                            </Box>
 
-                            {/* Add Comment Section */}
-                            <Box sx={{ mb: 3, p: 2, bgcolor: '#F6F8FB', borderRadius: 3 }}>
-                                <Typography variant="h6" sx={{ mb: 2, fontWeight: 700, color: '#2563EB' }}>Add a Comment</Typography>
-                                <CommentsForm
+                            <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto', px: { xs: 2, sm: 2.5 }, py: 2 }}>
+                                {currentPost && (
+                                    <Box sx={{ mb: 2.5 }}>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, mb: 1.25, minWidth: 0 }}>
+                                            <Avatar
+                                                src={(currentPost as any).userProfilePhotoSignedUrl || currentPost.user?.profilePhoto || (currentPost as any).profilePhoto || 'https://randomuser.me/api/portraits/lego/1.jpg'}
+                                                sx={{ width: 44, height: 44, flexShrink: 0, fontWeight: 800, bgcolor: '#2563EB' }}
+                                            />
+                                            <Box sx={{ minWidth: 0, flex: 1 }}>
+                                                <Typography sx={{ fontWeight: 800, fontSize: 15, color: '#0F172A', ...interFont, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                    {currentPost.user?.firstName || (currentPost as any).userFirstName}{' '}
+                                                    {currentPost.user?.lastName || (currentPost as any).userLastName}
+                                                </Typography>
+                                                <Typography sx={{ fontSize: 12, color: '#64748B', fontWeight: 600 }}>
+                                                    {formatDate(currentPost.createdAt)}
+                                                </Typography>
+                                            </Box>
+                                        </Box>
+                                        {(currentPost as any).title && (
+                                            <Typography sx={{ color: '#0F172A', fontWeight: 900, fontSize: 17, mb: 0.5, letterSpacing: '-0.02em', wordBreak: 'break-word' }}>
+                                                {(currentPost as any).title}
+                                            </Typography>
+                                        )}
+                                        <Typography sx={{ color: '#334155', fontSize: 15, fontWeight: 500, lineHeight: 1.55, wordBreak: 'break-word' }}>
+                                            {currentPost.content || (currentPost as any).content}
+                                        </Typography>
+                                    </Box>
+                                )}
+
+                                <Typography sx={{ fontWeight: 900, color: '#0F172A', fontSize: 13, letterSpacing: '0.06em', textTransform: 'uppercase', mb: 1.5 }}>
+                                    All comments
+                                </Typography>
+
+                                {isLoadingComments ? (
+                                    <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                                        <CircularProgress size={28} sx={{ color: '#2563EB' }} />
+                                    </Box>
+                                ) : comments && comments.length > 0 ? (
+                                    <Stack spacing={1.75}>
+                                        {comments.map((comment: any) => (
+                                            <CommentListItem
+                                                key={comment.id}
+                                                comment={comment}
+                                                currentUserId={currentUserId}
+                                                formatTime={formatDate}
+                                                likedComments={likedComments}
+                                                commentReactions={commentReactions}
+                                                commentLikeCounts={commentLikeCounts}
+                                                likingComment={likingComment}
+                                                replyingCommentId={replyingCommentId}
+                                                setReplyingCommentId={setReplyingCommentId}
+                                                replyText={replyText}
+                                                setReplyText={setReplyText}
+                                                replying={replying}
+                                                onReply={(text: string) => handleAddComment(commentsModalOpen.postId!, text, comment.id)}
+                                                onReactComment={handleReactComment}
+                                                onEditComment={handleEditComment}
+                                                onDeleteComment={handleDeleteComment}
+                                            />
+                                        ))}
+                                    </Stack>
+                                ) : (
+                                    <Box sx={{ textAlign: 'center', py: 5 }}>
+                                        <Typography sx={{ fontSize: 15, fontWeight: 800, color: '#0F172A', mb: 0.5 }}>No comments yet</Typography>
+                                        <Typography sx={{ fontSize: 13, color: '#64748B', fontWeight: 600 }}>Be the first to start the thread.</Typography>
+                                    </Box>
+                                )}
+                            </Box>
+
+                            <Box
+                                sx={{
+                                    flexShrink: 0,
+                                    px: { xs: 2, sm: 2.5 },
+                                    pt: 1.5,
+                                    pb: { xs: 'max(14px, env(safe-area-inset-bottom))', sm: 2 },
+                                    ...MATTE_HEADER,
+                                    borderBottom: 'none',
+                                    borderTop: '1px solid rgba(90, 70, 50, 0.1)',
+                                    boxShadow: 'none',
+                                    color: 'inherit',
+                                }}
+                            >
+                                <CommentComposer
                                     onSubmit={(text: string) => handleAddComment(commentsModalOpen.postId!, text)}
                                 />
                             </Box>
-
-                            <Typography variant="h6" sx={{ mb: 2, fontWeight: 700, color: '#2563EB' }}>Comments</Typography>
-
-                            {isLoadingComments ? (
-                                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                                    <CircularProgress />
-                                </Box>
-                            ) : comments && comments.length > 0 ? (
-                                <Stack spacing={2} sx={{ flex: 1, overflow: 'auto' }}>
-                                    {comments.map((comment: any) => (
-                                        <CommentItem
-                                            key={comment.id}
-                                            comment={comment}
-                                            onLikeComment={handleLikeComment}
-                                            onReply={(text: string) => handleAddComment(commentsModalOpen.postId!, text, comment.id)}
-                                            likedComments={likedComments}
-                                            commentLikeCounts={commentLikeCounts}
-                                            likingComment={likingComment}
-                                            replyingCommentId={replyingCommentId}
-                                            setReplyingCommentId={setReplyingCommentId}
-                                            replyText={replyText}
-                                            setReplyText={setReplyText}
-                                            replying={replying}
-                                        />
-                                    ))}
-                                </Stack>
-                            ) : (
-                                <Typography sx={{ fontSize: 14, color: '#6B7280', textAlign: 'center', py: 4 }}>
-                                    No comments yet. Be the first to comment!
-                                </Typography>
-                            )}
-
-
                         </Box>
                     </Box>
                 );
@@ -2344,7 +2521,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
             {/* Followers modal */}
             {followersOpen && (
                 <Box sx={{ position: 'fixed', inset: 0, bgcolor: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setFollowersOpen(false)}>
-                    <Box sx={{ bgcolor: '#fff', borderRadius: 3, width: 420, maxWidth: '90vw', maxHeight: '70vh', overflowY: 'auto', p: 2 }} onClick={e => e.stopPropagation()}>
+                    <Box sx={{ ...MATTE_SURFACE, borderRadius: 3, width: { xs: '94vw', sm: 420 }, maxWidth: '94vw', maxHeight: { xs: '80vh', sm: '70vh' }, overflowY: 'auto', p: { xs: 1.5, sm: 2 } }} onClick={e => e.stopPropagation()}>
                         <Typography sx={{ fontWeight: 700, color: '#2563EB', mb: 1 }}>Followers</Typography>
                         {loadingFF ? (
                             <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress /></Box>
@@ -2353,16 +2530,16 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                         ) : (
                             <Stack spacing={1.2}>
                                 {followersDetails.map((f) => (
-                                    <Box key={f.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.2, p: 1, borderRadius: 2, '&:hover': { bgcolor: '#F3F4F6' }, cursor: onOpenProfile ? 'pointer' : 'default' }}
+                                    <Box key={f.id} sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1.2, p: 1, borderRadius: 2, '&:hover': { bgcolor: '#F3F4F6' }, cursor: onOpenProfile ? 'pointer' : 'default' }}
                                          onClick={() => onOpenProfile && onOpenProfile(f.uid)}>
-                                        <Avatar src={f.info?.photo || ''} sx={{ width: 32, height: 32 }}>{(f.info?.firstName || '').charAt(0)}</Avatar>
-                                        <Box sx={{ flex: 1 }}>
-                                            <Typography sx={{ fontWeight: 600 }}>{f.info ? `${f.info.firstName} ${f.info.lastName}` : `User ${f.uid}`}</Typography>
+                                        <Avatar src={f.info?.photo || ''} sx={{ width: 32, height: 32, flexShrink: 0 }}>{(f.info?.firstName || '').charAt(0)}</Avatar>
+                                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                                            <Typography sx={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.info ? `${f.info.firstName} ${f.info.lastName}` : `User ${f.uid}`}</Typography>
                                             <Typography sx={{ fontSize: 12, color: '#6B7280' }}>{f.info?.role || f.status}</Typography>
                                         </Box>
                                         {isOwnProfile && f.status === 'pending' && (
-                                            <Box sx={{ display: 'flex', gap: 0.5 }} onClick={(e) => e.stopPropagation()}>
-                                                <Button size="small" variant="contained" sx={{ bgcolor: '#16A34A', '&:hover': { bgcolor: '#15803D' } }}
+                                            <Box sx={{ display: 'flex', gap: 0.5, width: { xs: '100%', sm: 'auto' }, ml: { xs: 5, sm: 0 } }} onClick={(e) => e.stopPropagation()}>
+                                                <Button size="small" variant="contained" sx={{ bgcolor: '#16A34A', '&:hover': { bgcolor: '#15803D' }, flex: { xs: 1, sm: 'none' } }}
                                                     onClick={async () => {
                                                         try {
                                                             const data = await apiService.graphqlRequest(GRAPHQL_QUERIES.UPDATE_FOLLOW_STATUS, {
@@ -2377,7 +2554,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                                             setSnack({ open: true, message: 'Failed to accept request', severity: 'error' });
                                                         }
                                                     }}>Accept</Button>
-                                                <Button size="small" variant="outlined" sx={{ borderColor: '#EF4444', color: '#EF4444' }}
+                                                <Button size="small" variant="outlined" sx={{ borderColor: '#EF4444', color: '#EF4444', flex: { xs: 1, sm: 'none' } }}
                                                     onClick={async () => {
                                                         try {
                                                             const data = await apiService.graphqlRequest(GRAPHQL_QUERIES.UPDATE_FOLLOW_STATUS, {
@@ -2404,7 +2581,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
             {/* Following modal */}
             {followingOpen && (
                 <Box sx={{ position: 'fixed', inset: 0, bgcolor: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setFollowingOpen(false)}>
-                    <Box sx={{ bgcolor: '#fff', borderRadius: 3, width: 420, maxWidth: '90vw', maxHeight: '70vh', overflowY: 'auto', p: 2 }} onClick={e => e.stopPropagation()}>
+                    <Box sx={{ ...MATTE_SURFACE, borderRadius: 3, width: { xs: '94vw', sm: 420 }, maxWidth: '94vw', maxHeight: { xs: '80vh', sm: '70vh' }, overflowY: 'auto', p: { xs: 1.5, sm: 2 } }} onClick={e => e.stopPropagation()}>
                         <Typography sx={{ fontWeight: 700, color: '#2563EB', mb: 1 }}>Following</Typography>
                         {loadingFF ? (
                             <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress /></Box>
@@ -2415,9 +2592,9 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                 {followingDetails.map((f) => (
                                     <Box key={f.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.2, p: 1, borderRadius: 2, '&:hover': { bgcolor: '#F3F4F6' }, cursor: onOpenProfile ? 'pointer' : 'default' }}
                                          onClick={() => onOpenProfile && onOpenProfile(f.uid)}>
-                                        <Avatar src={f.info?.photo || ''} sx={{ width: 32, height: 32 }}>{(f.info?.firstName || '').charAt(0)}</Avatar>
-                                        <Box>
-                                            <Typography sx={{ fontWeight: 600 }}>{f.info ? `${f.info.firstName} ${f.info.lastName}` : `User ${f.uid}`}</Typography>
+                                        <Avatar src={f.info?.photo || ''} sx={{ width: 32, height: 32, flexShrink: 0 }}>{(f.info?.firstName || '').charAt(0)}</Avatar>
+                                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                                            <Typography sx={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.info ? `${f.info.firstName} ${f.info.lastName}` : `User ${f.uid}`}</Typography>
                                             <Typography sx={{ fontSize: 12, color: '#6B7280' }}>{f.info?.role || f.status}</Typography>
                                         </Box>
                                     </Box>
@@ -2428,6 +2605,110 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                 </Box>
             )}
         </Box>
+
+        <Menu
+            anchorEl={postMenu?.anchor}
+            open={Boolean(postMenu)}
+            onClose={() => setPostMenu(null)}
+        >
+            <MenuItem
+                onClick={() => {
+                    if (!postMenu) return;
+                    setEditPost(postMenu.post);
+                    setEditTitle((postMenu.post as any).title || '');
+                    setEditContent((postMenu.post as any).content || '');
+                    setPostMenu(null);
+                }}
+            >
+                Edit
+            </MenuItem>
+            <MenuItem
+                sx={{ color: '#DC2626' }}
+                onClick={async () => {
+                    if (!postMenu) return;
+                    const postId = Number(postMenu.post.id);
+                    setPostMenu(null);
+                    if (!window.confirm('Delete this post?')) return;
+                    try {
+                        const { data: result } = await deletePostMutation({ variables: { postId } });
+                        if (result?.deletePost?.success) {
+                            setPosts((prev) => prev.filter((p) => Number(p.id) !== postId));
+                        } else {
+                            window.alert(result?.deletePost?.message || 'Failed to delete post');
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        window.alert('Failed to delete post');
+                    }
+                }}
+            >
+                Delete
+            </MenuItem>
+        </Menu>
+
+        <Dialog open={Boolean(editPost)} onClose={() => !editSaving && setEditPost(null)} fullWidth maxWidth="sm">
+            <DialogTitle>Edit post</DialogTitle>
+            <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+                <TextField
+                    label="Title"
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    fullWidth
+                    disabled={editSaving}
+                />
+                <TextField
+                    label="Content"
+                    value={editContent}
+                    onChange={(e) => setEditContent(e.target.value)}
+                    fullWidth
+                    multiline
+                    minRows={4}
+                    disabled={editSaving}
+                />
+            </DialogContent>
+            <DialogActions>
+                <Button onClick={() => setEditPost(null)} disabled={editSaving} sx={{ textTransform: 'none' }}>Cancel</Button>
+                <Button
+                    variant="contained"
+                    disabled={editSaving || !editTitle.trim() || !editContent.trim()}
+                    sx={{ textTransform: 'none' }}
+                    onClick={async () => {
+                        if (!editPost) return;
+                        setEditSaving(true);
+                        try {
+                            const postId = Number(editPost.id);
+                            const { data: result } = await updatePostMutation({
+                                variables: {
+                                    postId,
+                                    title: editTitle.trim(),
+                                    content: editContent.trim(),
+                                },
+                            });
+                            if (result?.updatePost?.success) {
+                                setPosts((prev) =>
+                                    prev.map((p) =>
+                                        Number(p.id) === postId
+                                            ? ({ ...p, title: editTitle.trim(), content: editContent.trim() } as any)
+                                            : p
+                                    )
+                                );
+                                setEditPost(null);
+                            } else {
+                                window.alert(result?.updatePost?.message || 'Failed to update post');
+                            }
+                        } catch (err) {
+                            console.error(err);
+                            window.alert('Failed to update post');
+                        } finally {
+                            setEditSaving(false);
+                        }
+                    }}
+                >
+                    {editSaving ? 'Saving…' : 'Save'}
+                </Button>
+            </DialogActions>
+        </Dialog>
+    </>
     );
 };
 

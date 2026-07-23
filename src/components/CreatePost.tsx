@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { useLazyQuery } from '@apollo/client';
 import { SEARCH_USERS_LIGHT } from '../graphql/user';
+import { SEARCH_PROPERTIES } from '../graphql/property';
 import {
   Box,
   Typography,
@@ -19,6 +20,7 @@ import {
   List,
   ListItemButton,
   ListItemText,
+  ListSubheader,
 } from '@mui/material';
 // Removed Grid import to avoid dependency on Unstable_Grid2; using CSS grid instead
 import {
@@ -33,6 +35,7 @@ import {
   VideoFile as VideoIcon
 } from '@mui/icons-material';
 import LocationAutocomplete from './LocationAutocomplete';
+import { MATTE_SURFACE, MATTE_HEADER, MATTE_INSET } from '../theme/surfaces';
 
 const interFont = {
   fontFamily: 'Inter, Roboto, Arial, sans-serif',
@@ -64,6 +67,13 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
 
   const [searchUsers, { data: mentionData, loading: mentionLoading }] = useLazyQuery(
     SEARCH_USERS_LIGHT,
+    {
+      fetchPolicy: 'network-only',
+      nextFetchPolicy: 'cache-first',
+    }
+  );
+  const [searchProperties, { data: propertyMentionData, loading: propertyMentionLoading }] = useLazyQuery(
+    SEARCH_PROPERTIES,
     {
       fetchPolicy: 'network-only',
       nextFetchPolicy: 'cache-first',
@@ -161,6 +171,9 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
         searchUsers({
           variables: { search: searchTerm.trim(), page: 1, limit: 8 },
         });
+        searchProperties({
+          variables: { query: searchTerm.trim() || undefined },
+        });
       }, 280);
     } else {
       setMentionOpen(false);
@@ -184,6 +197,20 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
     setMentionSearch('');
     setMentionStart(null);
 
+    setTimeout(() => descriptionRef.current?.focus(), 0);
+  };
+
+  const handleSelectPropertyMention = (prop: { propertyId: string; title: string }) => {
+    if (mentionStart === null) return;
+    const label = (prop.title || 'Property').replace(/[\[\]]/g, '').slice(0, 40);
+    const token = `@[p:${prop.propertyId}:${label}]`;
+    const before = description.slice(0, mentionStart);
+    const after = description.slice(mentionStart + 1 + mentionSearch.length);
+    const nextDescription = `${before}${token} ${after}`.slice(0, 500);
+    setDescription(nextDescription);
+    setMentionOpen(false);
+    setMentionSearch('');
+    setMentionStart(null);
     setTimeout(() => descriptionRef.current?.focus(), 0);
   };
 
@@ -239,9 +266,8 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
     >
       <Box
         sx={{
-          bgcolor: 'white',
+          ...MATTE_SURFACE,
           borderRadius: 3,
-          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
           width: { xs: '100%', sm: '90%', md: '900px', lg: '900px' },
           maxHeight: '90vh',
           overflow: 'auto',
@@ -254,7 +280,9 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
           alignItems: 'center', 
           justifyContent: 'space-between', 
           p: 3, 
-          borderBottom: '1px solid #E5E7EB' 
+          ...MATTE_HEADER,
+          boxShadow: 'none',
+          borderRadius: '12px 12px 0 0',
         }}>
           <Box>
             <Typography 
@@ -313,12 +341,12 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
                   <Card
                     sx={{
                       cursor: 'pointer',
-                      border: selectedType === type.id ? '2px solid #2563EB' : '1px solid #E5E7EB',
-                      bgcolor: selectedType === type.id ? '#EFF6FF' : 'white',
+                      border: selectedType === type.id ? '2px solid #2563EB' : '1px solid rgba(90, 70, 50, 0.1)',
+                      bgcolor: selectedType === type.id ? 'rgba(37,99,235,0.08)' : 'rgba(255,255,255,0.45)',
                       transition: 'all 0.2s ease-in-out',
                       '&:hover': {
                         borderColor: '#2563EB',
-                        bgcolor: '#F8FAFC',
+                        bgcolor: 'rgba(255,255,255,0.65)',
                         transform: 'translateY(-1px)',
                         boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
                       },
@@ -423,7 +451,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
               fullWidth
               multiline
               rows={4}
-              placeholder="Provide details about your post... Type @ to mention someone"
+              placeholder="Provide details about your post... Type @ to mention a user or property"
               value={description}
               onChange={handleDescriptionChange}
               inputRef={descriptionRef}
@@ -461,21 +489,36 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
                 }}
               >
                 <List dense disablePadding>
-                  {mentionLoading && (
+                  {(mentionLoading || propertyMentionLoading) && (
                     <ListItemButton disabled>
-                      <ListItemText primary="Searching users..." />
+                      <ListItemText primary="Searching…" />
                     </ListItemButton>
                   )}
+                  <ListSubheader sx={{ lineHeight: '28px', ...MATTE_INSET }}>People</ListSubheader>
                   {!mentionLoading && (mentionData?.users?.length ?? 0) === 0 && (
                     <ListItemButton disabled>
                       <ListItemText primary="No users found" />
                     </ListItemButton>
                   )}
                   {(mentionData?.users ?? []).map((user: any) => (
-                    <ListItemButton key={user.id} onClick={() => handleSelectMention(user)}>
+                    <ListItemButton key={`u-${user.id}`} onClick={() => handleSelectMention(user)}>
                       <ListItemText
                         primary={`${user.firstName} ${user.lastName || ''}`.trim()}
                         secondary={user.role || user.email}
+                      />
+                    </ListItemButton>
+                  ))}
+                  <ListSubheader sx={{ lineHeight: '28px', ...MATTE_INSET }}>Properties</ListSubheader>
+                  {!propertyMentionLoading && (propertyMentionData?.searchProperties?.length ?? 0) === 0 && (
+                    <ListItemButton disabled>
+                      <ListItemText primary="No properties found" />
+                    </ListItemButton>
+                  )}
+                  {(propertyMentionData?.searchProperties ?? []).slice(0, 8).map((prop: any) => (
+                    <ListItemButton key={`p-${prop.propertyId}`} onClick={() => handleSelectPropertyMention(prop)}>
+                      <ListItemText
+                        primary={prop.title}
+                        secondary={prop.location || prop.city || 'Property'}
                       />
                     </ListItemButton>
                   ))}
@@ -545,16 +588,16 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
               sx={{
-                border: dragOver ? '2px dashed #2563EB' : '2px dashed #D1D5DB',
+                border: dragOver ? '2px dashed #2563EB' : '2px dashed rgba(90, 70, 50, 0.2)',
                 borderRadius: 3,
-                bgcolor: dragOver ? '#EFF6FF' : '#F9FAFB',
+                bgcolor: dragOver ? 'rgba(37,99,235,0.08)' : 'rgba(255,255,255,0.4)',
                 p: 4,
                 textAlign: 'center',
                 cursor: 'pointer',
                 transition: 'all 0.2s ease-in-out',
                 '&:hover': {
                   borderColor: '#2563EB',
-                  bgcolor: '#F8FAFC'
+                  bgcolor: 'rgba(255,255,255,0.6)'
                 }
               }}
               onClick={() => document.getElementById('file-upload')?.click()}

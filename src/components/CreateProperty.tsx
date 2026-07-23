@@ -30,6 +30,7 @@ import { useApolloClient } from '@apollo/client';
 import { PropertyService, mapFormDataToPropertyInput } from '../services/propertyService';
 import { PropertyType, PropertyStatus } from '../graphql/property';
 import LocationAutocomplete from './LocationAutocomplete';
+import { MATTE_SURFACE, MATTE_HEADER, PAGE_ATMOSPHERE } from '../theme/surfaces';
 
 const CreateProperty: React.FC = () => {
   const navigate = useNavigate();
@@ -139,9 +140,9 @@ const CreateProperty: React.FC = () => {
   };
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: '#F6F8FB' }}>
+    <Box sx={{ minHeight: '100vh', ...PAGE_ATMOSPHERE }}>
       {/* Header */}
-      <AppBar position="static" sx={{ bgcolor: 'white', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+      <AppBar position="static" elevation={0} sx={{ ...MATTE_HEADER }}>
         <Toolbar>
           <IconButton onClick={handleGoBack} sx={{ mr: 2, color: '#374151' }}>
             <ArrowBackIcon />
@@ -153,7 +154,7 @@ const CreateProperty: React.FC = () => {
       </AppBar>
 
       <Container maxWidth="md" sx={{ py: 4 }}>
-        <Card sx={{ borderRadius: 3, boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+        <Card sx={{ borderRadius: 3, ...MATTE_SURFACE }}>
           <CardContent sx={{ p: 4 }}>
             <Typography variant="h5" sx={{ mb: 3, fontWeight: 700, color: '#111827' }}>
               Property Details
