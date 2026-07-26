@@ -1,18 +1,26 @@
 import { ApolloClient } from '@apollo/client';
 import {
   LOGIN_MUTATION,
+  GOOGLE_SIGN_IN_MUTATION,
+  FACEBOOK_SIGN_IN_MUTATION,
   REGISTER_MUTATION,
   SEND_OTP_MUTATION,
   VERIFY_OTP_MUTATION,
+  SEND_MOBILE_OTP_MUTATION,
+  VERIFY_MOBILE_OTP_MUTATION,
   FORGOT_PASSWORD_MUTATION,
   RESET_PASSWORD_MUTATION,
   LOGOUT_MUTATION,
 } from '../graphql/auth';
 import {
   LoginInput,
+  GoogleSignInInput,
+  FacebookSignInInput,
   RegisterInput,
   OTPInput,
+  MobileOTPInput,
   VerifyOTPInput,
+  VerifyMobileOTPInput,
   ResetPasswordInput,
   LogoutInput,
   AuthResponse,
@@ -32,6 +40,38 @@ export class AuthService {
       variables: input,
     });
     return data.login;
+  }
+
+  async googleSignIn(input: GoogleSignInInput): Promise<AuthResponse> {
+    const { data } = await this.client.mutate({
+      mutation: GOOGLE_SIGN_IN_MUTATION,
+      variables: input,
+    });
+    return data.googleSignIn;
+  }
+
+  async facebookSignIn(input: FacebookSignInInput): Promise<AuthResponse> {
+    const { data } = await this.client.mutate({
+      mutation: FACEBOOK_SIGN_IN_MUTATION,
+      variables: input,
+    });
+    return data.facebookSignIn;
+  }
+
+  async sendMobileOTP(input: MobileOTPInput): Promise<AuthResponse> {
+    const { data } = await this.client.mutate({
+      mutation: SEND_MOBILE_OTP_MUTATION,
+      variables: input,
+    });
+    return data.sendMobileOtp;
+  }
+
+  async verifyMobileOTP(input: VerifyMobileOTPInput): Promise<AuthResponse> {
+    const { data } = await this.client.mutate({
+      mutation: VERIFY_MOBILE_OTP_MUTATION,
+      variables: input,
+    });
+    return data.verifyMobileOtp;
   }
 
   async register(input: RegisterInput): Promise<UserInfo> {

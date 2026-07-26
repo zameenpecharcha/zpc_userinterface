@@ -7,11 +7,13 @@ import {
   Button,
   Link,
   Alert,
+  Divider,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   CircularProgress,
+  MenuItem,
   useMediaQuery,
 } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
@@ -21,12 +23,15 @@ import { OTPType } from '../types/auth';
 import LandingBackground from './LandingBackground';
 import BackgroundPreviewSwitcher from './BackgroundPreviewSwitcher';
 import SceneSimHud from './SceneSimHud';
+import GoogleSignInButton from './GoogleSignInButton';
+import FacebookSignInButton from './FacebookSignInButton';
 import {
   BACKGROUND_STORAGE_KEY,
   BackgroundId,
   getBackgroundOption,
   readStoredBackgroundId,
 } from '../scene/backgroundRegistry';
+import { COUNTRY_CODES } from '../constants/countryCodes';
 
 const glassFieldSx = {
   mb: { xs: 1.5, sm: 2.5 },
@@ -131,6 +136,12 @@ const Landing = () => {
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [loggingIn, setLoggingIn] = useState(false);
+  const [googleSigningIn, setGoogleSigningIn] = useState(false);
+  const [facebookSigningIn, setFacebookSigningIn] = useState(false);
+  const [mobileSignInOpen, setMobileSignInOpen] = useState(false);
+  const [mobileStep, setMobileStep] = useState<'phone' | 'otp'>('phone');
+  const [mobileData, setMobileData] = useState({ countryCode: '+91', phone: '', otp: '' });
+  const [mobileLoading, setMobileLoading] = useState(false);
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
   const [resetStep, setResetStep] = useState<'email' | 'otp' | 'newPassword'>('email');
   const [resetData, setResetData] = useState({
@@ -244,6 +255,112 @@ const Landing = () => {
       setError(err.message || 'An error occurred during login');
     } finally {
       setLoggingIn(false);
+    }
+  };
+
+  const handleGoogleCredential = async (credential: string) => {
+    if (googleSigningIn) return;
+    setError('');
+    setSuccessMessage('');
+    setGoogleSigningIn(true);
+    try {
+      const response = await authService.googleSignIn({ idToken: credential });
+
+      if (response.success && response.token && response.userInfo) {
+        setAuth(
+          response.token,
+          response.refreshToken || '',
+          response.userInfo
+        );
+        setSuccessMessage(response.message || 'Google sign-in successful');
+        navigate('/home');
+      } else {
+        setError(response.message || 'Google sign-in failed. Please try again.');
+      }
+    } catch (err: any) {
+      console.error('Google sign-in error:', err);
+      setError(err.message || 'An error occurred during Google sign-in');
+    } finally {
+      setGoogleSigningIn(false);
+    }
+  };
+
+  const handleFacebookAccessToken = async (accessToken: string) => {
+    if (facebookSigningIn) return;
+    setError('');
+    setSuccessMessage('');
+    setFacebookSigningIn(true);
+    try {
+      const response = await authService.facebookSignIn({ accessToken });
+
+      if (response.success && response.token && response.userInfo) {
+        setAuth(
+          response.token,
+          response.refreshToken || '',
+          response.userInfo
+        );
+        setSuccessMessage(response.message || 'Facebook sign-in successful');
+        navigate('/home');
+      } else {
+        setError(response.message || 'Facebook sign-in failed. Please try again.');
+      }
+    } catch (err: any) {
+      console.error('Facebook sign-in error:', err);
+      setError(err.message || 'An error occurred during Facebook sign-in');
+    } finally {
+      setFacebookSigningIn(false);
+    }
+  };
+
+  const handleSendMobileOTP = async () => {
+    setError('');
+    setSuccessMessage('');
+    setMobileLoading(true);
+    try {
+      const response = await authService.sendMobileOTP({
+        phone: `${mobileData.countryCode}${mobileData.phone.replace(/\D/g, '')}`,
+      });
+      if (response.success) {
+        setSuccessMessage(response.message || 'OTP sent to your mobile number');
+        setMobileStep('otp');
+      } else {
+        setError(response.message || 'Failed to send mobile OTP');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to send mobile OTP');
+    } finally {
+      setMobileLoading(false);
+    }
+  };
+
+  const handleVerifyMobileOTP = async () => {
+    setError('');
+    setSuccessMessage('');
+    setMobileLoading(true);
+    try {
+      const response = await authService.verifyMobileOTP({
+        phone: `${mobileData.countryCode}${mobileData.phone.replace(/\D/g, '')}`,
+        otpCode: mobileData.otp.trim(),
+      });
+
+      if (response.success && response.token && response.userInfo) {
+        setAuth(
+          response.token,
+          response.refreshToken || '',
+          response.userInfo
+        );
+        setSuccessMessage(response.message || 'Mobile sign-in successful');
+        setMobileSignInOpen(false);
+        setMobileStep('phone');
+        setMobileData({ countryCode: '+91', phone: '', otp: '' });
+        navigate('/home');
+      } else {
+        setError(response.message || 'Invalid mobile OTP');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to verify mobile OTP');
+    } finally {
+      setMobileLoading(false);
     }
   };
 
@@ -552,6 +669,47 @@ const Landing = () => {
             >
               {loggingIn ? 'Signing in…' : 'Login'}
             </Button>
+            <Divider
+              sx={{
+                fontFamily: '"DM Sans", sans-serif',
+                fontSize: 12,
+                color: '#52646c',
+                mb: { xs: 1.75, sm: 2 },
+              }}
+            >
+              or
+            </Divider>
+            <Box sx={{ mb: { xs: 1.75, sm: 2.5 } }}>
+              <GoogleSignInButton
+                text="continue_with"
+                disabled={loggingIn || googleSigningIn || facebookSigningIn || mobileLoading}
+                onCredential={handleGoogleCredential}
+              />
+            </Box>
+            <Box sx={{ mb: { xs: 1.75, sm: 2.5 } }}>
+              <FacebookSignInButton
+                disabled={loggingIn || googleSigningIn || facebookSigningIn || mobileLoading}
+                onAccessToken={handleFacebookAccessToken}
+              />
+            </Box>
+            <Button
+              fullWidth
+              variant="outlined"
+              disabled={loggingIn || googleSigningIn || facebookSigningIn || mobileLoading}
+              onClick={() => setMobileSignInOpen(true)}
+              sx={{
+                fontFamily: '"DM Sans", sans-serif',
+                textTransform: 'none',
+                borderRadius: '12px',
+                py: 1.25,
+                mb: { xs: 1.75, sm: 2.5 },
+                color: '#1e3a48',
+                borderColor: 'rgba(30, 58, 72, 0.35)',
+                bgcolor: 'rgba(255,255,255,0.65)',
+              }}
+            >
+              Continue with mobile number
+            </Button>
             <Box sx={{ textAlign: 'center' }}>
               <Typography
                 display="inline"
@@ -586,6 +744,97 @@ const Landing = () => {
           </Box>
         </Box>
       </Box>
+
+      <Dialog
+        open={mobileSignInOpen}
+        fullWidth
+        maxWidth="xs"
+        onClose={() => {
+          setMobileSignInOpen(false);
+          setMobileStep('phone');
+          setMobileData({ countryCode: '+91', phone: '', otp: '' });
+          setError('');
+          setSuccessMessage('');
+        }}
+      >
+        <DialogTitle sx={{ fontWeight: 600, color: '#1e3a48', fontFamily: '"DM Sans", sans-serif' }}>
+          Continue with mobile number
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+            <TextField
+              select
+              margin="dense"
+              label="Code"
+              value={mobileData.countryCode}
+              disabled={mobileStep === 'otp' || mobileLoading}
+              onChange={(e) => setMobileData((prev) => ({ ...prev, countryCode: e.target.value }))}
+              sx={{ width: 150 }}
+            >
+              {COUNTRY_CODES.map((country) => (
+                <MenuItem key={country.code} value={country.code}>
+                  {country.label}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              autoFocus
+              margin="dense"
+              label="Mobile number"
+              fullWidth
+              value={mobileData.phone}
+              disabled={mobileStep === 'otp' || mobileLoading}
+              onChange={(e) => setMobileData((prev) => ({ ...prev, phone: e.target.value.replace(/\D/g, '') }))}
+              placeholder="7675023613"
+            />
+          </Box>
+          {mobileStep === 'otp' && (
+            <TextField
+              margin="dense"
+              label="OTP"
+              fullWidth
+              value={mobileData.otp}
+              disabled={mobileLoading}
+              onChange={(e) => setMobileData((prev) => ({ ...prev, otp: e.target.value }))}
+              placeholder="Enter OTP"
+              sx={{ mb: 2 }}
+            />
+          )}
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error}
+            </Alert>
+          )}
+          {successMessage && (
+            <Alert severity="success" sx={{ mb: 2 }}>
+              {successMessage}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button
+            onClick={() => {
+              setMobileSignInOpen(false);
+              setMobileStep('phone');
+              setMobileData({ countryCode: '+91', phone: '', otp: '' });
+              setError('');
+              setSuccessMessage('');
+            }}
+            disabled={mobileLoading}
+          >
+            Cancel
+          </Button>
+          {mobileStep === 'phone' ? (
+            <Button onClick={handleSendMobileOTP} disabled={mobileLoading || !mobileData.phone.trim()}>
+              {mobileLoading ? 'Sending...' : 'Send OTP'}
+            </Button>
+          ) : (
+            <Button onClick={handleVerifyMobileOTP} disabled={mobileLoading || !mobileData.otp.trim()}>
+              {mobileLoading ? 'Verifying...' : 'Verify OTP'}
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
 
       <Dialog
         open={forgotPasswordOpen}

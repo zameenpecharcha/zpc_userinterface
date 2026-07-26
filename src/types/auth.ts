@@ -36,6 +36,26 @@ export interface LoginInput {
   password: string;
 }
 
+export interface GoogleSignInInput {
+  idToken: string;
+  role?: string;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
+  bio?: string;
+  phone?: string;
+}
+
+export interface FacebookSignInInput {
+  accessToken: string;
+  role?: string;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
+  bio?: string;
+  phone?: string;
+}
+
 export interface RegisterInput {
   firstName: string;
   lastName: string;
@@ -53,6 +73,15 @@ export interface OTPInput {
   email: string;
   phone?: string;
   type?: OTPType;
+}
+
+export interface MobileOTPInput {
+  phone: string;
+}
+
+export interface VerifyMobileOTPInput {
+  phone: string;
+  otpCode: string;
 }
 
 export interface VerifyOTPInput {

@@ -8,6 +8,12 @@ import {
   Button,
   Link,
   Alert,
+  Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  MenuItem,
   IconButton,
 } from '@mui/material';
 import {
@@ -15,7 +21,6 @@ import {
   BusinessCenter,
   Home,
   MapOutlined,
-  LocationOn,
   // Engineering,      // unused
   AccountCircle,
 } from '@mui/icons-material';
@@ -25,6 +30,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { AuthService } from '../services/authService';
 import { useApolloClient } from '@apollo/client';
 import LocationAutocomplete from './LocationAutocomplete';
+import GoogleSignInButton from './GoogleSignInButton';
+import FacebookSignInButton from './FacebookSignInButton';
+import { COUNTRY_CODES } from '../constants/countryCodes';
 
 const professionOptions = [
   { id: 'builder', label: 'Builder', icon: ApartmentIcon, color: '#6366F1' },
@@ -57,6 +65,12 @@ const Register = () => {
   const [selectedProfession, setSelectedProfession] = useState<string>('');
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [googleSigningIn, setGoogleSigningIn] = useState(false);
+  const [facebookSigningIn, setFacebookSigningIn] = useState(false);
+  const [mobileSignInOpen, setMobileSignInOpen] = useState(false);
+  const [mobileStep, setMobileStep] = useState<'phone' | 'otp'>('phone');
+  const [mobileData, setMobileData] = useState({ countryCode: '+91', phone: '', otp: '' });
+  const [mobileLoading, setMobileLoading] = useState(false);
 
   const handleProfessionSelect = (professionId: string) => {
     setSelectedProfession(professionId);
@@ -146,12 +160,263 @@ const Register = () => {
     }
   };
 
+  const handleGoogleCredential = async (credential: string) => {
+    if (googleSigningIn) return;
+    setError('');
+    setSuccessMessage('');
+
+    const role = selectedProfession || formData.role;
+    if (!role) {
+      setError('Please select a profession before signing up with Google');
+      return;
+    }
+    if (!formData.address.trim()) {
+      setError('Please enter your location before signing up with Google');
+      return;
+    }
+
+    const latitude = parseFloat(formData.latitude);
+    const longitude = parseFloat(formData.longitude);
+    if (isNaN(latitude) || isNaN(longitude)) {
+      setError('Please select a location from the suggestions before signing up with Google');
+      return;
+    }
+
+    setGoogleSigningIn(true);
+    try {
+      const response = await authService.googleSignIn({
+        idToken: credential,
+        role,
+        address: formData.address,
+        latitude,
+        longitude,
+        bio: formData.bio,
+        phone: formData.phone,
+      });
+
+      if (response.success && response.token && response.userInfo) {
+        setAuth(
+          response.token,
+          response.refreshToken || '',
+          response.userInfo
+        );
+        setSuccessMessage('Google signup successful! Redirecting...');
+        setTimeout(() => navigate('/home'), 800);
+      } else {
+        setError(response.message || 'Google signup failed. Please try again.');
+      }
+    } catch (err: any) {
+      console.error('Google signup error:', err);
+      setError('Google signup error: ' + (err && err.message ? err.message : 'Unknown error'));
+    } finally {
+      setGoogleSigningIn(false);
+    }
+  };
+
+  const handleFacebookAccessToken = async (accessToken: string) => {
+    if (facebookSigningIn) return;
+    setError('');
+    setSuccessMessage('');
+
+    const role = selectedProfession || formData.role;
+    if (!role) {
+      setError('Please select a profession before signing up with Facebook');
+      return;
+    }
+    if (!formData.address.trim()) {
+      setError('Please enter your location before signing up with Facebook');
+      return;
+    }
+
+    const latitude = parseFloat(formData.latitude);
+    const longitude = parseFloat(formData.longitude);
+    if (isNaN(latitude) || isNaN(longitude)) {
+      setError('Please select a location from the suggestions before signing up with Facebook');
+      return;
+    }
+
+    setFacebookSigningIn(true);
+    try {
+      const response = await authService.facebookSignIn({
+        accessToken,
+        role,
+        address: formData.address,
+        latitude,
+        longitude,
+        bio: formData.bio,
+        phone: formData.phone,
+      });
+
+      if (response.success && response.token && response.userInfo) {
+        setAuth(
+          response.token,
+          response.refreshToken || '',
+          response.userInfo
+        );
+        setSuccessMessage('Facebook signup successful! Redirecting...');
+        setTimeout(() => navigate('/home'), 800);
+      } else {
+        setError(response.message || 'Facebook signup failed. Please try again.');
+      }
+    } catch (err: any) {
+      console.error('Facebook signup error:', err);
+      setError('Facebook signup error: ' + (err && err.message ? err.message : 'Unknown error'));
+    } finally {
+      setFacebookSigningIn(false);
+    }
+  };
+
+  const handleSendMobileOTP = async () => {
+    setError('');
+    setSuccessMessage('');
+    setMobileLoading(true);
+    try {
+      const response = await authService.sendMobileOTP({
+        phone: `${mobileData.countryCode}${mobileData.phone.replace(/\D/g, '')}`,
+      });
+      if (response.success) {
+        setSuccessMessage(response.message || 'OTP sent to your mobile number');
+        setMobileStep('otp');
+      } else {
+        setError(response.message || 'Failed to send mobile OTP');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to send mobile OTP');
+    } finally {
+      setMobileLoading(false);
+    }
+  };
+
+  const handleVerifyMobileOTP = async () => {
+    setError('');
+    setSuccessMessage('');
+    setMobileLoading(true);
+    try {
+      const response = await authService.verifyMobileOTP({
+        phone: `${mobileData.countryCode}${mobileData.phone.replace(/\D/g, '')}`,
+        otpCode: mobileData.otp.trim(),
+      });
+
+      if (response.success && response.token && response.userInfo) {
+        setAuth(
+          response.token,
+          response.refreshToken || '',
+          response.userInfo
+        );
+        setSuccessMessage(response.message || 'Mobile sign-in successful');
+        setMobileSignInOpen(false);
+        setMobileStep('phone');
+        setMobileData({ countryCode: '+91', phone: '', otp: '' });
+        navigate('/home');
+      } else {
+        setError(response.message || 'Invalid mobile OTP');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to verify mobile OTP');
+    } finally {
+      setMobileLoading(false);
+    }
+  };
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
       ...formData,
       [e.target.name]: e.target.value,
     });
   };
+
+  const mobileSignInDialog = (
+    <Dialog
+      open={mobileSignInOpen}
+      fullWidth
+      maxWidth="xs"
+      onClose={() => {
+        setMobileSignInOpen(false);
+        setMobileStep('phone');
+        setMobileData({ countryCode: '+91', phone: '', otp: '' });
+        setError('');
+        setSuccessMessage('');
+      }}
+    >
+      <DialogTitle sx={{ fontWeight: 600, color: '#1e3a48' }}>
+        Continue with mobile number
+      </DialogTitle>
+      <DialogContent>
+        <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+          <TextField
+            select
+            margin="dense"
+            label="Code"
+            value={mobileData.countryCode}
+            disabled={mobileStep === 'otp' || mobileLoading}
+            onChange={(e) => setMobileData((prev) => ({ ...prev, countryCode: e.target.value }))}
+            sx={{ width: 150 }}
+          >
+            {COUNTRY_CODES.map((country) => (
+              <MenuItem key={country.code} value={country.code}>
+                {country.label}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Mobile number"
+            fullWidth
+            value={mobileData.phone}
+            disabled={mobileStep === 'otp' || mobileLoading}
+            onChange={(e) => setMobileData((prev) => ({ ...prev, phone: e.target.value.replace(/\D/g, '') }))}
+            placeholder="7675023613"
+          />
+        </Box>
+        {mobileStep === 'otp' && (
+          <TextField
+            margin="dense"
+            label="OTP"
+            fullWidth
+            value={mobileData.otp}
+            disabled={mobileLoading}
+            onChange={(e) => setMobileData((prev) => ({ ...prev, otp: e.target.value }))}
+            placeholder="Enter OTP"
+            sx={{ mb: 2 }}
+          />
+        )}
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
+        )}
+        {successMessage && (
+          <Alert severity="success" sx={{ mb: 2 }}>
+            {successMessage}
+          </Alert>
+        )}
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 3 }}>
+        <Button
+          onClick={() => {
+            setMobileSignInOpen(false);
+            setMobileStep('phone');
+            setMobileData({ countryCode: '+91', phone: '', otp: '' });
+            setError('');
+            setSuccessMessage('');
+          }}
+          disabled={mobileLoading}
+        >
+          Cancel
+        </Button>
+        {mobileStep === 'phone' ? (
+          <Button onClick={handleSendMobileOTP} disabled={mobileLoading || !mobileData.phone.trim()}>
+            {mobileLoading ? 'Sending...' : 'Send OTP'}
+          </Button>
+        ) : (
+          <Button onClick={handleVerifyMobileOTP} disabled={mobileLoading || !mobileData.otp.trim()}>
+            {mobileLoading ? 'Verifying...' : 'Verify OTP'}
+          </Button>
+        )}
+      </DialogActions>
+    </Dialog>
+  );
 
   // Step 1: Profession and Location Selection
   if (currentStep === 1) {
@@ -191,6 +456,11 @@ const Register = () => {
           {error && (
             <Alert severity="error" sx={{ width: '100%', mb: 2 }}>
               {error}
+            </Alert>
+          )}
+          {successMessage && (
+            <Alert severity="success" sx={{ width: '100%', mb: 2 }}>
+              {successMessage}
             </Alert>
           )}
 
@@ -249,12 +519,25 @@ const Register = () => {
             helperText={error && !formData.address.trim() ? 'Please enter your location' : undefined}
           />
 
-          <Box sx={{ position: 'fixed', bottom: 16, left: 0, right: 0, px: 2 }}>
+          <Box
+            sx={{
+              position: 'fixed',
+              bottom: 16,
+              left: 0,
+              right: 0,
+              px: 2,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 1,
+            }}
+          >
             <Button
               fullWidth
               variant="contained"
               onClick={handleContinueFromStep1}
               sx={{
+                maxWidth: 500,
                 bgcolor: '#8B5CF6',
                 fontSize: '1rem',
                 fontWeight: 600,
@@ -265,9 +548,33 @@ const Register = () => {
                 },
               }}
             >
-              Continue
+              Continue with email
+            </Button>
+            <Box sx={{ width: '100%', maxWidth: 500 }}>
+              <GoogleSignInButton
+                text="continue_with"
+                disabled={googleSigningIn || facebookSigningIn}
+                onCredential={handleGoogleCredential}
+              />
+            </Box>
+            <Box sx={{ width: '100%', maxWidth: 500 }}>
+              <FacebookSignInButton
+                label="Continue with Facebook"
+                disabled={googleSigningIn || facebookSigningIn}
+                onAccessToken={handleFacebookAccessToken}
+              />
+            </Box>
+            <Button
+              fullWidth
+              variant="outlined"
+              disabled={googleSigningIn || facebookSigningIn || mobileLoading}
+              onClick={() => setMobileSignInOpen(true)}
+              sx={{ width: '100%', maxWidth: 500, textTransform: 'none', py: 1.25 }}
+            >
+              Continue with mobile number
             </Button>
           </Box>
+          {mobileSignInDialog}
         </Box>
       </Container>
     );
@@ -469,6 +776,32 @@ const Register = () => {
               Register
             </Button>
 
+            <Divider sx={{ mb: 3 }}>or</Divider>
+
+            <Box sx={{ mb: 3 }}>
+              <GoogleSignInButton
+                text="continue_with"
+                disabled={googleSigningIn || facebookSigningIn}
+                onCredential={handleGoogleCredential}
+              />
+            </Box>
+            <Box sx={{ mb: 3 }}>
+              <FacebookSignInButton
+                label="Continue with Facebook"
+                disabled={googleSigningIn || facebookSigningIn}
+                onAccessToken={handleFacebookAccessToken}
+              />
+            </Box>
+            <Button
+              fullWidth
+              variant="outlined"
+              disabled={googleSigningIn || facebookSigningIn || mobileLoading}
+              onClick={() => setMobileSignInOpen(true)}
+              sx={{ textTransform: 'none', py: 1.25, mb: 3 }}
+            >
+              Continue with mobile number
+            </Button>
+
             <Box sx={{ textAlign: 'center' }}>
               <Typography variant="body1" display="inline">
                 Already have an account?{' '}
@@ -484,6 +817,7 @@ const Register = () => {
             </Box>
           </Box>
         </Box>
+        {mobileSignInDialog}
       </Box>
     </Container>
   );
