@@ -10,17 +10,17 @@ import {
 import { UserInfo } from '../types/auth';
 
 export interface UserFollower {
-  id: number;
-  followerId: number;
-  followingId: number;
+  id: string;
+  followerId: string;
+  followingId: string;
   status: string;
   followedAt: string;
 }
 
 export interface UserRating {
-  id: number;
-  ratedUserId: number;
-  ratedByUserId: number;
+  id: string;
+  ratedUserId: string;
+  ratedByUserId: string;
   ratingValue: number;
   review?: string;
   ratingType?: string;
@@ -35,7 +35,7 @@ export class UserService {
     this.client = client;
   }
 
-  async getUserProfile(id: number): Promise<UserInfo> {
+  async getUserProfile(id: string): Promise<UserInfo> {
     const { data } = await this.client.query({
       query: GET_USER_PROFILE,
       variables: { id },
@@ -44,7 +44,7 @@ export class UserService {
     return data.user;
   }
 
-  async getUserFollowers(userId: number): Promise<UserFollower[]> {
+  async getUserFollowers(userId: string): Promise<UserFollower[]> {
     const { data } = await this.client.query({
       query: GET_USER_FOLLOWERS,
       variables: { userId },
@@ -53,7 +53,7 @@ export class UserService {
     return data.userFollowers;
   }
 
-  async getUserFollowing(userId: number): Promise<UserFollower[]> {
+  async getUserFollowing(userId: string): Promise<UserFollower[]> {
     const { data } = await this.client.query({
       query: GET_USER_FOLLOWING,
       variables: { userId },
@@ -62,7 +62,7 @@ export class UserService {
     return data.userFollowing;
   }
 
-  async checkFollowingStatus(userId: number, followingId: number): Promise<UserFollower | null> {
+  async checkFollowingStatus(userId: string, followingId: string): Promise<UserFollower | null> {
     const { data } = await this.client.query({
       query: CHECK_FOLLOWING_STATUS,
       variables: { userId, followingId },
@@ -71,7 +71,7 @@ export class UserService {
     return data.checkFollowingStatus;
   }
 
-  async followUser(userId: number, followingId: number): Promise<UserFollower> {
+  async followUser(userId: string, followingId: string): Promise<UserFollower> {
     const { data } = await this.client.mutate({
       mutation: FOLLOW_USER,
       variables: { userId, followingId }
@@ -79,14 +79,13 @@ export class UserService {
     return data.followUser;
   }
 
-  async updateFollowStatus(userId: number, followingId: number, status: string): Promise<UserFollower> {
+  async updateFollowStatus(followerId: string, followingId: string, status: string): Promise<UserFollower> {
     const { data } = await this.client.mutate({
       mutation: UPDATE_FOLLOW_STATUS,
-      variables: { userId, followingId, status }
+      variables: { followerId, followingId, status }
     });
     return data.updateFollowStatus;
   }
 }
 
-// This empty export makes the file a module
 export {};
