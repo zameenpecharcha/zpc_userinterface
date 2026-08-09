@@ -15,6 +15,11 @@ export interface UserFollower {
   followingId: string;
   status: string;
   followedAt: string;
+  userFirstName?: string | null;
+  userLastName?: string | null;
+  userRole?: string | null;
+  userProfilePhoto?: string | null;
+  userProfilePhotoSignedUrl?: string | null;
 }
 
 export interface UserRating {
