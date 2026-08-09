@@ -63,6 +63,14 @@ export const GET_USER_PROFILE = gql`
   }
 `;
 
+const FOLLOW_USER_PROFILE_FIELDS = `
+      userFirstName
+      userLastName
+      userRole
+      userProfilePhoto
+      userProfilePhotoSignedUrl
+`;
+
 export const GET_USER_FOLLOWERS = gql`
   query GetUserFollowers($userId: String!) {
     userFollowers(userId: $userId) {
@@ -71,6 +79,7 @@ export const GET_USER_FOLLOWERS = gql`
       followingId
       status
       followedAt
+      ${FOLLOW_USER_PROFILE_FIELDS}
     }
   }
 `;
@@ -83,6 +92,7 @@ export const GET_USER_FOLLOWING = gql`
       followingId
       status
       followedAt
+      ${FOLLOW_USER_PROFILE_FIELDS}
     }
   }
 `;
@@ -237,6 +247,11 @@ export const PENDING_FOLLOW_REQUESTS = gql`
       followingId
       status
       followedAt
+      userFirstName
+      userLastName
+      userRole
+      userProfilePhoto
+      userProfilePhotoSignedUrl
     }
   }
 `;

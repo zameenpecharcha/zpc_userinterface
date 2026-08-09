@@ -173,7 +173,32 @@ interface UserFollower {
     followingId: string;
     status: string;
     followedAt: string;
+    userFirstName?: string | null;
+    userLastName?: string | null;
+    userRole?: string | null;
+    userProfilePhoto?: string | null;
+    userProfilePhotoSignedUrl?: string | null;
 }
+
+const FOLLOW_PROFILE_FIELDS = `
+                userFirstName
+                userLastName
+                userRole
+                userProfilePhoto
+                userProfilePhotoSignedUrl`;
+
+const followToDetail = (f: UserFollower, uid: string) => ({
+    id: f.id,
+    uid,
+    status: f.status,
+    info: f.userFirstName || f.userLastName ? {
+        id: uid,
+        firstName: f.userFirstName || '',
+        lastName: f.userLastName || '',
+        role: f.userRole || undefined,
+        photo: f.userProfilePhotoSignedUrl || f.userProfilePhoto || undefined,
+    } : null,
+});
 
 interface UserProfile {
     id: string;
@@ -297,6 +322,7 @@ const GRAPHQL_QUERIES = {
                 followingId
                 status
                 followedAt
+                ${FOLLOW_PROFILE_FIELDS}
             }
         }
     `,
@@ -328,6 +354,7 @@ const GRAPHQL_QUERIES = {
                 followingId
                 status
                 followedAt
+                ${FOLLOW_PROFILE_FIELDS}
             }
         }
     `,
@@ -340,6 +367,7 @@ const GRAPHQL_QUERIES = {
                 followingId
                 status
                 followedAt
+                ${FOLLOW_PROFILE_FIELDS}
             }
         }
     `,
@@ -808,10 +836,15 @@ const apiService = {
             const data = await this.graphqlRequest(GRAPHQL_QUERIES.GET_USER_FOLLOWERS, { userId });
             return (data.userFollowers || []).map((follower: any) => ({
                 id: follower.id,
-                userId: follower.userId,
+                followerId: follower.followerId,
                 followingId: follower.followingId,
                 status: follower.status,
-                followedAt: follower.followedAt
+                followedAt: follower.followedAt,
+                userFirstName: follower.userFirstName,
+                userLastName: follower.userLastName,
+                userRole: follower.userRole,
+                userProfilePhoto: follower.userProfilePhoto,
+                userProfilePhotoSignedUrl: follower.userProfilePhotoSignedUrl,
             }));
         } catch (error) {
             console.error('Error fetching user followers:', error);
@@ -824,10 +857,15 @@ const apiService = {
             const data = await this.graphqlRequest(GRAPHQL_QUERIES.GET_USER_FOLLOWING, { userId });
             return (data.userFollowing || []).map((following: any) => ({
                 id: following.id,
-                userId: following.userId,
+                followerId: following.followerId,
                 followingId: following.followingId,
                 status: following.status,
-                followedAt: following.followedAt
+                followedAt: following.followedAt,
+                userFirstName: following.userFirstName,
+                userLastName: following.userLastName,
+                userRole: following.userRole,
+                userProfilePhoto: following.userProfilePhoto,
+                userProfilePhotoSignedUrl: following.userProfilePhotoSignedUrl,
             }));
         } catch (error) {
             console.error('Error fetching user following:', error);
@@ -987,26 +1025,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
 
     // Pending request from profile user -> current user
     const [incomingFollowStatus, setIncomingFollowStatus] = useState<UserFollower | null>(null);
-
-    const enrichUsers = async (userIds: string[]) => {
-        const unique = Array.from(new Set(userIds.filter((x) => Number.isFinite(x))));
-        const entries = await Promise.all(unique.map(async (uid) => {
-            try {
-                const res = await apiService.graphqlRequest(GRAPHQL_QUERIES.GET_USER_PROFILE, { id: uid });
-                const u = res.user;
-                return [uid, {
-                    id: u.id,
-                    firstName: u.firstName,
-                    lastName: u.lastName,
-                    role: u.role,
-                    photo: u.profilePhotoSignedUrl || u.profilePhoto,
-                }];
-            } catch {
-                return [uid, null];
-            }
-        }));
-        return Object.fromEntries(entries);
-    };
     // Rating state
     const [ratingOpen, setRatingOpen] = useState(false);
     const [ratingValue, setRatingValue] = useState<number>(5);
@@ -1847,8 +1865,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                             setLoadingFF(true);
                                             const data = await apiService.graphqlRequest(GRAPHQL_QUERIES.PENDING_FOLLOW_REQUESTS, { userId });
                                             const list = (data?.pendingFollowRequests || []);
-                                            const map = await enrichUsers(list.map((p: any) => p.followerId));
-                                            setFollowersDetails(list.map((p: any) => ({ id: p.id, uid: p.followerId, status: p.status, info: map[p.followerId] || null })));
+                                            setFollowersDetails(list.map((p: UserFollower) => followToDetail(p, p.followerId)));
                                             setFollowersOpen(true);
                                         } finally { setLoadingFF(false); }
                                     }}
@@ -1873,13 +1890,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                 setLoadingFF(true);
                                 const list = await apiService.fetchUserFollowers(userId);
                                 setFollowersList(list);
-                                const map = await enrichUsers(list.map((f: any) => f.followerId || f.userId));
-                                setFollowersDetails(list.map((f: any) => ({
-                                    id: f.id,
-                                    uid: f.followerId || f.userId,
-                                    status: f.status,
-                                    info: map[f.followerId || f.userId] || null,
-                                })));
+                                setFollowersDetails(list.map((f: UserFollower) => followToDetail(f, f.followerId)));
                                 setFollowersOpen(true);
                             } finally { setLoadingFF(false); }
                         }}>
@@ -1893,13 +1904,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                 setLoadingFF(true);
                                 const list = await apiService.fetchUserFollowing(userId);
                                 setFollowingList(list);
-                                const map = await enrichUsers(list.map((f: any) => f.followingId));
-                                setFollowingDetails(list.map((f: any) => ({
-                                    id: f.id,
-                                    uid: f.followingId,
-                                    status: f.status,
-                                    info: map[f.followingId] || null,
-                                })));
+                                setFollowingDetails(list.map((f: UserFollower) => followToDetail(f, f.followingId)));
                                 setFollowingOpen(true);
                             } finally { setLoadingFF(false); }
                         }}>
