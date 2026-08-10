@@ -14,7 +14,6 @@ export const GET_USERS = gql`
   }
 `;
 
-/** Fast mention / picker search — no signed photo work on the server. */
 export const SEARCH_USERS_LIGHT = gql`
   query SearchUsersLight($search: String, $page: Int, $limit: Int) {
     users(search: $search, page: $page, limit: $limit) {
@@ -28,7 +27,7 @@ export const SEARCH_USERS_LIGHT = gql`
 `;
 
 export const GET_USER_PROFILE = gql`
-  query GetUserProfile($id: Int!) {
+  query GetUserProfile($id: String!) {
     user(id: $id) {
       id
       firstName
@@ -36,6 +35,7 @@ export const GET_USER_PROFILE = gql`
       email
       phone
       profilePhoto
+      profilePhotoSignedUrl
       role
       address
       bio
@@ -63,32 +63,42 @@ export const GET_USER_PROFILE = gql`
   }
 `;
 
+const FOLLOW_USER_PROFILE_FIELDS = `
+      userFirstName
+      userLastName
+      userRole
+      userProfilePhoto
+      userProfilePhotoSignedUrl
+`;
+
 export const GET_USER_FOLLOWERS = gql`
-  query GetUserFollowers($userId: Int!) {
+  query GetUserFollowers($userId: String!) {
     userFollowers(userId: $userId) {
       id
       followerId
       followingId
       status
       followedAt
+      ${FOLLOW_USER_PROFILE_FIELDS}
     }
   }
 `;
 
 export const GET_USER_FOLLOWING = gql`
-  query GetUserFollowing($userId: Int!) {
+  query GetUserFollowing($userId: String!) {
     userFollowing(userId: $userId) {
       id
       followerId
       followingId
       status
       followedAt
+      ${FOLLOW_USER_PROFILE_FIELDS}
     }
   }
 `;
 
 export const CHECK_FOLLOWING_STATUS = gql`
-  query CheckFollowingStatus($userId: Int!, $followingId: Int!) {
+  query CheckFollowingStatus($userId: String!, $followingId: String!) {
     checkFollowingStatus(userId: $userId, followingId: $followingId) {
       id
       followerId
@@ -100,7 +110,7 @@ export const CHECK_FOLLOWING_STATUS = gql`
 `;
 
 export const FOLLOW_USER = gql`
-  mutation FollowUser($userId: Int!, $followingId: Int!) {
+  mutation FollowUser($userId: String!, $followingId: String!) {
     followUser(userId: $userId, followingId: $followingId) {
       id
       followerId
@@ -112,8 +122,8 @@ export const FOLLOW_USER = gql`
 `;
 
 export const UPDATE_FOLLOW_STATUS = gql`
-  mutation UpdateFollowStatus($userId: Int!, $followingId: Int!, $status: String!) {
-    updateFollowStatus(userId: $userId, followingId: $followingId, status: $status) {
+  mutation UpdateFollowStatus($followerId: String!, $followingId: String!, $status: String!) {
+    updateFollowStatus(followerId: $followerId, followingId: $followingId, status: $status) {
       id
       followerId
       followingId
@@ -124,7 +134,7 @@ export const UPDATE_FOLLOW_STATUS = gql`
 `;
 
 export const GET_SUGGESTED_USERS = gql`
-  query GetSuggestedUsers($userId: Int!, $limit: Int = 5) {
+  query GetSuggestedUsers($userId: String!, $limit: Int = 5) {
     suggestedUsers(userId: $userId, limit: $limit) {
       id
       firstName
@@ -137,7 +147,7 @@ export const GET_SUGGESTED_USERS = gql`
 `;
 
 export const GET_USER_NOTIFICATIONS = gql`
-  query GetUserNotifications($userId: Int!, $page: Int = 1, $limit: Int = 20) {
+  query GetUserNotifications($userId: String!, $page: Int = 1, $limit: Int = 20) {
     userNotifications(userId: $userId, page: $page, limit: $limit) {
       total
       notifications {
@@ -156,7 +166,7 @@ export const GET_USER_NOTIFICATIONS = gql`
 
 export const CREATE_NOTIFICATION = gql`
   mutation CreateNotification(
-    $userId: Int!
+    $userId: String!
     $title: String!
     $message: String!
     $type: String!
@@ -181,7 +191,7 @@ export const CREATE_NOTIFICATION = gql`
 `;
 
 export const MARK_NOTIFICATION_READ = gql`
-  mutation MarkNotificationRead($notificationId: Int!, $userId: Int!) {
+  mutation MarkNotificationRead($notificationId: String!, $userId: String!) {
     markNotificationRead(notificationId: $notificationId, userId: $userId) {
       id
       read
@@ -189,5 +199,77 @@ export const MARK_NOTIFICATION_READ = gql`
   }
 `;
 
-// This empty export makes the file a module
+export const UPDATE_PROFILE_PHOTO = gql`
+  mutation UpdateProfilePhoto(
+    $userId: String!
+    $filePath: String!
+    $fileName: String
+    $contentType: String
+  ) {
+    updateProfilePhoto(
+      userId: $userId
+      filePath: $filePath
+      fileName: $fileName
+      contentType: $contentType
+    ) {
+      id
+      profilePhotoId
+      profilePhotoSignedUrl
+    }
+  }
+`;
+
+export const UPDATE_COVER_PHOTO = gql`
+  mutation UpdateCoverPhoto(
+    $userId: String!
+    $filePath: String!
+    $fileName: String
+    $contentType: String
+  ) {
+    updateCoverPhoto(
+      userId: $userId
+      filePath: $filePath
+      fileName: $fileName
+      contentType: $contentType
+    ) {
+      id
+      coverPhotoId
+      coverPhotoSignedUrl
+    }
+  }
+`;
+
+export const PENDING_FOLLOW_REQUESTS = gql`
+  query PendingFollowRequests($userId: String!) {
+    pendingFollowRequests(userId: $userId) {
+      id
+      followerId
+      followingId
+      status
+      followedAt
+      userFirstName
+      userLastName
+      userRole
+      userProfilePhoto
+      userProfilePhotoSignedUrl
+    }
+  }
+`;
+
+export const GET_USER_RATINGS = gql`
+  query GetUserRatings($userId: String!) {
+    userRatings(userId: $userId) {
+      id
+      ratedUserId
+      ratedByUserId
+      ratingValue
+      review
+      ratingType
+      createdAt
+      raterFirstName
+      raterLastName
+    }
+  }
+`;
+
 export {};

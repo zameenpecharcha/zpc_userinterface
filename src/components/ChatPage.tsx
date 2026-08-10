@@ -230,14 +230,14 @@ const NewConvDialog: React.FC<{
     notifyOnNetworkStatusChange: true,
   });
 
-  const apiUsers: Array<{ id: number; firstName: string; lastName: string; email: string; role?: string; profilePhotoSignedUrl?: string }> =
+  const apiUsers: Array<{ id: string; firstName: string; lastName: string; email: string; role?: string; profilePhotoSignedUrl?: string }> =
     data?.users ?? [];
 
   const reset = () => { setType('direct'); setUserSearch(''); setGroupName(''); setMembers([]); setError(null); };
   const handleClose = () => { reset(); onClose(); };
 
-  const startDirect = async (u: { id: number; firstName: string; lastName: string }) => {
-    const otherId = String(u.id);
+  const startDirect = async (u: { id: string; firstName: string; lastName: string }) => {
+    const otherId = u.id;
     setError(null);
     try {
       const result = await apollo.mutate({
@@ -266,8 +266,8 @@ const NewConvDialog: React.FC<{
     }
   };
 
-  const toggleMember = (u: { id: number; firstName: string; lastName: string }) => {
-    const id = String(u.id);
+  const toggleMember = (u: { id: string; firstName: string; lastName: string }) => {
+    const id = u.id;
     const label = `${u.firstName} ${u.lastName}`.trim();
     setMembers(prev => prev.some(m => m.id === id) ? prev.filter(m => m.id !== id) : [...prev, { id, label }]);
   };
@@ -567,7 +567,7 @@ const ChatPage: React.FC<ChatPageProps> = ({
         try {
           const res = await apollo.query({
             query: GET_USER_PROFILE,
-            variables: { id: parseInt(uid, 10) },
+            variables: { id: uid },
             fetchPolicy: 'cache-first',
           });
           const u = res.data?.user;
@@ -644,9 +644,9 @@ const ChatPage: React.FC<ChatPageProps> = ({
     setMobileView('chat');
   }, []);
 
-  const startDmWithUser = useCallback(async (u: { id: number; firstName: string; lastName: string }) => {
+  const startDmWithUser = useCallback(async (u: { id: string; firstName: string; lastName: string }) => {
     if (!userId) return;
-    const otherId = String(u.id);
+    const otherId = u.id;
     const existing = conversations.find(c =>
       c.type === 'direct' && c.participants.includes(otherId) && c.participants.includes(userId)
     );

@@ -53,6 +53,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     if (storedToken && storedRefreshToken && storedUser) {
       try {
         const parsedUser = JSON.parse(storedUser);
+        if (parsedUser?.id != null) {
+          parsedUser.id = String(parsedUser.id);
+        }
         setToken(storedToken);
         setRefreshToken(storedRefreshToken);
         setUser(parsedUser);
@@ -79,17 +82,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   }, []); // Empty dependency array means this runs once on mount
 
   const setAuth = (newToken: string, newRefreshToken: string, newUser: UserInfo) => {
+    const normalizedUser = { ...newUser, id: String(newUser.id) };
     console.log('Setting auth state:', { token: newToken, user: newUser });
     localStorage.setItem('token', newToken);
     localStorage.setItem('refreshToken', newRefreshToken);
     // Write to both keys for compatibility
-    const userString = JSON.stringify(newUser);
+    const userString = JSON.stringify(normalizedUser);
     localStorage.setItem('user', userString);
     localStorage.setItem('userInfo', userString);
     
     setToken(newToken);
     setRefreshToken(newRefreshToken);
-    setUser(newUser);
+    setUser(normalizedUser);
     setIsAuthenticated(true);
   };
 

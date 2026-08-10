@@ -1,11 +1,11 @@
 import React, { useState, useMemo, useCallback, memo, useEffect, useRef } from 'react';
 import { gql, useQuery, useMutation, useApolloClient } from '@apollo/client';
-import { SEARCH_POSTS, CREATE_POST, TRENDING_POSTS, DELETE_POST, UPDATE_POST, UPDATE_COMMENT, DELETE_COMMENT, UNLIKE_COMMENT } from '../graphql/posts';
-import { GET_SUGGESTED_USERS, FOLLOW_USER, GET_USER_NOTIFICATIONS, MARK_NOTIFICATION_READ } from '../graphql/user';
+import { SEARCH_POSTS, CREATE_POST, TRENDING_POSTS, DELETE_POST, UPDATE_POST, UPDATE_COMMENT, DELETE_COMMENT, UNLIKE_COMMENT, GET_POST_COMMENTS, CREATE_COMMENT, LIKE_COMMENT, LIKE_POST, UNLIKE_POST } from '../graphql/posts';
+import { GET_SUGGESTED_USERS, FOLLOW_USER, GET_USER_NOTIFICATIONS, MARK_NOTIFICATION_READ, GET_USER_PROFILE } from '../graphql/user';
 import CreatePost from './CreatePost';
 import { PostService } from '../services/postService';
 import { useAuth } from '../contexts/AuthContext';
-import { renderMentionContent, nameInitials, stringToColor } from '../utils/mentions';
+import { renderMentionContent, nameInitials, stringToColor, avatarPlaceholderIndex } from '../utils/mentions';
 import CommentListItem from './comments/CommentListItem';
 import CommentComposer from './comments/CommentComposer';
 import { normalizeReactionEmoji } from './comments/commentReactions';
@@ -62,136 +62,12 @@ const API_GATEWAY_URL = (process.env.REACT_APP_API_GATEWAY_URL || 'http://localh
 
 
 
-const GET_POST_COMMENTS_QUERY = gql`
-query GetPostComments($postId: Int!, $page: Int, $limit: Int) {
-  postComments(postId: $postId, page: $page, limit: $limit) {
-    id
-    postId
-    userId
-    userFirstName
-    userLastName
-    userRole
-    comment
-    parentCommentId
-    status
-    addedAt
-    commentedAt
-    editedAt
-    profilePhoto
-    profilePhotoSignedUrl
-    replies {
-      id
-      postId
-      userId
-      userFirstName
-      userLastName
-      userRole
-      comment
-      parentCommentId
-      status
-      addedAt
-      commentedAt
-      editedAt
-      likeCount
-      profilePhoto
-      profilePhotoSignedUrl
-    }
-    likeCount
-  }
-}
-`;
-
-const CREATE_COMMENT_MUTATION = gql`
-mutation CreateComment($postId: Int!, $userId: Int!, $comment: String!, $parentCommentId: Int) {
-  createComment(
-    postId: $postId
-    userId: $userId
-    comment: $comment
-    parentCommentId: $parentCommentId
-  ) {
-    success
-    message
-    comment {
-      id
-      postId
-      userId
-      userFirstName
-      userLastName
-      userRole
-      comment
-      parentCommentId
-      status
-      addedAt
-      commentedAt
-      editedAt
-      likeCount
-    }
-  }
-}
-`;
-
-const LIKE_COMMENT_MUTATION = gql`
-mutation LikeComment($commentId: Int!, $userId: Int!, $reactionType: String) {
-  likeComment(commentId: $commentId, userId: $userId, reactionType: $reactionType) {
-    success
-    message
-    comment {
-      id
-      likeCount
-    }
-  }
-}
-`;
-
-const LIKE_POST_MUTATION = gql`
-mutation LikePost($postId: Int!, $userId: Int!) {
-  likePost(postId: $postId, userId: $userId) {
-    success
-    message
-    post {
-      id
-      likeCount
-    }
-  }
-}
-`;
-
-const UNLIKE_POST_MUTATION = gql`
-mutation UnlikePost($postId: Int!, $userId: Int!) {
-  unlikePost(postId: $postId, userId: $userId) {
-    success
-    message
-    post {
-      id
-      likeCount
-    }
-  }
-}
-`;
-
-const GET_USER_QUERY = gql`
-query GetUser($id: Int!) {
-  user(id: $id) {
-    id
-    firstName
-    lastName
-    email
-    phone
-    profilePhoto
-    role
-    address
-    profilePhotoSignedUrl
-    coverPhotoSignedUrl
-    latitude
-    longitude
-    bio
-    isactive
-    emailVerified
-    phoneVerified
-    createdAt
-  }
-}
-`;
+const GET_POST_COMMENTS_QUERY = GET_POST_COMMENTS;
+const CREATE_COMMENT_MUTATION = CREATE_COMMENT;
+const LIKE_COMMENT_MUTATION = LIKE_COMMENT;
+const LIKE_POST_MUTATION = LIKE_POST;
+const UNLIKE_POST_MUTATION = UNLIKE_POST;
+const GET_USER_QUERY = GET_USER_PROFILE;
 
 // Get user data dynamically to handle login state changes
 const getUserData = () => {
@@ -227,8 +103,8 @@ const MATTE_POST_SX = MATTE_SURFACE;
 // Memoized Post component to prevent unnecessary re-renders
 interface PostProps {
   post: {
-    id: number;
-    userId: number;
+    id: string;
+    userId: string;
     userFirstName: string;
     userLastName: string;
     userRole: string;
@@ -244,7 +120,7 @@ interface PostProps {
     commentCount: number;
     profilePhoto?: string;
     media?: Array<{
-      id: number;
+      id: string;
       mediaType: string;
       mediaUrl: string;
       signedUrl?: string;
@@ -254,15 +130,15 @@ interface PostProps {
       uploadedAt: string;
     }>;
   };
-  onLikeToggle: (postId: number) => void;
-  onCommentClick: (postId: number) => void;
-  onOpenProfile: (userId: number) => void;
+  onLikeToggle: (postId: string) => void;
+  onCommentClick: (postId: string) => void;
+  onOpenProfile: (userId: string) => void;
   onEditPost?: (post: PostProps['post']) => void;
-  onDeletePost?: (postId: number) => void;
-  currentUserId?: number | string | null;
-  likedPosts: { [postId: number]: boolean };
-  likeCounts: { [postId: number]: number };
-  commentCounts: { [postId: number]: number };
+  onDeletePost?: (postId: string) => void;
+  currentUserId?: string | null;
+  likedPosts: { [postId: string]: boolean };
+  likeCounts: { [postId: string]: number };
+  commentCounts: { [postId: string]: number };
 }
 
 const PostSkeleton = () => (
@@ -609,7 +485,7 @@ const CommentsModal = memo(({
           <Box sx={{ mb: 2.5 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, mb: 1.25, minWidth: 0 }}>
               <Avatar
-                src={(post as any).userProfilePhotoSignedUrl || (post as any).userProfilePhoto || post.profilePhoto || `https://randomuser.me/api/portraits/lego/${post.userId % 10}.jpg`}
+                src={(post as any).userProfilePhotoSignedUrl || (post as any).userProfilePhoto || post.profilePhoto || `https://randomuser.me/api/portraits/lego/${avatarPlaceholderIndex(post.userId)}.jpg`}
                 sx={{ width: 44, height: 44, flexShrink: 0, fontWeight: 800, bgcolor: '#2563EB' }}
               />
               <Box sx={{ minWidth: 0, flex: 1 }}>
@@ -709,19 +585,19 @@ const Home = () => {
 
 
   // Optimized state management
-  const [commentsModalOpen, setCommentsModalOpen] = useState<{ open: boolean; postId: number | null }>({ open: false, postId: null });
-  const [likedPosts, setLikedPosts] = useState<{ [postId: number]: boolean }>({});
-  const [likeCounts, setLikeCounts] = useState<{ [postId: number]: number }>({});
-  const [commentCounts, setCommentCounts] = useState<{ [postId: number]: number }>({});
+  const [commentsModalOpen, setCommentsModalOpen] = useState<{ open: boolean; postId: string | null }>({ open: false, postId: null });
+  const [likedPosts, setLikedPosts] = useState<{ [postId: string]: boolean }>({});
+  const [likeCounts, setLikeCounts] = useState<{ [postId: string]: number }>({});
+  const [commentCounts, setCommentCounts] = useState<{ [postId: string]: number }>({});
   const [chatOpen, setChatOpen] = useState(false);
   const [chatRoomId, setChatRoomId] = useState<string | null>(null);
 
   // Hydrate liked state from server (persists across refresh)
   useEffect(() => {
     if (!data?.searchPosts) return;
-    const nextLiked: { [postId: number]: boolean } = {};
-    const nextCounts: { [postId: number]: number } = {};
-    const nextCommentCounts: { [postId: number]: number } = {};
+    const nextLiked: { [postId: string]: boolean } = {};
+    const nextCounts: { [postId: string]: number } = {};
+    const nextCommentCounts: { [postId: string]: number } = {};
     data.searchPosts.forEach((p: any) => {
       if (p.isLiked) nextLiked[p.id] = true;
       nextCounts[p.id] = p.likeCount || 0;
@@ -739,13 +615,13 @@ const Home = () => {
   const [currentPage, setCurrentPage] = useState<'home' | 'profile'>('home');
 
   // Comments state
-  const [commentsByPost, setCommentsByPost] = useState<{ [postId: number]: any[] }>({});
-  const [loadingComments, setLoadingComments] = useState<{ [postId: number]: boolean }>({});
-  const [likedComments, setLikedComments] = useState<{ [commentId: number]: boolean }>({});
-  const [commentReactions, setCommentReactions] = useState<{ [commentId: number]: string }>({});
-  const [commentLikeCounts, setCommentLikeCounts] = useState<{ [commentId: number]: number }>({});
+  const [commentsByPost, setCommentsByPost] = useState<{ [postId: string]: any[] }>({});
+  const [loadingComments, setLoadingComments] = useState<{ [postId: string]: boolean }>({});
+  const [likedComments, setLikedComments] = useState<{ [commentId: string]: boolean }>({});
+  const [commentReactions, setCommentReactions] = useState<{ [commentId: string]: string }>({});
+  const [commentLikeCounts, setCommentLikeCounts] = useState<{ [commentId: string]: number }>({});
   const [likingComment, setLikingComment] = useState(false);
-  const [replyingCommentId, setReplyingCommentId] = useState<number | null>(null);
+  const [replyingCommentId, setReplyingCommentId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
   const [replying, setReplying] = useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars
 
@@ -758,13 +634,13 @@ const Home = () => {
   const activeUserId = currentUser?.id || authUser?.id || storedUser?.id;
 
   const { data: suggestedData, loading: suggestedLoading, refetch: refetchSuggested } = useQuery(GET_SUGGESTED_USERS, {
-    variables: { userId: parseInt(String(activeUserId || 0)), limit: 8 },
+    variables: { userId: String(activeUserId || ''), limit: 8 },
     skip: !activeUserId,
     fetchPolicy: 'cache-and-network',
   });
 
   const { data: notifData, refetch: refetchNotifs } = useQuery(GET_USER_NOTIFICATIONS, {
-    variables: { userId: parseInt(String(activeUserId || 0)), page: 1, limit: 20 },
+    variables: { userId: String(activeUserId || ''), page: 1, limit: 20 },
     skip: !activeUserId,
     fetchPolicy: 'cache-and-network',
     pollInterval: 60000,
@@ -774,8 +650,8 @@ const Home = () => {
   const notifications = notifData?.userNotifications?.notifications || [];
   const unreadCount = notifications.filter((n: any) => !n.read).length;
 
-  const [followedSuggestedIds, setFollowedSuggestedIds] = useState<{ [userId: number]: boolean }>({});
-  const [followingSuggestedId, setFollowingSuggestedId] = useState<number | null>(null);
+  const [followedSuggestedIds, setFollowedSuggestedIds] = useState<{ [userId: string]: boolean }>({});
+  const [followingSuggestedId, setFollowingSuggestedId] = useState<string | null>(null);
   const [findFriendsOpen, setFindFriendsOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileDiscoverOpen, setMobileDiscoverOpen] = useState(false);
@@ -783,7 +659,7 @@ const Home = () => {
   const currentUserRef = useRef(currentUser);
   useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
   // The user whose profile we are viewing from the feed
-  const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
 
   const isMobile = useMediaQuery('(max-width:900px)');
 
@@ -848,7 +724,7 @@ const Home = () => {
           },
           body: JSON.stringify({
             query: `
-              query GetUser($id: Int!) {
+              query GetUser($id: String!) {
                 user(id: $id) {
                   id
                   firstName
@@ -995,18 +871,18 @@ const Home = () => {
     setCurrentPage('home');
   }, []);
 
-  const handleOpenProfile = useCallback((uid: number) => {
+  const handleOpenProfile = useCallback((uid: string) => {
     setSelectedProfileId(uid);
     setCurrentPage('profile');
   }, []);
 
-  const handleFollowSuggested = useCallback(async (followingId: number) => {
+  const handleFollowSuggested = useCallback(async (followingId: string) => {
     if (!activeUserId || followedSuggestedIds[followingId]) return;
     setFollowingSuggestedId(followingId);
     try {
       await followUserMutation({
         variables: {
-          userId: parseInt(String(activeUserId)),
+          userId: String(activeUserId),
           followingId,
         },
       });
@@ -1019,7 +895,7 @@ const Home = () => {
     }
   }, [activeUserId, followedSuggestedIds, followUserMutation, refetchSuggested]);
 
-  const handleTrendingPostClick = useCallback((postId: number) => {
+  const handleTrendingPostClick = useCallback((postId: string) => {
     const el = document.getElementById(`post-${postId}`);
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1117,7 +993,7 @@ const Home = () => {
       // Create post using GraphQL mutation with proper authorization
       const { data } = await createPostMutation({
         variables: {
-          userId: parseInt(currentUser.id.toString()),
+          userId: String(currentUser.id),
           title: postData.title,
           content: postData.content,
           visibility: postData.visibility,
@@ -1164,7 +1040,7 @@ const Home = () => {
     try {
       const { data: result } = await updatePostMutation({
         variables: {
-          postId: Number(editPost.id),
+          postId: String(editPost.id),
           title: editTitle.trim(),
           content: editContent.trim(),
         },
@@ -1183,10 +1059,10 @@ const Home = () => {
     }
   }, [editPost, editTitle, editContent, updatePostMutation, refetch]);
 
-  const handleDeletePost = useCallback(async (postId: number) => {
+  const handleDeletePost = useCallback(async (postId: string) => {
     try {
       const { data: result } = await deletePostMutation({
-        variables: { postId: Number(postId) },
+        variables: { postId: String(postId) },
       });
       if (result?.deletePost?.success) {
         await refetch();
@@ -1199,7 +1075,7 @@ const Home = () => {
     }
   }, [deletePostMutation, refetch]);
 
-  const handleLikeToggle = useCallback(async (postId: number) => {
+  const handleLikeToggle = useCallback(async (postId: string) => {
     if (!currentUser?.id) return;
 
     const isCurrentlyLiked = likedPosts[postId];
@@ -1218,7 +1094,7 @@ const Home = () => {
         const { data: result } = await unlikePost({
           variables: {
             postId,
-            userId: parseInt(currentUser.id.toString())
+            userId: String(currentUser.id)
           }
         });
 
@@ -1237,7 +1113,7 @@ const Home = () => {
         const { data: result } = await likePost({
           variables: {
             postId,
-            userId: parseInt(currentUser.id.toString())
+            userId: String(currentUser.id)
           }
         });
 
@@ -1260,7 +1136,7 @@ const Home = () => {
     }
   }, [currentUser, likedPosts, likeCounts, data, likePost, unlikePost]);
 
-  const handleCommentClick = useCallback(async (postId: number) => {
+  const handleCommentClick = useCallback(async (postId: string) => {
     console.log('Home: Opening comments modal for post:', postId);
     setCommentsModalOpen({ open: true, postId });
 
@@ -1313,14 +1189,14 @@ const Home = () => {
     }
   }, []);
 
-  const handleAddComment = useCallback(async (postId: number, commentText: string, parentCommentId?: number) => {
+  const handleAddComment = useCallback(async (postId: string, commentText: string, parentCommentId?: string) => {
     if (!currentUser?.id || !commentText.trim()) return;
 
     try {
       const { data: result } = await createComment({
         variables: {
           postId,
-          userId: parseInt(currentUser.id.toString()),
+          userId: String(currentUser.id),
           comment: commentText,
           parentCommentId: parentCommentId || null
         }
@@ -1359,7 +1235,7 @@ const Home = () => {
     }
   }, [currentUser, createComment, client, data?.searchPosts]);
 
-  const refreshPostComments = useCallback(async (postId: number) => {
+  const refreshPostComments = useCallback(async (postId: string) => {
     const { data: commentsData } = await client.query({
       query: GET_POST_COMMENTS_QUERY,
       variables: { postId, page: 1, limit: 50 },
@@ -1370,9 +1246,9 @@ const Home = () => {
     }
   }, [client]);
 
-  const handleReactComment = useCallback(async (commentId: number, emoji: string) => {
+  const handleReactComment = useCallback(async (commentId: string, emoji: string) => {
     if (!currentUser?.id) return;
-    const userId = parseInt(currentUser.id.toString());
+    const userId = String(currentUser.id);
     const current = normalizeReactionEmoji(commentReactions[commentId]) || (likedComments[commentId] ? '❤️' : null);
     const same = current === emoji;
 
@@ -1413,7 +1289,7 @@ const Home = () => {
     }
   }, [currentUser, commentReactions, likedComments, likeComment, unlikeComment]);
 
-  const handleEditComment = useCallback(async (commentId: number, text: string) => {
+  const handleEditComment = useCallback(async (commentId: string, text: string) => {
     try {
       const { data: result } = await updateCommentMutation({
         variables: { commentId, comment: text },
@@ -1427,7 +1303,7 @@ const Home = () => {
     }
   }, [updateCommentMutation, commentsModalOpen.postId, refreshPostComments]);
 
-  const handleDeleteComment = useCallback(async (commentId: number) => {
+  const handleDeleteComment = useCallback(async (commentId: string) => {
     if (!window.confirm('Delete this comment?')) return;
     const postId = commentsModalOpen.postId;
     const existing = postId ? commentsByPost[postId] : null;
@@ -1665,7 +1541,7 @@ const Home = () => {
                         await markNotificationRead({
                           variables: {
                             notificationId: n.id,
-                            userId: parseInt(String(activeUserId)),
+                            userId: String(activeUserId),
                           },
                         });
                         refetchNotifs();
@@ -1951,7 +1827,7 @@ const Home = () => {
                   {(suggestedData?.suggestedUsers ?? []).map((friend: any) => (
                     <Box key={friend.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, ...MATTE_INSET, borderRadius: 3, p: 1.2 }}>
                       <Avatar
-                        src={friend.profilePhotoSignedUrl || friend.profilePhoto || `https://randomuser.me/api/portraits/lego/${friend.id % 10}.jpg`}
+                        src={friend.profilePhotoSignedUrl || friend.profilePhoto || `https://randomuser.me/api/portraits/lego/${avatarPlaceholderIndex(friend.id)}.jpg`}
                         sx={{ width: 38, height: 38, mr: 1, cursor: 'pointer' }}
                         onClick={() => handleOpenProfile(friend.id)}
                       />
@@ -2126,7 +2002,7 @@ const Home = () => {
                     src={
                       friend.profilePhotoSignedUrl ||
                       friend.profilePhoto ||
-                      `https://randomuser.me/api/portraits/lego/${friend.id % 10}.jpg`
+                      `https://randomuser.me/api/portraits/lego/${avatarPlaceholderIndex(friend.id)}.jpg`
                     }
                     sx={{ width: 40, height: 40, cursor: 'pointer' }}
                     onClick={() => {
@@ -2278,7 +2154,7 @@ const Home = () => {
                     src={
                       friend.profilePhotoSignedUrl ||
                       friend.profilePhoto ||
-                      `https://randomuser.me/api/portraits/lego/${friend.id % 10}.jpg`
+                      `https://randomuser.me/api/portraits/lego/${avatarPlaceholderIndex(friend.id)}.jpg`
                     }
                     sx={{ width: 44, height: 44, cursor: 'pointer', flexShrink: 0 }}
                     onClick={() => {
