@@ -40,195 +40,131 @@ export class PostService {
     this.client = client;
   }
 
-  async getPost(postId: number): Promise<Post | null> {
-    try {
-      const { data } = await this.client.query({
-        query: GET_POST,
-        variables: { postId },
-      });
-      return data.post;
-    } catch (error: any) {
-      throw new Error(error.graphQLErrors?.[0]?.message || error.message);
-    }
+  async getPost(postId: string): Promise<Post | null> {
+    const { data } = await this.client.query({
+      query: GET_POST,
+      variables: { postId },
+    });
+    return data.post;
   }
 
   async getPostsByUser({ userId, page = 1, limit = 10 }: PostsByUserQueryVariables): Promise<Post[]> {
-    try {
-      const { data } = await this.client.query({
-        query: GET_POSTS_BY_USER,
-        variables: { userId, page, limit },
-      });
-      return data.postsByUser;
-    } catch (error: any) {
-      throw new Error(error.graphQLErrors?.[0]?.message || error.message);
-    }
+    const { data } = await this.client.query({
+      query: GET_POSTS_BY_USER,
+      variables: { userId, page, limit },
+    });
+    return data.postsByUser;
   }
 
   async searchPosts(variables: PostsQueryVariables): Promise<Post[]> {
-    try {
-      const { data } = await this.client.query({
-        query: SEARCH_POSTS,
-        variables,
-      });
-      return data.searchPosts;
-    } catch (error: any) {
-      throw new Error(error.graphQLErrors?.[0]?.message || error.message);
-    }
+    const { data } = await this.client.query({
+      query: SEARCH_POSTS,
+      variables,
+    });
+    return data.searchPosts;
   }
 
   async getPostComments({ postId, page = 1, limit = 10 }: PostCommentsQueryVariables): Promise<Comment[]> {
-    try {
-      const { data } = await this.client.query({
-        query: GET_POST_COMMENTS,
-        variables: { postId, page, limit },
-      });
-      return data.postComments;
-    } catch (error: any) {
-      throw new Error(error.graphQLErrors?.[0]?.message || error.message);
-    }
+    const { data } = await this.client.query({
+      query: GET_POST_COMMENTS,
+      variables: { postId, page, limit },
+    });
+    return data.postComments;
   }
 
   async createPost(variables: CreatePostMutationVariables): Promise<PostResponse> {
-    try {
-      const { data } = await this.client.mutate({
-        mutation: CREATE_POST,
-        variables,
-      });
-      return data.createPost;
-    } catch (error: any) {
-      throw new Error(error.graphQLErrors?.[0]?.message || error.message);
-    }
+    const { data } = await this.client.mutate({
+      mutation: CREATE_POST,
+      variables,
+    });
+    return data.createPost;
   }
 
   async updatePost(variables: UpdatePostMutationVariables): Promise<PostResponse> {
-    try {
-      const { data } = await this.client.mutate({
-        mutation: UPDATE_POST,
-        variables,
-      });
-      return data.updatePost;
-    } catch (error: any) {
-      throw new Error(error.graphQLErrors?.[0]?.message || error.message);
-    }
+    const { data } = await this.client.mutate({
+      mutation: UPDATE_POST,
+      variables,
+    });
+    return data.updatePost;
   }
 
-  async deletePost(postId: number): Promise<PostResponse> {
-    try {
-      const { data } = await this.client.mutate({
-        mutation: DELETE_POST,
-        variables: { postId },
-      });
-      return data.deletePost;
-    } catch (error: any) {
-      throw new Error(error.graphQLErrors?.[0]?.message || error.message);
-    }
+  async deletePost(postId: string): Promise<PostResponse> {
+    const { data } = await this.client.mutate({
+      mutation: DELETE_POST,
+      variables: { postId },
+    });
+    return data.deletePost;
   }
 
-  async likePost(postId: number, userId: number): Promise<PostResponse> {
-    try {
-      const { data } = await this.client.mutate({
-        mutation: LIKE_POST,
-        variables: { postId, userId },
-      });
-      return data.likePost;
-    } catch (error: any) {
-      throw new Error(error.graphQLErrors?.[0]?.message || error.message);
-    }
+  async likePost(postId: string, userId: string): Promise<PostResponse> {
+    const { data } = await this.client.mutate({
+      mutation: LIKE_POST,
+      variables: { postId, userId },
+    });
+    return data.likePost;
   }
 
-  async unlikePost(postId: number, userId: number): Promise<PostResponse> {
-    try {
-      const { data } = await this.client.mutate({
-        mutation: UNLIKE_POST,
-        variables: { postId, userId },
-      });
-      return data.unlikePost;
-    } catch (error: any) {
-      throw new Error(error.graphQLErrors?.[0]?.message || error.message);
-    }
+  async unlikePost(postId: string, userId: string): Promise<PostResponse> {
+    const { data } = await this.client.mutate({
+      mutation: UNLIKE_POST,
+      variables: { postId, userId },
+    });
+    return data.unlikePost;
   }
 
   async createComment(variables: CreateCommentMutationVariables): Promise<CommentResponse> {
-    try {
-      const { data } = await this.client.mutate({
-        mutation: CREATE_COMMENT,
-        variables,
-      });
-      return data.createComment;
-    } catch (error: any) {
-      throw new Error(error.graphQLErrors?.[0]?.message || error.message);
-    }
+    const { data } = await this.client.mutate({
+      mutation: CREATE_COMMENT,
+      variables,
+    });
+    return data.createComment;
   }
 
   async updateComment(variables: UpdateCommentMutationVariables): Promise<CommentResponse> {
-    try {
-      const { data } = await this.client.mutate({
-        mutation: UPDATE_COMMENT,
-        variables,
-      });
-      return data.updateComment;
-    } catch (error: any) {
-      throw new Error(error.graphQLErrors?.[0]?.message || error.message);
-    }
+    const { data } = await this.client.mutate({
+      mutation: UPDATE_COMMENT,
+      variables,
+    });
+    return data.updateComment;
   }
 
-  async deleteComment(commentId: number): Promise<CommentResponse> {
-    try {
-      const { data } = await this.client.mutate({
-        mutation: DELETE_COMMENT,
-        variables: { commentId },
-      });
-      return data.deleteComment;
-    } catch (error: any) {
-      throw new Error(error.graphQLErrors?.[0]?.message || error.message);
-    }
+  async deleteComment(commentId: string): Promise<CommentResponse> {
+    const { data } = await this.client.mutate({
+      mutation: DELETE_COMMENT,
+      variables: { commentId },
+    });
+    return data.deleteComment;
   }
 
-  async likeComment(commentId: number, userId: number, reactionType?: string): Promise<CommentResponse> {
-    try {
-      const { data } = await this.client.mutate({
-        mutation: LIKE_COMMENT,
-        variables: { commentId, userId, reactionType: reactionType || 'like' },
-      });
-      return data.likeComment;
-    } catch (error: any) {
-      throw new Error(error.graphQLErrors?.[0]?.message || error.message);
-    }
+  async likeComment(commentId: string, userId: string, reactionType?: string): Promise<CommentResponse> {
+    const { data } = await this.client.mutate({
+      mutation: LIKE_COMMENT,
+      variables: { commentId, userId, reactionType: reactionType || 'LIKE' },
+    });
+    return data.likeComment;
   }
 
-  async unlikeComment(commentId: number, userId: number): Promise<CommentResponse> {
-    try {
-      const { data } = await this.client.mutate({
-        mutation: UNLIKE_COMMENT,
-        variables: { commentId, userId },
-      });
-      return data.unlikeComment;
-    } catch (error: any) {
-      throw new Error(error.graphQLErrors?.[0]?.message || error.message);
-    }
+  async unlikeComment(commentId: string, userId: string): Promise<CommentResponse> {
+    const { data } = await this.client.mutate({
+      mutation: UNLIKE_COMMENT,
+      variables: { commentId, userId },
+    });
+    return data.unlikeComment;
   }
 
   async addPostMedia(variables: AddPostMediaMutationVariables): Promise<PostResponse> {
-    try {
-      const { data } = await this.client.mutate({
-        mutation: ADD_POST_MEDIA,
-        variables,
-      });
-      return data.addPostMedia;
-    } catch (error: any) {
-      throw new Error(error.graphQLErrors?.[0]?.message || error.message);
-    }
+    const { data } = await this.client.mutate({
+      mutation: ADD_POST_MEDIA,
+      variables,
+    });
+    return data.addPostMedia;
   }
 
-  async deletePostMedia(mediaId: number): Promise<MediaResponse> {
-    try {
-      const { data } = await this.client.mutate({
-        mutation: DELETE_POST_MEDIA,
-        variables: { mediaId },
-      });
-      return data.deletePostMedia;
-    } catch (error: any) {
-      throw new Error(error.graphQLErrors?.[0]?.message || error.message);
-    }
+  async deletePostMedia(mediaId: string): Promise<MediaResponse> {
+    const { data } = await this.client.mutate({
+      mutation: DELETE_POST_MEDIA,
+      variables: { mediaId },
+    });
+    return data.deletePostMedia;
   }
 }

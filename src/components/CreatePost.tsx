@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { useLazyQuery } from '@apollo/client';
 import { SEARCH_USERS_LIGHT } from '../graphql/user';
-import { SEARCH_PROPERTIES } from '../graphql/property';
+import { PUBLIC_PROPERTIES } from '../graphql/property';
 import {
   Box,
   Typography,
@@ -61,7 +61,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionSearch, setMentionSearch] = useState('');
   const [mentionStart, setMentionStart] = useState<number | null>(null);
-  const mentionedUserIdsRef = useRef<Set<number>>(new Set());
+  const mentionedUserIdsRef = useRef<Set<string>>(new Set());
   const descriptionRef = useRef<HTMLTextAreaElement | HTMLInputElement | null>(null);
   const mentionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -72,8 +72,8 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
       nextFetchPolicy: 'cache-first',
     }
   );
-  const [searchProperties, { data: propertyMentionData, loading: propertyMentionLoading }] = useLazyQuery(
-    SEARCH_PROPERTIES,
+  const [searchPropertiesQuery, { data: propertyMentionData, loading: propertyMentionLoading }] = useLazyQuery(
+    PUBLIC_PROPERTIES,
     {
       fetchPolicy: 'network-only',
       nextFetchPolicy: 'cache-first',
@@ -171,8 +171,8 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
         searchUsers({
           variables: { search: searchTerm.trim(), page: 1, limit: 8 },
         });
-        searchProperties({
-          variables: { query: searchTerm.trim() || undefined },
+        searchPropertiesQuery({
+          variables: { city: searchTerm.trim() || undefined, page: 1, limit: 8 },
         });
       }, 280);
     } else {
@@ -182,7 +182,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
     }
   };
 
-  const handleSelectMention = (user: { id: number; firstName: string; lastName?: string }) => {
+  const handleSelectMention = (user: { id: string; firstName: string; lastName?: string }) => {
     if (mentionStart === null) return;
 
     const displayName = user.firstName;
@@ -200,10 +200,10 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
     setTimeout(() => descriptionRef.current?.focus(), 0);
   };
 
-  const handleSelectPropertyMention = (prop: { propertyId: string; title: string }) => {
+  const handleSelectPropertyMention = (prop: { id: string; title: string }) => {
     if (mentionStart === null) return;
     const label = (prop.title || 'Property').replace(/[\[\]]/g, '').slice(0, 40);
-    const token = `@[p:${prop.propertyId}:${label}]`;
+    const token = `@[p:${prop.id}:${label}]`;
     const before = description.slice(0, mentionStart);
     const after = description.slice(mentionStart + 1 + mentionSearch.length);
     const nextDescription = `${before}${token} ${after}`.slice(0, 500);
@@ -509,13 +509,13 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
                     </ListItemButton>
                   ))}
                   <ListSubheader sx={{ lineHeight: '28px', ...MATTE_INSET }}>Properties</ListSubheader>
-                  {!propertyMentionLoading && (propertyMentionData?.searchProperties?.length ?? 0) === 0 && (
+                  {!propertyMentionLoading && (propertyMentionData?.publicProperties?.properties?.length ?? 0) === 0 && (
                     <ListItemButton disabled>
                       <ListItemText primary="No properties found" />
                     </ListItemButton>
                   )}
-                  {(propertyMentionData?.searchProperties ?? []).slice(0, 8).map((prop: any) => (
-                    <ListItemButton key={`p-${prop.propertyId}`} onClick={() => handleSelectPropertyMention(prop)}>
+                  {(propertyMentionData?.publicProperties?.properties ?? []).slice(0, 8).map((prop: any) => (
+                    <ListItemButton key={`p-${prop.id}`} onClick={() => handleSelectPropertyMention(prop)}>
                       <ListItemText
                         primary={prop.title}
                         secondary={prop.location || prop.city || 'Property'}

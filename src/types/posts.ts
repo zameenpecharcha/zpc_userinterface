@@ -1,5 +1,5 @@
 export interface PostMedia {
-  id: number;
+  id: string;
   mediaType: string;
   mediaUrl: string;
   signedUrl?: string;
@@ -19,8 +19,8 @@ export interface PostMediaInput {
 }
 
 export interface Post {
-  id: number;
-  userId: number;
+  id: string;
+  userId: string;
   userFirstName: string;
   userLastName: string;
   userEmail: string;
@@ -39,22 +39,26 @@ export interface Post {
   media: PostMedia[];
   likeCount: number;
   commentCount: number;
+  isLiked?: boolean;
 }
 
 export interface Comment {
-  id: number;
-  postId: number;
-  userId: number;
+  id: string;
+  postId: string;
+  userId: string;
   userFirstName: string;
   userLastName: string;
   userRole: string;
   comment: string;
-  parentCommentId?: number;
+  parentCommentId?: string;
   status: string;
   addedAt: string;
   commentedAt: string;
+  editedAt?: string;
   replies: Comment[];
   likeCount: number;
+  profilePhoto?: string;
+  profilePhotoSignedUrl?: string;
 }
 
 export interface PostResponse {
@@ -80,24 +84,25 @@ export interface PostsQueryVariables {
   minPrice?: number;
   maxPrice?: number;
   status?: string;
+  query?: string;
   page?: number;
   limit?: number;
 }
 
 export interface PostsByUserQueryVariables {
-  userId: number;
+  userId: string;
   page?: number;
   limit?: number;
 }
 
 export interface PostCommentsQueryVariables {
-  postId: number;
+  postId: string;
   page?: number;
   limit?: number;
 }
 
 export interface CreatePostMutationVariables {
-  userId: number;
+  userId: string;
   title: string;
   content: string;
   visibility: string;
@@ -111,7 +116,7 @@ export interface CreatePostMutationVariables {
 }
 
 export interface UpdatePostMutationVariables {
-  postId: number;
+  postId: string;
   title?: string;
   content?: string;
   visibility?: string;
@@ -124,20 +129,20 @@ export interface UpdatePostMutationVariables {
 }
 
 export interface CreateCommentMutationVariables {
-  postId: number;
-  userId: number;
+  postId: string;
+  userId: string;
   comment: string;
-  parentCommentId?: number;
+  parentCommentId?: string;
 }
 
 export interface UpdateCommentMutationVariables {
-  commentId: number;
+  commentId: string;
   comment?: string;
   status?: string;
 }
 
 export interface AddPostMediaMutationVariables {
-  postId: number;
+  postId: string;
   media: PostMediaInput[];
 }
 
@@ -148,10 +153,10 @@ export enum PostVisibility {
 }
 
 export enum PostStatus {
-  ACTIVE = 'ACTIVE',
-  INACTIVE = 'INACTIVE',
+  PUBLISHED = 'PUBLISHED',
+  DRAFT = 'DRAFT',
+  ARCHIVED = 'ARCHIVED',
   DELETED = 'DELETED',
-  REPORTED = 'REPORTED'
 }
 
 export enum PropertyType {

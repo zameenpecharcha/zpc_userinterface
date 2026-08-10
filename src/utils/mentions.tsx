@@ -20,14 +20,20 @@ export function stringToColor(s: string): string {
   return `hsl(${Math.abs(h) % 360},55%,40%)`;
 }
 
-export function extractMentionedUserIds(content: string, extraIds: number[] = []): number[] {
-  const ids = new Set<number>(extraIds);
+export function avatarPlaceholderIndex(id: string): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = id.charCodeAt(i) + ((h << 5) - h);
+  return Math.abs(h) % 10;
+}
+
+export function extractMentionedUserIds(content: string, extraIds: string[] = []): string[] {
+  const ids = new Set<string>(extraIds);
   const regex = new RegExp(MENTION_PATTERN);
   let match: RegExpExecArray | null;
   while ((match = regex.exec(content)) !== null) {
     if (match[1] === 'p') continue;
-    const uid = parseInt(match[2], 10);
-    if (!Number.isNaN(uid)) ids.add(uid);
+    const uid = match[2];
+    if (uid) ids.add(uid);
   }
   return Array.from(ids);
 }
@@ -35,7 +41,7 @@ export function extractMentionedUserIds(content: string, extraIds: number[] = []
 export function renderMentionContent(
   content: string,
   opts: {
-    onOpenProfile?: (userId: number) => void;
+    onOpenProfile?: (userId: string) => void;
     onOpenProperty?: (propertyId: string) => void;
   } = {}
 ): React.ReactNode {
@@ -60,8 +66,7 @@ export function renderMentionContent(
           if (isProperty) {
             opts.onOpenProperty?.(id);
           } else {
-            const uid = parseInt(id, 10);
-            if (!Number.isNaN(uid)) opts.onOpenProfile?.(uid);
+            opts.onOpenProfile?.(id);
           }
         }}
         sx={{

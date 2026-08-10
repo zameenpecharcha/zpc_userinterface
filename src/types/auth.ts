@@ -5,7 +5,7 @@ export enum OTPType {
 }
 
 export interface UserInfo {
-  id: number;
+  id: string;
   firstName: string;
   lastName: string;
   email: string;

@@ -20,21 +20,21 @@ import {
 
 export type CommentListItemProps = {
   comment: any;
-  currentUserId?: number | string | null;
+  currentUserId?: string | null;
   formatTime?: (value: any) => string;
-  likedComments: { [commentId: number]: boolean };
-  commentReactions: { [commentId: number]: string };
-  commentLikeCounts: { [commentId: number]: number };
+  likedComments: { [commentId: string]: boolean };
+  commentReactions: { [commentId: string]: string };
+  commentLikeCounts: { [commentId: string]: number };
   likingComment?: boolean;
-  replyingCommentId: number | null;
-  setReplyingCommentId: (id: number | null) => void;
+  replyingCommentId: string | null;
+  setReplyingCommentId: (id: string | null) => void;
   replyText: string;
   setReplyText: (text: string) => void;
   replying?: boolean;
   onReply: (text: string) => void | Promise<void>;
-  onReactComment: (commentId: number, emoji: string) => void | Promise<void>;
-  onEditComment: (commentId: number, text: string) => void | Promise<void>;
-  onDeleteComment: (commentId: number) => void | Promise<void>;
+  onReactComment: (commentId: string, emoji: string) => void | Promise<void>;
+  onEditComment: (commentId: string, text: string) => void | Promise<void>;
+  onDeleteComment: (commentId: string) => void | Promise<void>;
   showReplyAction?: boolean;
 };
 
@@ -49,17 +49,17 @@ const defaultFormatTime = (value: any) => {
 const CommentBubble: React.FC<{
   item: any;
   isReply?: boolean;
-  currentUserId?: number | string | null;
+  currentUserId?: string | null;
   formatTime: (value: any) => string;
-  likedComments: { [commentId: number]: boolean };
-  commentReactions: { [commentId: number]: string };
-  commentLikeCounts: { [commentId: number]: number };
+  likedComments: { [commentId: string]: boolean };
+  commentReactions: { [commentId: string]: string };
+  commentLikeCounts: { [commentId: string]: number };
   likingComment?: boolean;
   showReplyAction?: boolean;
   onStartReply?: () => void;
-  onReactComment: (commentId: number, emoji: string) => void | Promise<void>;
-  onEditComment: (commentId: number, text: string) => void | Promise<void>;
-  onDeleteComment: (commentId: number) => void | Promise<void>;
+  onReactComment: (commentId: string, emoji: string) => void | Promise<void>;
+  onEditComment: (commentId: string, text: string) => void | Promise<void>;
+  onDeleteComment: (commentId: string) => void | Promise<void>;
 }> = ({
   item,
   isReply = false,

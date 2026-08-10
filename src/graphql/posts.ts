@@ -40,7 +40,7 @@ export const POST_FIELDS = gql`
 
 // Queries
 export const GET_POST = gql`
-  query GetPost($postId: Int!) {
+  query GetPost($postId: String!) {
     post(postId: $postId) {
       ...PostFields
     }
@@ -49,7 +49,7 @@ export const GET_POST = gql`
 `;
 
 export const GET_POSTS_BY_USER = gql`
-  query GetPostsByUser($userId: Int!, $page: Int = 1, $limit: Int = 10) {
+  query GetPostsByUser($userId: String!, $page: Int = 1, $limit: Int = 10) {
     postsByUser(userId: $userId, page: $page, limit: $limit) {
       ...PostFields
     }
@@ -106,7 +106,7 @@ export const TRENDING_POSTS = gql`
 `;
 
 export const GET_POST_COMMENTS = gql`
-  query GetPostComments($postId: Int!, $page: Int = 1, $limit: Int = 10) {
+  query GetPostComments($postId: String!, $page: Int = 1, $limit: Int = 10) {
     postComments(postId: $postId, page: $page, limit: $limit) {
       id
       postId
@@ -147,7 +147,7 @@ export const GET_POST_COMMENTS = gql`
 // Mutations
 export const CREATE_POST = gql`
   mutation CreatePost(
-    $userId: Int!
+    $userId: String!
     $title: String!
     $content: String!
     $visibility: String!
@@ -184,7 +184,7 @@ export const CREATE_POST = gql`
 
 export const UPDATE_POST = gql`
   mutation UpdatePost(
-    $postId: Int!
+    $postId: String!
     $title: String
     $content: String
     $visibility: String
@@ -218,7 +218,7 @@ export const UPDATE_POST = gql`
 `;
 
 export const DELETE_POST = gql`
-  mutation DeletePost($postId: Int!) {
+  mutation DeletePost($postId: String!) {
     deletePost(postId: $postId) {
       success
       message
@@ -227,7 +227,7 @@ export const DELETE_POST = gql`
 `;
 
 export const LIKE_POST = gql`
-  mutation LikePost($postId: Int!, $userId: Int!) {
+  mutation LikePost($postId: String!, $userId: String!) {
     likePost(postId: $postId, userId: $userId) {
       success
       message
@@ -240,7 +240,7 @@ export const LIKE_POST = gql`
 `;
 
 export const UNLIKE_POST = gql`
-  mutation UnlikePost($postId: Int!, $userId: Int!) {
+  mutation UnlikePost($postId: String!, $userId: String!) {
     unlikePost(postId: $postId, userId: $userId) {
       success
       message
@@ -254,10 +254,10 @@ export const UNLIKE_POST = gql`
 
 export const CREATE_COMMENT = gql`
   mutation CreateComment(
-    $postId: Int!
-    $userId: Int!
+    $postId: String!
+    $userId: String!
     $comment: String!
-    $parentCommentId: Int
+    $parentCommentId: String
   ) {
     createComment(
       postId: $postId
@@ -301,7 +301,7 @@ export const CREATE_COMMENT = gql`
 
 export const UPDATE_COMMENT = gql`
   mutation UpdateComment(
-    $commentId: Int!
+    $commentId: String!
     $comment: String
     $status: String
   ) {
@@ -323,7 +323,7 @@ export const UPDATE_COMMENT = gql`
 `;
 
 export const DELETE_COMMENT = gql`
-  mutation DeleteComment($commentId: Int!) {
+  mutation DeleteComment($commentId: String!) {
     deleteComment(commentId: $commentId) {
       success
       message
@@ -332,7 +332,7 @@ export const DELETE_COMMENT = gql`
 `;
 
 export const LIKE_COMMENT = gql`
-  mutation LikeComment($commentId: Int!, $userId: Int!, $reactionType: String) {
+  mutation LikeComment($commentId: String!, $userId: String!, $reactionType: String) {
     likeComment(commentId: $commentId, userId: $userId, reactionType: $reactionType) {
       success
       message
@@ -345,7 +345,7 @@ export const LIKE_COMMENT = gql`
 `;
 
 export const UNLIKE_COMMENT = gql`
-  mutation UnlikeComment($commentId: Int!, $userId: Int!) {
+  mutation UnlikeComment($commentId: String!, $userId: String!) {
     unlikeComment(commentId: $commentId, userId: $userId) {
       success
       message
@@ -358,7 +358,7 @@ export const UNLIKE_COMMENT = gql`
 `;
 
 export const ADD_POST_MEDIA = gql`
-  mutation AddPostMedia($postId: Int!, $media: [PostMediaInput!]!) {
+  mutation AddPostMedia($postId: String!, $media: [PostMediaInput!]!) {
     addPostMedia(postId: $postId, media: $media) {
       success
       message
@@ -380,7 +380,7 @@ export const ADD_POST_MEDIA = gql`
 `;
 
 export const DELETE_POST_MEDIA = gql`
-  mutation DeletePostMedia($mediaId: Int!) {
+  mutation DeletePostMedia($mediaId: String!) {
     deletePostMedia(mediaId: $mediaId) {
       success
       message

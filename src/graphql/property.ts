@@ -1,109 +1,45 @@
 import { gql } from '@apollo/client';
 
-// Property Type Enum
-export enum PropertyType {
-  APARTMENT = 'APARTMENT',
-  VILLA = 'VILLA',
-  HOUSE = 'HOUSE',
-  LAND = 'LAND'
-}
-
-// Property Status Enum
-export enum PropertyStatus {
-  ACTIVE = 'ACTIVE',
-  INACTIVE = 'INACTIVE',
-  SOLD = 'SOLD',
-  RENTED = 'RENTED'
-}
-
-// Property Fields Fragment
 export const PROPERTY_FIELDS = gql`
   fragment PropertyFields on Property {
-    propertyId
-    userId
+    id
+    propertyCode
     title
     description
-    price
-    location
+    createdBy
+    creatorFirstName
+    creatorLastName
+    creatorEmail
+    creatorRole
+    builderName
+    projectName
     propertyType
-    status
-    bedrooms
-    bathrooms
-    area
-    yearBuilt
-    images
-    amenities
-    createdAt
-    updatedAt
-    viewCount
-    latitude
-    longitude
-    address
+    listingType
+    price
+    currency
     city
     state
     country
-    zipCode
-    isActive
-    coverPhotoId
-    profilePhotoId
+    status
+    verificationStatus
+    averageRating
+    ratingCount
+    viewCount
+    saveCount
+    createdAt
+    updatedAt
   }
 `;
 
-// Create Property Mutation
 export const CREATE_PROPERTY = gql`
-  mutation CreateProperty(
-    $userId: String!
-    $title: String!
-    $description: String!
-    $price: Float!
-    $location: String!
-    $propertyType: PropertyType!
-    $status: PropertyStatus!
-    $bedrooms: Int!
-    $bathrooms: Int!
-    $area: Float!
-    $yearBuilt: Int!
-    $images: [String!]!
-    $amenities: [String!]!
-    $latitude: Float!
-    $longitude: Float!
-    $address: String!
-    $city: String!
-    $state: String!
-    $country: String!
-    $zipCode: String!
-    $isActive: Boolean
-  ) {
-    createProperty(
-      userId: $userId
-      title: $title
-      description: $description
-      price: $price
-      location: $location
-      propertyType: $propertyType
-      status: $status
-      bedrooms: $bedrooms
-      bathrooms: $bathrooms
-      area: $area
-      yearBuilt: $yearBuilt
-      images: $images
-      amenities: $amenities
-      latitude: $latitude
-      longitude: $longitude
-      address: $address
-      city: $city
-      state: $state
-      country: $country
-      zipCode: $zipCode
-      isActive: $isActive
-    ) {
+  mutation CreateProperty($input: CreatePropertyInput!) {
+    createProperty(input: $input) {
       ...PropertyFields
     }
   }
   ${PROPERTY_FIELDS}
 `;
 
-// Get Property Query
 export const GET_PROPERTY = gql`
   query GetProperty($propertyId: String!) {
     property(propertyId: $propertyId) {
@@ -113,120 +49,157 @@ export const GET_PROPERTY = gql`
   ${PROPERTY_FIELDS}
 `;
 
-/** Light search for @property mentions in posts/comments. */
-export const SEARCH_PROPERTIES = gql`
-  query SearchProperties($query: String) {
-    searchProperties(query: $query) {
-      propertyId
-      userId
-      title
-      location
-      city
+export const GET_PROPERTY_BY_CODE = gql`
+  query GetPropertyByCode($propertyCode: String!) {
+    propertyByCode(propertyCode: $propertyCode) {
+      ...PropertyFields
     }
   }
+  ${PROPERTY_FIELDS}
 `;
 
-// Get User Properties Query
+export const PUBLIC_PROPERTIES = gql`
+  query PublicProperties(
+    $page: Int
+    $limit: Int
+    $city: String
+    $propertyType: String
+    $listingType: String
+  ) {
+    publicProperties(
+      page: $page
+      limit: $limit
+      city: $city
+      propertyType: $propertyType
+      listingType: $listingType
+    ) {
+      properties {
+        ...PropertyFields
+      }
+      total
+      page
+      limit
+    }
+  }
+  ${PROPERTY_FIELDS}
+`;
+
 export const GET_USER_PROPERTIES = gql`
-  query GetUserProperties($userId: String!) {
-    userProperties(userId: $userId) {
-      ...PropertyFields
+  query GetUserProperties($userId: String!, $page: Int, $limit: Int) {
+    userProperties(userId: $userId, page: $page, limit: $limit) {
+      properties {
+        ...PropertyFields
+      }
+      total
+      page
+      limit
     }
   }
   ${PROPERTY_FIELDS}
 `;
 
-// Get User Followed Properties Query
-export const GET_USER_FOLLOWED_PROPERTIES = gql`
-  query GetUserFollowedProperties($userId: String!) {
-    userFollowedProperties(userId: $userId) {
-      ...PropertyFields
+export const MY_PROPERTIES = gql`
+  query MyProperties($page: Int, $limit: Int) {
+    myProperties(page: $page, limit: $limit) {
+      properties {
+        ...PropertyFields
+      }
+      total
+      page
+      limit
     }
   }
   ${PROPERTY_FIELDS}
 `;
 
-// Get Property Followers Query
-export const GET_PROPERTY_FOLLOWERS = gql`
-  query GetPropertyFollowers($propertyId: Int!) {
-    propertyFollowers(propertyId: $propertyId) {
-      id
-      userId
-      propertyId
-      status
-      followedAt
+export const SAVED_PROPERTIES = gql`
+  query SavedProperties($page: Int, $limit: Int) {
+    savedProperties(page: $page, limit: $limit) {
+      properties {
+        ...PropertyFields
+      }
+      total
+      page
+      limit
     }
   }
+  ${PROPERTY_FIELDS}
 `;
 
-// Get Property Ratings Query
 export const GET_PROPERTY_RATINGS = gql`
-  query GetPropertyRatings($propertyId: Int!) {
+  query GetPropertyRatings($propertyId: String!) {
     propertyRatings(propertyId: $propertyId) {
       id
       propertyId
-      ratedByUserId
-      ratingValue
+      userId
+      overallRating
       title
       review
-      ratingType
       isAnonymous
       createdAt
-      updatedAt
     }
   }
 `;
 
-// Follow Property Mutation
-export const FOLLOW_PROPERTY = gql`
-  mutation FollowProperty($userId: Int!, $propertyId: Int!, $status: String) {
-    followProperty(userId: $userId, propertyId: $propertyId, status: $status) {
-      id
-      userId
-      propertyId
-      status
-      followedAt
+export const UPDATE_PROPERTY_STATUS = gql`
+  mutation UpdatePropertyStatus($propertyId: String!, $status: String!) {
+    updatePropertyStatus(propertyId: $propertyId, status: $status) {
+      ...PropertyFields
+    }
+  }
+  ${PROPERTY_FIELDS}
+`;
+
+export const DELETE_PROPERTY = gql`
+  mutation DeleteProperty($propertyId: String!) {
+    deleteProperty(propertyId: $propertyId) {
+      success
+      message
     }
   }
 `;
 
-// Create Property Rating Mutation
+export const SAVE_PROPERTY = gql`
+  mutation SaveProperty($propertyId: String!) {
+    saveProperty(propertyId: $propertyId) {
+      success
+      message
+    }
+  }
+`;
+
+export const REMOVE_SAVED_PROPERTY = gql`
+  mutation RemoveSavedProperty($propertyId: String!) {
+    removeSavedProperty(propertyId: $propertyId) {
+      success
+      message
+    }
+  }
+`;
+
 export const CREATE_PROPERTY_RATING = gql`
   mutation CreatePropertyRating(
-    $propertyId: Int!
-    $ratedByUserId: Int!
-    $ratingValue: Int!
+    $propertyId: String!
+    $overallRating: Float!
     $title: String
     $review: String
-    $ratingType: String
     $isAnonymous: Boolean
   ) {
     createPropertyRating(
       propertyId: $propertyId
-      ratedByUserId: $ratedByUserId
-      ratingValue: $ratingValue
+      overallRating: $overallRating
       title: $title
       review: $review
-      ratingType: $ratingType
       isAnonymous: $isAnonymous
     ) {
-      id
-      propertyId
-      ratedByUserId
-      ratingValue
-      title
-      review
-      ratingType
-      isAnonymous
-      createdAt
-      updatedAt
+      success
+      message
     }
   }
 `;
 
-// Add Property Media Mutation
 export const ADD_PROPERTY_MEDIA = gql`
-  mutation AddPropertyMedia($propertyId: Int!, $media: [PropertyMediaInput!]!) {
+  mutation AddPropertyMedia($propertyId: String!, $media: [PropertyMediaInput!]!) {
     addPropertyMedia(propertyId: $propertyId, media: $media) {
       success
       message
@@ -234,89 +207,37 @@ export const ADD_PROPERTY_MEDIA = gql`
   }
 `;
 
-// Property Media Input Type
-export interface PropertyMediaInput {
-  mediaType: string;
-  mediaUrl: string;
-  mediaOrder: number;
-  caption?: string;
-}
+export const ADD_PROPERTY_FEATURES = gql`
+  mutation AddPropertyFeatures($propertyId: String!, $features: [FeatureInput!]!) {
+    addPropertyFeatures(propertyId: $propertyId, features: $features) {
+      success
+      message
+    }
+  }
+`;
 
-// Property Interface
-export interface Property {
-  propertyId: string;
-  userId: string;
-  title: string;
-  description: string;
-  price: number;
-  location: string;
-  propertyType: PropertyType;
-  status: PropertyStatus;
-  bedrooms: number;
-  bathrooms: number;
-  area: number;
-  yearBuilt: number;
-  images: string[];
-  amenities: string[];
-  createdAt: string;
-  updatedAt: string;
-  viewCount: number;
-  latitude: number;
-  longitude: number;
-  address: string;
-  city: string;
-  state: string;
-  country: string;
-  zipCode: string;
-  isActive: boolean;
-  coverPhotoId?: number;
-  profilePhotoId?: number;
-}
+export const RECORD_PROPERTY_VIEW = gql`
+  mutation RecordPropertyView($propertyId: String!) {
+    recordPropertyView(propertyId: $propertyId) {
+      success
+      message
+    }
+  }
+`;
 
-// Property Rating Interface
-export interface PropertyRating {
-  id: number;
-  propertyId: number;
-  ratedByUserId: number;
-  ratingValue: number;
-  title: string;
-  review: string;
-  ratingType: string;
-  isAnonymous: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
+export {
+  PropertyType,
+  ListingType,
+  PropertyStatus,
+  VerificationStatus,
+} from '../types/property';
 
-// Property Follow Interface
-export interface PropertyFollow {
-  id: number;
-  userId: number;
-  propertyId: number;
-  status: string;
-  followedAt: string;
-}
-
-// Create Property Input Interface
-export interface CreatePropertyInput {
-  userId: string;
-  title: string;
-  description: string;
-  price: number;
-  location: string;
-  propertyType: PropertyType;
-  status: PropertyStatus;
-  bedrooms: number;
-  bathrooms: number;
-  area: number;
-  yearBuilt: number;
-  images: string[];
-  amenities: string[];
-  latitude: number;
-  longitude: number;
-  address: string;
-  city: string;
-  state: string;
-  country: string;
-  zipCode: string;
-  isActive?: boolean;
-}
+export type {
+  Property,
+  PropertyListPage,
+  PropertyRating,
+  CreatePropertyInput,
+  PropertyMediaInput,
+  FeatureInput,
+  GenericResult,
+} from '../types/property';

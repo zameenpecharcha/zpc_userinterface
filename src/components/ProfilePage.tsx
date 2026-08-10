@@ -37,11 +37,16 @@ import { useApolloClient, useMutation } from '@apollo/client';
 import { useNavigate } from 'react-router-dom';
 import { GET_POSTS_BY_USER, DELETE_POST, UPDATE_POST } from '../graphql/posts';
 import { CREATE_DM_ROOM_MUTATION } from '../graphql/chat';
-import { renderMentionContent, nameInitials, stringToColor } from '../utils/mentions';
+import { renderMentionContent, nameInitials, stringToColor, avatarPlaceholderIndex } from '../utils/mentions';
 import CommentListItem from './comments/CommentListItem';
 import CommentComposer from './comments/CommentComposer';
 import { normalizeReactionEmoji } from './comments/commentReactions';
 import { MATTE_SURFACE, MATTE_HEADER, PAGE_ATMOSPHERE, MATTE_INSET } from '../theme/surfaces';
+
+const isActiveFollowStatus = (status?: string | null) =>
+    (status || '').toUpperCase() === 'ACTIVE';
+const isPendingFollowStatus = (status?: string | null) =>
+    (status || '').toUpperCase() === 'PENDING';
 
 const GRAPHQL_URL = process.env.REACT_APP_GRAPHQL_URL || 'http://localhost:8080/api/v1/graphql';
 
@@ -71,50 +76,54 @@ const PostSkeleton = () => (
   </Box>
 );
 
-// Utility function to safely format dates
-const formatDate = (dateValue: any): string => {
-    if (!dateValue) return 'Unknown date';
+const parseTimestamp = (dateValue: any): Date | null => {
+    if (dateValue == null || dateValue === '') return null;
 
-    try {
-        let date: Date;
-
-        // Handle different date formats
-        if (typeof dateValue === 'number') {
-            // Handle both Unix timestamp (seconds) and milliseconds
-            date = dateValue > 1e10 ? new Date(dateValue) : new Date(dateValue * 1000);
-        } else if (typeof dateValue === 'string') {
-            // Handle ISO string format from GraphQL
-            date = new Date(dateValue);
-        } else if (dateValue instanceof Date) {
-            date = dateValue;
-        } else {
-            console.warn('Unknown date format:', dateValue);
-            return 'Unknown date format';
-        }
-
-        if (isNaN(date.getTime())) {
-            console.warn('Invalid date value:', dateValue);
-            return 'Invalid date';
-        }
-
-        return date.toLocaleString();
-    } catch (error) {
-        console.error('Error formatting date:', dateValue, error);
-        return 'Date format error';
+    if (typeof dateValue === 'number') {
+        return new Date(dateValue > 1e10 ? dateValue : dateValue * 1000);
     }
+
+    if (typeof dateValue === 'string') {
+        const trimmed = dateValue.trim();
+        if (/^\d+$/.test(trimmed)) {
+            const n = Number(trimmed);
+            return new Date(n > 1e10 ? n : n * 1000);
+        }
+        const parsed = new Date(trimmed);
+        return isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    if (dateValue instanceof Date) {
+        return isNaN(dateValue.getTime()) ? null : dateValue;
+    }
+
+    return null;
+};
+
+// Utility function to safely format dates (Unix seconds/ms, numeric strings, ISO)
+const formatDate = (dateValue: any): string => {
+    const date = parseTimestamp(dateValue);
+    if (!date) return 'Unknown date';
+    return date.toLocaleString();
+};
+
+const formatDateShort = (dateValue: any): string => {
+    const date = parseTimestamp(dateValue);
+    if (!date) return 'Unknown date';
+    return date.toLocaleDateString();
 };
 
 // Comments UI uses shared CommentListItem + CommentComposer
 
 interface User {
-    id: number;
+    id: string;
     firstName: string;
     lastName: string;
     profilePhoto?: string;
 }
 
 interface PostMedia {
-    id: number;
+    id: string;
     mediaType: string;
     mediaUrl: string;
     signedUrl?: string;
@@ -143,9 +152,9 @@ interface Comment {
 }
 
 interface UserRating {
-    id: number;
-    ratedUserId: number;
-    ratedByUserId: number;
+    id: string;
+    ratedUserId: string;
+    ratedByUserId: string;
     ratingValue: number;
     review?: string;
     ratingType?: string;
@@ -159,15 +168,40 @@ interface UserRating {
 }
 
 interface UserFollower {
-    id: number;
-    userId: number;
-    followingId: number;
+    id: string;
+    followerId: string;
+    followingId: string;
     status: string;
     followedAt: string;
+    userFirstName?: string | null;
+    userLastName?: string | null;
+    userRole?: string | null;
+    userProfilePhoto?: string | null;
+    userProfilePhotoSignedUrl?: string | null;
 }
 
+const FOLLOW_PROFILE_FIELDS = `
+                userFirstName
+                userLastName
+                userRole
+                userProfilePhoto
+                userProfilePhotoSignedUrl`;
+
+const followToDetail = (f: UserFollower, uid: string) => ({
+    id: f.id,
+    uid,
+    status: f.status,
+    info: f.userFirstName || f.userLastName ? {
+        id: uid,
+        firstName: f.userFirstName || '',
+        lastName: f.userLastName || '',
+        role: f.userRole || undefined,
+        photo: f.userProfilePhotoSignedUrl || f.userProfilePhoto || undefined,
+    } : null,
+});
+
 interface UserProfile {
-    id: number;
+    id: string;
     firstName: string;
     lastName: string;
     email: string;
@@ -190,14 +224,14 @@ interface UserProfile {
 
 interface ProfilePageProps {
     onGoBack: () => void;
-    userId: number;
-    currentUserId?: number;
-    onOpenProfile?: (userId: number) => void;
+    userId: string;
+    currentUserId?: string;
+    onOpenProfile?: (userId: string) => void;
 }
 
 const GRAPHQL_QUERIES = {
     GET_USER_PROFILE: `
-        query GetUserProfile($id: Int!) {
+        query GetUserProfile($id: String!) {
             user(id: $id) {
                 id
                 firstName
@@ -247,7 +281,7 @@ const GRAPHQL_QUERIES = {
     `,
 
     UPDATE_PROFILE_PHOTO: `
-        mutation UpdateProfilePhoto($userId: Int!, $filePath: String!, $fileName: String, $contentType: String) {
+        mutation UpdateProfilePhoto($userId: String!, $filePath: String!, $fileName: String, $contentType: String) {
             updateProfilePhoto(userId: $userId, filePath: $filePath, fileName: $fileName, contentType: $contentType) {
                 id
                 profilePhotoId
@@ -258,7 +292,7 @@ const GRAPHQL_QUERIES = {
     `,
 
     UPDATE_COVER_PHOTO: `
-        mutation UpdateCoverPhoto($userId: Int!, $filePath: String!, $fileName: String, $contentType: String) {
+        mutation UpdateCoverPhoto($userId: String!, $filePath: String!, $fileName: String, $contentType: String) {
             updateCoverPhoto(userId: $userId, filePath: $filePath, fileName: $fileName, contentType: $contentType) {
                 id
                 coverPhotoId
@@ -269,7 +303,7 @@ const GRAPHQL_QUERIES = {
     `,
 
     UPDATE_FOLLOW_STATUS: `
-        mutation UpdateFollowStatus($followerId: Int!, $followingId: Int!, $status: String!) {
+        mutation UpdateFollowStatus($followerId: String!, $followingId: String!, $status: String!) {
             updateFollowStatus(followerId: $followerId, followingId: $followingId, status: $status) {
                 id
                 followerId
@@ -281,19 +315,20 @@ const GRAPHQL_QUERIES = {
     `,
 
     PENDING_FOLLOW_REQUESTS: `
-        query PendingFollowRequests($userId: Int!) {
+        query PendingFollowRequests($userId: String!) {
             pendingFollowRequests(userId: $userId) {
                 id
                 followerId
                 followingId
                 status
                 followedAt
+                ${FOLLOW_PROFILE_FIELDS}
             }
         }
     `,
 
     GET_USER_RATINGS: `
-        query GetUserRatings($userId: Int!) {
+        query GetUserRatings($userId: String!) {
             userRatings(userId: $userId) {
                 id
                 ratedUserId
@@ -312,31 +347,33 @@ const GRAPHQL_QUERIES = {
     `,
 
     GET_USER_FOLLOWERS: `
-        query GetUserFollowers($userId: Int!) {
+        query GetUserFollowers($userId: String!) {
             userFollowers(userId: $userId) {
                 id
                 followerId
                 followingId
                 status
                 followedAt
+                ${FOLLOW_PROFILE_FIELDS}
             }
         }
     `,
 
     GET_USER_FOLLOWING: `
-        query GetUserFollowing($userId: Int!) {
+        query GetUserFollowing($userId: String!) {
             userFollowing(userId: $userId) {
                 id
                 followerId
                 followingId
                 status
                 followedAt
+                ${FOLLOW_PROFILE_FIELDS}
             }
         }
     `,
 
     CHECK_FOLLOWING_STATUS: `
-        query CheckFollowingStatus($userId: Int!, $followingId: Int!) {
+        query CheckFollowingStatus($userId: String!, $followingId: String!) {
             checkFollowingStatus(userId: $userId, followingId: $followingId) {
                 id
                 followerId
@@ -348,7 +385,7 @@ const GRAPHQL_QUERIES = {
     `,
 
     CREATE_USER_RATING: `
-        mutation CreateUserRating($ratedUserId: Int!, $ratedByUserId: Int!, $ratingValue: Int!, $review: String, $ratingType: String) {
+        mutation CreateUserRating($ratedUserId: String!, $ratedByUserId: String!, $ratingValue: Int!, $review: String, $ratingType: String) {
             createUserRating(
                 ratedUserId: $ratedUserId, 
                 ratedByUserId: $ratedByUserId, 
@@ -373,7 +410,7 @@ const GRAPHQL_QUERIES = {
     `,
 
     FOLLOW_USER: `
-        mutation FollowUser($userId: Int!, $followingId: Int!) {
+        mutation FollowUser($userId: String!, $followingId: String!) {
             followUser(userId: $userId, followingId: $followingId) {
                 id
                 followerId
@@ -385,7 +422,7 @@ const GRAPHQL_QUERIES = {
     `,
 
     GET_USER_POSTS: `
-        query UserPosts($userId: Int!, $page: Int, $limit: Int) {
+        query UserPosts($userId: String!, $page: Int, $limit: Int) {
             postsByUser(userId: $userId, page: $page, limit: $limit) {
                 id
                 userId
@@ -433,7 +470,7 @@ const GRAPHQL_QUERIES = {
     // `,
 
     GET_POST_COMMENTS: `
-        query PostComments($postId: Int!, $limit: Int) {
+        query PostComments($postId: String!, $limit: Int) {
             postComments(postId: $postId, limit: $limit) {
                 id
                 postId
@@ -472,7 +509,7 @@ const GRAPHQL_QUERIES = {
     `,
 
     LIKE_POST: `
-        mutation LikePost($postId: Int!, $userId: Int!) {
+        mutation LikePost($postId: String!, $userId: String!) {
             likePost(postId: $postId, userId: $userId) {
                 success
                 message
@@ -485,7 +522,7 @@ const GRAPHQL_QUERIES = {
     `,
 
     UNLIKE_POST: `
-        mutation UnlikePost($postId: Int!, $userId: Int!) {
+        mutation UnlikePost($postId: String!, $userId: String!) {
             unlikePost(postId: $postId, userId: $userId) {
                 success
                 message
@@ -498,7 +535,7 @@ const GRAPHQL_QUERIES = {
     `,
 
     LIKE_COMMENT: `
-        mutation LikeComment($commentId: Int!, $userId: Int!, $reactionType: String) {
+        mutation LikeComment($commentId: String!, $userId: String!, $reactionType: String) {
             likeComment(commentId: $commentId, userId: $userId, reactionType: $reactionType) {
                 success
                 message
@@ -511,7 +548,7 @@ const GRAPHQL_QUERIES = {
     `,
 
     UNLIKE_COMMENT: `
-        mutation UnlikeComment($commentId: Int!, $userId: Int!) {
+        mutation UnlikeComment($commentId: String!, $userId: String!) {
             unlikeComment(commentId: $commentId, userId: $userId) {
                 success
                 message
@@ -524,7 +561,7 @@ const GRAPHQL_QUERIES = {
     `,
 
     UPDATE_COMMENT: `
-        mutation UpdateComment($commentId: Int!, $comment: String) {
+        mutation UpdateComment($commentId: String!, $comment: String) {
             updateComment(commentId: $commentId, comment: $comment) {
                 success
                 message
@@ -538,7 +575,7 @@ const GRAPHQL_QUERIES = {
     `,
 
     DELETE_COMMENT: `
-        mutation DeleteComment($commentId: Int!) {
+        mutation DeleteComment($commentId: String!) {
             deleteComment(commentId: $commentId) {
                 success
                 message
@@ -547,7 +584,7 @@ const GRAPHQL_QUERIES = {
     `,
 
     CREATE_COMMENT: `
-        mutation CreateComment($postId: Int!, $userId: Int!, $comment: String!, $parentCommentId: Int) {
+        mutation CreateComment($postId: String!, $userId: String!, $comment: String!, $parentCommentId: String) {
             createComment(
                 postId: $postId
                 userId: $userId
@@ -616,7 +653,7 @@ const apiService = {
         }
     },
 
-    async fetchUserProfile(userId: number): Promise<UserProfile> {
+    async fetchUserProfile(userId: string): Promise<UserProfile> {
         try {
             console.log('Fetching user profile for ID:', userId);
             const data = await this.graphqlRequest(GRAPHQL_QUERIES.GET_USER_PROFILE, { id: userId });
@@ -676,7 +713,7 @@ const apiService = {
         }
     },
 
-    async fetchUserPosts(userId: number): Promise<Post[]> {
+    async fetchUserPosts(userId: string): Promise<Post[]> {
         try {
             console.log('Fetching user posts for ID:', userId);
             const data = await this.graphqlRequest(GRAPHQL_QUERIES.GET_USER_POSTS, {
@@ -726,7 +763,7 @@ const apiService = {
     async fetchPostComments(postId: string, limit = 50): Promise<any[]> {
         try {
             const data = await this.graphqlRequest(GRAPHQL_QUERIES.GET_POST_COMMENTS, {
-                postId: parseInt(postId, 10),
+                postId: postId,
                 limit
             });
 
@@ -770,7 +807,7 @@ const apiService = {
         }
     },
 
-    async fetchUserReviews(userId: number): Promise<UserRating[]> {
+    async fetchUserReviews(userId: string): Promise<UserRating[]> {
         const data = await this.graphqlRequest(GRAPHQL_QUERIES.GET_USER_RATINGS, { userId });
         const list = (data.userRatings || []);
 
@@ -794,15 +831,20 @@ const apiService = {
         }));
     },
 
-    async fetchUserFollowers(userId: number): Promise<UserFollower[]> {
+    async fetchUserFollowers(userId: string): Promise<UserFollower[]> {
         try {
             const data = await this.graphqlRequest(GRAPHQL_QUERIES.GET_USER_FOLLOWERS, { userId });
             return (data.userFollowers || []).map((follower: any) => ({
                 id: follower.id,
-                userId: follower.userId,
+                followerId: follower.followerId,
                 followingId: follower.followingId,
                 status: follower.status,
-                followedAt: follower.followedAt
+                followedAt: follower.followedAt,
+                userFirstName: follower.userFirstName,
+                userLastName: follower.userLastName,
+                userRole: follower.userRole,
+                userProfilePhoto: follower.userProfilePhoto,
+                userProfilePhotoSignedUrl: follower.userProfilePhotoSignedUrl,
             }));
         } catch (error) {
             console.error('Error fetching user followers:', error);
@@ -810,15 +852,20 @@ const apiService = {
         }
     },
 
-    async fetchUserFollowing(userId: number): Promise<UserFollower[]> {
+    async fetchUserFollowing(userId: string): Promise<UserFollower[]> {
         try {
             const data = await this.graphqlRequest(GRAPHQL_QUERIES.GET_USER_FOLLOWING, { userId });
             return (data.userFollowing || []).map((following: any) => ({
                 id: following.id,
-                userId: following.userId,
+                followerId: following.followerId,
                 followingId: following.followingId,
                 status: following.status,
-                followedAt: following.followedAt
+                followedAt: following.followedAt,
+                userFirstName: following.userFirstName,
+                userLastName: following.userLastName,
+                userRole: following.userRole,
+                userProfilePhoto: following.userProfilePhoto,
+                userProfilePhotoSignedUrl: following.userProfilePhotoSignedUrl,
             }));
         } catch (error) {
             console.error('Error fetching user following:', error);
@@ -826,7 +873,7 @@ const apiService = {
         }
     },
 
-    async checkFollowingStatus(userId: number, followingId: number): Promise<UserFollower | null> {
+    async checkFollowingStatus(userId: string, followingId: string): Promise<UserFollower | null> {
         try {
             const data = await this.graphqlRequest(GRAPHQL_QUERIES.CHECK_FOLLOWING_STATUS, {
                 userId,
@@ -838,7 +885,7 @@ const apiService = {
         }
     },
 
-    async followUser(userId: number, followingId: number): Promise<UserFollower> {
+    async followUser(userId: string, followingId: string): Promise<UserFollower> {
         const data = await this.graphqlRequest(GRAPHQL_QUERIES.FOLLOW_USER, {
             userId,
             followingId
@@ -847,8 +894,8 @@ const apiService = {
     },
 
     async createRating(
-        ratedUserId: number,
-        ratedByUserId: number,
+        ratedUserId: string,
+        ratedByUserId: string,
         ratingValue: number,
         review?: string,
         ratingType?: string
@@ -863,7 +910,7 @@ const apiService = {
         return data.createUserRating;
     },
 
-    async likePost(postId: number, userId: number): Promise<any> {
+    async likePost(postId: string, userId: string): Promise<any> {
         const data = await this.graphqlRequest(GRAPHQL_QUERIES.LIKE_POST, {
             postId,
             userId
@@ -871,7 +918,7 @@ const apiService = {
         return data.likePost;
     },
 
-    async unlikePost(postId: number, userId: number): Promise<any> {
+    async unlikePost(postId: string, userId: string): Promise<any> {
         const data = await this.graphqlRequest(GRAPHQL_QUERIES.UNLIKE_POST, {
             postId,
             userId
@@ -879,7 +926,7 @@ const apiService = {
         return data.unlikePost;
     },
 
-    async likeComment(commentId: number, userId: number, reactionType?: string): Promise<any> {
+    async likeComment(commentId: string, userId: string, reactionType?: string): Promise<any> {
         const data = await this.graphqlRequest(GRAPHQL_QUERIES.LIKE_COMMENT, {
             commentId,
             userId,
@@ -888,7 +935,7 @@ const apiService = {
         return data.likeComment;
     },
 
-    async unlikeComment(commentId: number, userId: number): Promise<any> {
+    async unlikeComment(commentId: string, userId: string): Promise<any> {
         const data = await this.graphqlRequest(GRAPHQL_QUERIES.UNLIKE_COMMENT, {
             commentId,
             userId,
@@ -896,7 +943,7 @@ const apiService = {
         return data.unlikeComment;
     },
 
-    async updateComment(commentId: number, comment: string): Promise<any> {
+    async updateComment(commentId: string, comment: string): Promise<any> {
         const data = await this.graphqlRequest(GRAPHQL_QUERIES.UPDATE_COMMENT, {
             commentId,
             comment,
@@ -904,14 +951,14 @@ const apiService = {
         return data.updateComment;
     },
 
-    async deleteComment(commentId: number): Promise<any> {
+    async deleteComment(commentId: string): Promise<any> {
         const data = await this.graphqlRequest(GRAPHQL_QUERIES.DELETE_COMMENT, {
             commentId,
         });
         return data.deleteComment;
     },
 
-    async createComment(postId: number, userId: number, comment: string, parentCommentId?: number): Promise<any> {
+    async createComment(postId: string, userId: string, comment: string, parentCommentId?: string): Promise<any> {
         const data = await this.graphqlRequest(GRAPHQL_QUERIES.CREATE_COMMENT, {
             postId,
             userId,
@@ -945,9 +992,9 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
     // Post likes and comments state
     const [likedPosts, setLikedPosts] = useState<{ [postId: string]: boolean }>({});
     const [postLikeCounts, setPostLikeCounts] = useState<{ [postId: string]: number }>({});
-    const [likedComments, setLikedComments] = useState<{ [commentId: number]: boolean }>({});
-    const [commentReactions, setCommentReactions] = useState<{ [commentId: number]: string }>({});
-    const [commentLikeCounts, setCommentLikeCounts] = useState<{ [commentId: number]: number }>({});
+    const [likedComments, setLikedComments] = useState<{ [commentId: string]: boolean }>({});
+    const [commentReactions, setCommentReactions] = useState<{ [commentId: string]: string }>({});
+    const [commentLikeCounts, setCommentLikeCounts] = useState<{ [commentId: string]: number }>({});
     const [commentsModalOpen, setCommentsModalOpen] = useState<{ open: boolean; postId: string | null }>({ open: false, postId: null });
     const [likingPost, setLikingPost] = useState(false);
     const [likingComment, setLikingComment] = useState(false);
@@ -964,7 +1011,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
     // Comments state
     const [commentsByPost, setCommentsByPost] = useState<{ [postId: string]: any[] }>({});
     const [loadingComments, setLoadingComments] = useState<{ [postId: string]: boolean }>({});
-    const [replyingCommentId, setReplyingCommentId] = useState<number | null>(null);
+    const [replyingCommentId, setReplyingCommentId] = useState<string | null>(null);
     const [replyText, setReplyText] = useState('');
     const [replying, setReplying] = useState(false);
     // Followers/Following modal state
@@ -978,26 +1025,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
 
     // Pending request from profile user -> current user
     const [incomingFollowStatus, setIncomingFollowStatus] = useState<UserFollower | null>(null);
-
-    const enrichUsers = async (userIds: number[]) => {
-        const unique = Array.from(new Set(userIds.filter((x) => Number.isFinite(x))));
-        const entries = await Promise.all(unique.map(async (uid) => {
-            try {
-                const res = await apiService.graphqlRequest(GRAPHQL_QUERIES.GET_USER_PROFILE, { id: uid });
-                const u = res.user;
-                return [uid, {
-                    id: u.id,
-                    firstName: u.firstName,
-                    lastName: u.lastName,
-                    role: u.role,
-                    photo: u.profilePhotoSignedUrl || u.profilePhoto,
-                }];
-            } catch {
-                return [uid, null];
-            }
-        }));
-        return Object.fromEntries(entries);
-    };
     // Rating state
     const [ratingOpen, setRatingOpen] = useState(false);
     const [ratingValue, setRatingValue] = useState<number>(5);
@@ -1033,7 +1060,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                     ]).then(([followStatus, incoming]) => {
                         if (cancelled) return;
                         setFollowingStatus(followStatus);
-                        setIsFollowing(followStatus?.status === 'active');
+                        setIsFollowing(isActiveFollowStatus(followStatus?.status));
                         setIncomingFollowStatus(incoming);
                     }).catch((err) => {
                         console.warn('Error checking following status:', err);
@@ -1118,19 +1145,23 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
             setFollowingInProgress(true);
 
             // Only allow action when not already following or pending
-            if (isFollowing || followingStatus?.status === 'pending') {
+            if (isFollowing || isPendingFollowStatus(followingStatus?.status)) {
                 return;
             }
 
             const followResult = await apiService.followUser(currentUserId, userId);
             setFollowingStatus(followResult);
-            const isActive = followResult?.status === 'active';
+            const isActive = isActiveFollowStatus(followResult?.status);
             setIsFollowing(isActive);
-            // Followers count only increases if accepted immediately (shouldn't for users)
             if (isActive) {
-                setUser(prev => prev ? { ...prev, followersCount: prev.followersCount + 1 } : null);
+                try {
+                    const refreshed = await apiService.fetchUserProfile(userId);
+                    setUser(refreshed);
+                } catch {
+                    setUser(prev => prev ? { ...prev, followersCount: prev.followersCount + 1 } : null);
+                }
             }
-            setSnack({ open: true, message: followResult?.status === 'pending' ? 'Follow request sent' : 'Following', severity: 'success' });
+            setSnack({ open: true, message: isPendingFollowStatus(followResult?.status) ? 'Follow request sent' : 'Following', severity: 'success' });
         } catch (err) {
             console.error('Error sending follow request:', err);
             setSnack({ open: true, message: 'Failed to send follow request', severity: 'error' });
@@ -1147,15 +1178,15 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
 
     useEffect(() => {
         if (!currentUserId || currentUserId === userId) return;
-        if (followingStatus?.status !== 'pending') return;
+        if (!isPendingFollowStatus(followingStatus?.status)) return;
 
         const interval = setInterval(async () => {
             try {
                 const latest = await apiService.checkFollowingStatus(currentUserId, userId);
-                if (latest?.status && latest.status !== followingStatus.status) {
+                if (latest?.status && latest.status !== followingStatus?.status) {
                     setFollowingStatus(latest);
-                    setIsFollowing(latest.status === 'active');
-                    if (prevStatusRef.current === 'pending' && latest.status === 'active') {
+                    setIsFollowing(isActiveFollowStatus(latest.status));
+                    if (prevStatusRef.current && isPendingFollowStatus(prevStatusRef.current) && isActiveFollowStatus(latest.status)) {
                         setUser(prev => prev ? { ...prev, followersCount: prev.followersCount + 1 } : null);
                         setSnack({ open: true, message: 'Follow request accepted', severity: 'success' });
                     }
@@ -1237,7 +1268,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
 
             if (isCurrentlyLiked) {
                 // Unlike the post
-                const result = await apiService.unlikePost(parseInt(postId), currentUserId);
+                const result = await apiService.unlikePost(postId, currentUserId);
                 if (result?.success) {
                     setPostLikeCounts(prev => ({
                         ...prev,
@@ -1250,7 +1281,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                 }
             } else {
                 // Like the post
-                const result = await apiService.likePost(parseInt(postId), currentUserId);
+                const result = await apiService.likePost(postId, currentUserId);
                 if (result?.success) {
                     setPostLikeCounts(prev => ({
                         ...prev,
@@ -1299,12 +1330,12 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
         setCommentsModalOpen({ open: false, postId: null });
     };
 
-    const handleAddComment = async (postId: string, commentText: string, parentCommentId?: number) => {
+    const handleAddComment = async (postId: string, commentText: string, parentCommentId?: string) => {
         if (!currentUserId || !commentText.trim()) return;
 
         try {
             const result = await apiService.createComment(
-                parseInt(postId),
+                postId,
                 currentUserId,
                 commentText,
                 parentCommentId || undefined
@@ -1335,7 +1366,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
         }
     };
 
-    const handleReactComment = async (commentId: number, emoji: string) => {
+    const handleReactComment = async (commentId: string, emoji: string) => {
         if (!currentUserId) return;
 
         const current = normalizeReactionEmoji(commentReactions[commentId]) || (likedComments[commentId] ? '❤️' : null);
@@ -1376,7 +1407,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
         }
     };
 
-    const handleEditComment = async (commentId: number, text: string) => {
+    const handleEditComment = async (commentId: string, text: string) => {
         try {
             const result = await apiService.updateComment(commentId, text);
             if (result?.success && commentsModalOpen.postId) {
@@ -1388,7 +1419,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
         }
     };
 
-    const handleDeleteComment = async (commentId: number) => {
+    const handleDeleteComment = async (commentId: string) => {
         if (!window.confirm('Delete this comment?')) return;
         const postId = commentsModalOpen.postId;
         if (!postId) return;
@@ -1661,7 +1692,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                 width: { xs: '100%', sm: 'auto' },
                                 flexShrink: 0,
                             }}>
-                                {incomingFollowStatus?.status === 'pending' ? (
+                                {incomingFollowStatus && isPendingFollowStatus(incomingFollowStatus?.status) ? (
                                     <>
                                         <Button
                                             variant="contained"
@@ -1721,7 +1752,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                             }}
                                         >
                                             {followingInProgress ? 'Loading...' : (
-                                                followingStatus?.status === 'pending' ? 'Requested' : (
+                                                isPendingFollowStatus(followingStatus?.status) ? 'Requested' : (
                                                 isFollowing ? 'Following' : 'Follow')
                                             )}
                                         </Button>
@@ -1764,7 +1795,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                 )}
                             </Box>
                         )}
-                        {isOwnProfile && followingStatus?.status === 'pending' && (
+                        {isOwnProfile && isPendingFollowStatus(followingStatus?.status) && (
                             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, width: { xs: '100%', sm: 'auto' } }}>
                                 <Button
                                     variant="contained"
@@ -1834,8 +1865,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                             setLoadingFF(true);
                                             const data = await apiService.graphqlRequest(GRAPHQL_QUERIES.PENDING_FOLLOW_REQUESTS, { userId });
                                             const list = (data?.pendingFollowRequests || []);
-                                            const map = await enrichUsers(list.map((p: any) => p.followerId));
-                                            setFollowersDetails(list.map((p: any) => ({ id: p.id, uid: p.followerId, status: p.status, info: map[p.followerId] || null })));
+                                            setFollowersDetails(list.map((p: UserFollower) => followToDetail(p, p.followerId)));
                                             setFollowersOpen(true);
                                         } finally { setLoadingFF(false); }
                                     }}
@@ -1860,13 +1890,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                 setLoadingFF(true);
                                 const list = await apiService.fetchUserFollowers(userId);
                                 setFollowersList(list);
-                                const map = await enrichUsers(list.map((f: any) => f.followerId || f.userId));
-                                setFollowersDetails(list.map((f: any) => ({
-                                    id: f.id,
-                                    uid: f.followerId || f.userId,
-                                    status: f.status,
-                                    info: map[f.followerId || f.userId] || null,
-                                })));
+                                setFollowersDetails(list.map((f: UserFollower) => followToDetail(f, f.followerId)));
                                 setFollowersOpen(true);
                             } finally { setLoadingFF(false); }
                         }}>
@@ -1880,13 +1904,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                 setLoadingFF(true);
                                 const list = await apiService.fetchUserFollowing(userId);
                                 setFollowingList(list);
-                                const map = await enrichUsers(list.map((f: any) => f.followingId));
-                                setFollowingDetails(list.map((f: any) => ({
-                                    id: f.id,
-                                    uid: f.followingId,
-                                    status: f.status,
-                                    info: map[f.followingId] || null,
-                                })));
+                                setFollowingDetails(list.map((f: UserFollower) => followToDetail(f, f.followingId)));
                                 setFollowingOpen(true);
                             } finally { setLoadingFF(false); }
                         }}>
@@ -1975,7 +1993,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                                 {(post as any).userRole}
                                             </Typography>
                                             <Typography sx={{ fontSize: 13, color: '#6B7280' }}>
-                                                {new Date(post.createdAt).toLocaleString()}
+                                                {formatDate(post.createdAt)}
                                             </Typography>
                                         </Box>
                                         {canManage && (
@@ -2312,10 +2330,10 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                         <Box key={review.id} sx={{ pb: 2, borderBottom: '1px solid #E5E7EB' }}>
                                             <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
                                                 <Avatar
-                                                    src={review.raterInfo?.profilePhoto || `https://randomuser.me/api/portraits/lego/${review.ratedByUserId % 10}.jpg`}
+                                                    src={review.raterInfo?.profilePhoto || `https://randomuser.me/api/portraits/lego/${avatarPlaceholderIndex(review.ratedByUserId)}.jpg`}
                                                     sx={{ width: 32, height: 32 }}
                                                     onError={(e) => {
-                                                        (e.target as HTMLImageElement).src = `https://randomuser.me/api/portraits/lego/${review.ratedByUserId % 10}.jpg`;
+                                                        (e.target as HTMLImageElement).src = `https://randomuser.me/api/portraits/lego/${avatarPlaceholderIndex(review.ratedByUserId)}.jpg`;
                                                     }}
                                                 />
                                                 <Box sx={{ flex: 1 }}>
@@ -2336,7 +2354,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                                     )}
                                                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                                         <Typography sx={{ color: '#6B7280', fontSize: '0.75rem' }}>
-                                                            {new Date(review.createdAt).toLocaleDateString()}
+                                                            {formatDateShort(review.createdAt)}
                                                         </Typography>
                                                         {review.ratingType && (
                                                             <Typography sx={{ color: '#2563EB', fontSize: '0.75rem', fontWeight: 600 }}>
@@ -2537,7 +2555,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                             <Typography sx={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.info ? `${f.info.firstName} ${f.info.lastName}` : `User ${f.uid}`}</Typography>
                                             <Typography sx={{ fontSize: 12, color: '#6B7280' }}>{f.info?.role || f.status}</Typography>
                                         </Box>
-                                        {isOwnProfile && f.status === 'pending' && (
+                                        {isOwnProfile && isPendingFollowStatus(f.status) && (
                                             <Box sx={{ display: 'flex', gap: 0.5, width: { xs: '100%', sm: 'auto' }, ml: { xs: 5, sm: 0 } }} onClick={(e) => e.stopPropagation()}>
                                                 <Button size="small" variant="contained" sx={{ bgcolor: '#16A34A', '&:hover': { bgcolor: '#15803D' }, flex: { xs: 1, sm: 'none' } }}
                                                     onClick={async () => {
@@ -2626,13 +2644,13 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                 sx={{ color: '#DC2626' }}
                 onClick={async () => {
                     if (!postMenu) return;
-                    const postId = Number(postMenu.post.id);
+                    const postId = String(postMenu.post.id);
                     setPostMenu(null);
                     if (!window.confirm('Delete this post?')) return;
                     try {
                         const { data: result } = await deletePostMutation({ variables: { postId } });
                         if (result?.deletePost?.success) {
-                            setPosts((prev) => prev.filter((p) => Number(p.id) !== postId));
+                            setPosts((prev) => prev.filter((p) => String(p.id) !== postId));
                         } else {
                             window.alert(result?.deletePost?.message || 'Failed to delete post');
                         }
@@ -2676,7 +2694,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                         if (!editPost) return;
                         setEditSaving(true);
                         try {
-                            const postId = Number(editPost.id);
+                            const postId = String(editPost.id);
                             const { data: result } = await updatePostMutation({
                                 variables: {
                                     postId,
@@ -2687,7 +2705,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                             if (result?.updatePost?.success) {
                                 setPosts((prev) =>
                                     prev.map((p) =>
-                                        Number(p.id) === postId
+                                        String(p.id) === postId
                                             ? ({ ...p, title: editTitle.trim(), content: editContent.trim() } as any)
                                             : p
                                     )
