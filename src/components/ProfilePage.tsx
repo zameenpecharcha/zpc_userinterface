@@ -37,6 +37,7 @@ import { useApolloClient, useMutation } from '@apollo/client';
 import { useNavigate } from 'react-router-dom';
 import { GET_POSTS_BY_USER, DELETE_POST, UPDATE_POST } from '../graphql/posts';
 import { CREATE_DM_ROOM_MUTATION } from '../graphql/chat';
+import { useAuth } from '../contexts/AuthContext';
 import { renderMentionContent, nameInitials, stringToColor, avatarPlaceholderIndex } from '../utils/mentions';
 import CommentListItem from './comments/CommentListItem';
 import CommentComposer from './comments/CommentComposer';
@@ -979,6 +980,7 @@ const apiService = {
 };
 const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUserId, onOpenProfile }) => {
     const navigate = useNavigate();
+    const { updateUser } = useAuth();
     const isMobile = useMediaQuery('(max-width:900px)');
     const [createDmRoom] = useMutation(CREATE_DM_ROOM_MUTATION);
     const [deletePostMutation] = useMutation(DELETE_POST);
@@ -1243,12 +1245,35 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
 
             // Update UI with signed URL from response
             const updated = isCover ? updateRes.updateCoverPhoto : updateRes.updateProfilePhoto;
+            const nextPhoto = !isCover
+              ? (updated.profilePhotoSignedUrl || updated.profilePhotoUrl || updated.profilePhoto)
+              : undefined;
+            const nextCover = isCover
+              ? (updated.coverPhotoSignedUrl || updated.coverPhotoUrl || updated.coverPhoto)
+              : undefined;
+
             setUser(prev => prev ? {
                 ...prev,
-                profilePhoto: !isCover ? (updated.profilePhotoSignedUrl || prev.profilePhoto) : prev.profilePhoto,
-                // Pass along signed URLs by attaching them on the user object cast
-                ...(isCover ? { coverPhotoSignedUrl: updated.coverPhotoSignedUrl } : { profilePhotoSignedUrl: updated.profilePhotoSignedUrl })
+                profilePhoto: nextPhoto || prev.profilePhoto,
+                ...(isCover
+                  ? { coverPhotoSignedUrl: nextCover }
+                  : { profilePhotoSignedUrl: nextPhoto }),
             } as any : prev);
+
+            // Persist so Home left rail / feed pick up the new photos without a full re-login
+            if (String(userId) === String(currentUserId)) {
+              updateUser(
+                isCover
+                  ? {
+                      coverPhotoSignedUrl: nextCover,
+                      coverPhoto: nextCover,
+                    }
+                  : {
+                      profilePhoto: nextPhoto,
+                      profilePhotoSignedUrl: nextPhoto,
+                    }
+              );
+            }
 
             setSnack({ open: true, message: isCover ? 'Cover photo updated' : 'Profile photo updated', severity: 'success' });
 

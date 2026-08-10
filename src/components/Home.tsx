@@ -165,6 +165,8 @@ interface PostProps {
   onSharePost?: (postId: number | string) => void | Promise<void>;
   onReportPost?: (post: PostProps['post']) => void | Promise<void>;
   onPinPost?: (postId: number | string, pin: boolean) => void | Promise<void>;
+  /** Live profile photo for the signed-in user (overrides stale post enrichment). */
+  viewerProfilePhoto?: string | null;
   currentUserId?: number | string | null;
   likedPosts: { [postId: string]: boolean };
   likeCounts: { [postId: string]: number };
@@ -219,6 +221,7 @@ const Post = memo(({
   onSharePost,
   onReportPost,
   onPinPost,
+  viewerProfilePhoto = null,
   currentUserId,
   likedPosts,
   likeCounts,
@@ -244,7 +247,11 @@ const Post = memo(({
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const isOwner = currentUserId != null && String(currentUserId) === String(post.userId);
   const authorName = `${post.userFirstName || ''} ${post.userLastName || ''}`.trim();
-  const photoUrl = (post as any).userProfilePhotoSignedUrl || (post as any).userProfilePhoto || post.profilePhoto || undefined;
+  const photoUrl = (() => {
+    const isSelf = currentUserId != null && String(currentUserId) === String(post.userId);
+    if (isSelf && viewerProfilePhoto) return viewerProfilePhoto;
+    return (post as any).userProfilePhotoSignedUrl || (post as any).userProfilePhoto || post.profilePhoto || undefined;
+  })();
   const likeCount = likeCounts[String(post.id)] !== undefined ? likeCounts[String(post.id)] : (likeCounts[post.id as any] !== undefined ? likeCounts[post.id as any] : (post.likeCount || 0));
   const commentCount = commentCounts[String(post.id)] !== undefined ? commentCounts[String(post.id)] : (commentCounts[post.id as any] !== undefined ? commentCounts[post.id as any] : (post.commentCount || 0));
   const liked = !!(likedPosts[String(post.id)] || likedPosts[post.id as any]);
@@ -700,10 +707,10 @@ const Home = () => {
     fetchPolicy: 'cache-and-network',
   });
 
-  const { data: ownProfileData } = useQuery(GET_USER_PROFILE, {
+  const { data: ownProfileData, refetch: refetchOwnProfile } = useQuery(GET_USER_PROFILE, {
     variables: { id: String(activeUserId || '') },
     skip: !activeUserId,
-    fetchPolicy: 'cache-and-network',
+    fetchPolicy: 'network-only',
     errorPolicy: 'ignore',
   });
   const ownProfile = ownProfileData?.user;
@@ -927,41 +934,71 @@ const Home = () => {
     }
   }, [loading, refetch]);
 
-  // Cleanup timers on unmount
+  // Refresh avatar/cover on Home after Profile photo upload (or return to Home)
   useEffect(() => {
-    return () => {
-      if (refreshTimerRef.current) {
-        clearInterval(refreshTimerRef.current);
+    const refreshPhotos = (detail?: any) => {
+      if (detail && typeof detail === 'object') {
+        setCurrentUser((prev: any) => ({ ...(prev || {}), ...detail, id: String(detail.id || prev?.id || '') }));
+      } else {
+        const userData = getUserData();
+        if (userData) setCurrentUser(userData);
       }
-      if (commentsRefreshTimerRef.current) {
-        clearInterval(commentsRefreshTimerRef.current);
+      if (activeUserId) {
+        refetchOwnProfile?.({ fetchPolicy: 'network-only' });
+        refetch?.();
       }
     };
-  }, []);
+    const onPhotosUpdated = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      refreshPhotos(detail);
+    };
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refreshPhotos();
+    };
+    window.addEventListener('zpc:user-photos-updated', onPhotosUpdated as EventListener);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.removeEventListener('zpc:user-photos-updated', onPhotosUpdated as EventListener);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [activeUserId, refetchOwnProfile, refetch]);
 
   // Memoized user data to prevent re-renders (using current user state)
   const currentUserData = useMemo(() => {
     if (!currentUser || !currentUser.id) return null;
     const first = ownProfile?.firstName || currentUser.firstName || '';
     const last = ownProfile?.lastName || currentUser.lastName || '';
+    // Prefer auth/localStorage photos first — Profile uploads update those immediately,
+    // while Apollo ownProfile can stay stale while Home stays mounted.
+    const profileImage =
+      (currentUser as any).profilePhotoSignedUrl ||
+      currentUser.profilePhoto ||
+      (authUser as any)?.profilePhotoSignedUrl ||
+      (authUser as any)?.profilePhoto ||
+      ownProfile?.profilePhotoSignedUrl ||
+      ownProfile?.profilePhoto ||
+      '';
+    const coverImage =
+      (currentUser as any).coverPhotoSignedUrl ||
+      (currentUser as any).coverPhoto ||
+      (authUser as any)?.coverPhotoSignedUrl ||
+      (authUser as any)?.coverPhoto ||
+      ownProfile?.coverPhotoSignedUrl ||
+      (ownProfile as any)?.coverPhoto ||
+      '';
     return {
       name: `${first} ${last}`.trim() || 'ZPC member',
       title: ownProfile?.role || currentUser.role || 'User',
       location: ownProfile?.address || currentUser.address || '',
-      coverImage: 'https://images.unsplash.com/photo-1519904981063-b0cf448d479e?w=800&h=300&fit=crop',
-      profileImage:
-        ownProfile?.profilePhotoSignedUrl ||
-        ownProfile?.profilePhoto ||
-        (currentUser as any).profilePhotoSignedUrl ||
-        currentUser.profilePhoto ||
-        '',
+      coverImage,
+      profileImage,
       friendsCount: ownFollowers,
       postsCount: 0,
       rating: Number(ownAvgRating.toFixed(1)),
       totalReviews: ownRatings.length,
       isOnline: true,
     };
-  }, [currentUser, ownProfile, ownFollowers, ownAvgRating, ownRatings.length]);
+  }, [currentUser, ownProfile, ownFollowers, ownAvgRating, ownRatings.length, authUser]);
 
   // Memoized handlers to prevent re-renders
   const handleMenu = useCallback((event: React.MouseEvent<HTMLElement>) => {
@@ -1932,9 +1969,12 @@ const Home = () => {
           <Box sx={{ position: 'sticky', top: 72, display: 'flex', flexDirection: 'column', gap: 1 }}>
             <Box sx={{ ...MATTE_PANEL, borderRadius: CARD_RADIUS, overflow: 'hidden', p: 0 }}>
               <Box
+                key={currentUserData?.coverImage || 'no-cover'}
                 sx={{
                   height: 56,
-                  backgroundImage: `url(${currentUserData?.coverImage || ''})`,
+                  backgroundImage: currentUserData?.coverImage
+                    ? `url(${currentUserData.coverImage})`
+                    : 'none',
                   backgroundSize: 'cover',
                   backgroundPosition: 'center',
                   bgcolor: 'rgba(22,48,42,0.35)',
@@ -2224,6 +2264,7 @@ const Home = () => {
                   onSharePost={handleSharePost}
                   onReportPost={handleReportPost}
                   onPinPost={handlePinPost}
+                  viewerProfilePhoto={currentUserData?.profileImage || null}
                   currentUserId={activeUserId}
                   likedPosts={likedPosts}
                   likeCounts={likeCounts}

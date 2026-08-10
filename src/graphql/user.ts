@@ -57,6 +57,7 @@ export const GET_USER_PROFILE = gql`
       phone
       profilePhoto
       profilePhotoSignedUrl
+      coverPhotoSignedUrl
       role
       address
       bio
