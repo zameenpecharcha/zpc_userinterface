@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Container,
   Box,
   Typography,
   TextField,
@@ -15,14 +14,15 @@ import {
   DialogActions,
   MenuItem,
   IconButton,
+  CircularProgress,
 } from '@mui/material';
 import {
   ArrowBack,
   BusinessCenter,
   Home,
   MapOutlined,
-  // Engineering,      // unused
   AccountCircle,
+  CheckCircle,
 } from '@mui/icons-material';
 import ApartmentIcon from '@mui/icons-material/Apartment';
 import BalanceIcon from '@mui/icons-material/Balance';
@@ -33,23 +33,72 @@ import LocationAutocomplete from './LocationAutocomplete';
 import GoogleSignInButton from './GoogleSignInButton';
 import FacebookSignInButton from './FacebookSignInButton';
 import { COUNTRY_CODES } from '../constants/countryCodes';
+import { MagicCard } from './MagicCard';
+import { PAGE_ATMOSPHERE } from '../theme/surfaces';
+import { ZpcLogoMark } from './brand/ZpcLogo';
+
+const ACCENT = '#16302A';
+const ACCENT_SOFT = 'rgba(143, 169, 152, 0.35)';
 
 const professionOptions = [
-  { id: 'builder', label: 'Builder', icon: ApartmentIcon, color: '#6366F1' },
-  { id: 'agent', label: 'Agent', icon: BusinessCenter, color: '#8B5CF6' },
-  { id: 'buyer_renter', label: 'Looking for buy/rent', icon: Home, color: '#EC4899' },
-  { id: 'litigation_lawyer', label: 'Litigation Lawyer', icon: BalanceIcon, color: '#8B5CF6' },
-  { id: 'land_surveyor', label: 'Land Surveyor', icon: MapOutlined, color: '#8B5CF6' },
-  { id: 'general_user', label: 'General User', icon: AccountCircle, color: '#8B5CF6' },
+  {
+    id: 'builder',
+    label: 'Builder',
+    hint: 'Develop & list projects',
+    icon: ApartmentIcon,
+  },
+  {
+    id: 'agent',
+    label: 'Agent',
+    hint: 'Sell & lease properties',
+    icon: BusinessCenter,
+  },
+  {
+    id: 'buyer_renter',
+    label: 'Buy / Rent',
+    hint: 'Looking for a home',
+    icon: Home,
+  },
+  {
+    id: 'litigation_lawyer',
+    label: 'Lawyer',
+    hint: 'Property litigation',
+    icon: BalanceIcon,
+  },
+  {
+    id: 'land_surveyor',
+    label: 'Surveyor',
+    hint: 'Land & site surveys',
+    icon: MapOutlined,
+  },
+  {
+    id: 'general_user',
+    label: 'General',
+    hint: 'Explore & discuss',
+    icon: AccountCircle,
+  },
 ];
+
+const fieldSx = {
+  mb: 2,
+  '& .MuiOutlinedInput-root': {
+    bgcolor: 'rgba(235, 230, 212,0.78)',
+    borderRadius: '12px',
+    fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
+    '& fieldset': { borderColor: 'rgba(22, 48, 42, 0.2)' },
+    '&:hover fieldset': { borderColor: 'rgba(30, 58, 72, 0.35)' },
+    '&.Mui-focused fieldset': { borderColor: ACCENT },
+  },
+};
 
 const Register = () => {
   const navigate = useNavigate();
   const { setAuth } = useAuth();
   const client = useApolloClient();
-  const authService = new AuthService(client);
+  const authService = useMemo(() => new AuthService(client), [client]);
 
   const [currentStep, setCurrentStep] = useState(1);
+  const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -62,7 +111,7 @@ const Register = () => {
     longitude: '',
     bio: '',
   });
-  const [selectedProfession, setSelectedProfession] = useState<string>('');
+  const [selectedProfession, setSelectedProfession] = useState('');
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [googleSigningIn, setGoogleSigningIn] = useState(false);
@@ -72,18 +121,7 @@ const Register = () => {
   const [mobileData, setMobileData] = useState({ countryCode: '+91', phone: '', otp: '' });
   const [mobileLoading, setMobileLoading] = useState(false);
 
-  const handleProfessionSelect = (professionId: string) => {
-    setSelectedProfession(professionId);
-  };
-
-  const handleLocationSelect = (location: { address: string; latitude: number; longitude: number }) => {
-    setFormData(prev => ({
-      ...prev,
-      address: location.address,
-      latitude: location.latitude.toString(),
-      longitude: location.longitude.toString(),
-    }));
-  };
+  const selectedLabel = professionOptions.find((p) => p.id === selectedProfession)?.label;
 
   const handleContinueFromStep1 = () => {
     if (!selectedProfession) {
@@ -95,68 +133,70 @@ const Register = () => {
       return;
     }
     if (!formData.latitude || !formData.longitude) {
-      setError('Please select a location from the suggestions');
+      setError('Pick a location from the suggestions so we can place you on the map');
       return;
     }
     setError('');
-    setFormData(prev => ({
-      ...prev,
-      role: selectedProfession
-    }));
+    setFormData((prev) => ({ ...prev, role: selectedProfession }));
     setCurrentStep(2);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     setError('');
     setSuccessMessage('');
 
-    try {
-      // Validate latitude and longitude
-      const latitude = parseFloat(formData.latitude);
-      const longitude = parseFloat(formData.longitude);
-      if (isNaN(latitude) || isNaN(longitude)) {
-        setError('Please select a valid location from the suggestions');
-        return;
-      }
+    const latitude = parseFloat(formData.latitude);
+    const longitude = parseFloat(formData.longitude);
+    if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
+      setError('Please select a valid location from the suggestions');
+      return;
+    }
+    if (formData.password.length < 6) {
+      setError('Password should be at least 6 characters');
+      return;
+    }
 
+    const phoneDigits = formData.phone.replace(/\D/g, '');
+    if (phoneDigits.length < 10) {
+      setError('Enter a valid phone number');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
       const normalizedEmail = formData.email.trim().toLowerCase();
-      const response = await authService.register({
-        firstName: formData.firstName,
-        lastName: formData.lastName,
+      await authService.register({
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
         email: normalizedEmail,
-        phone: formData.phone,
+        phone: phoneDigits,
         password: formData.password,
         role: formData.role,
         address: formData.address,
         latitude,
         longitude,
-        bio: formData.bio,
+        bio: formData.bio.trim() || `${selectedLabel || 'Member'} on Zameen pe charcha`,
       });
 
-      if (response) {
-        // After successful registration, login the user
-        const loginResponse = await authService.login({
-          email: normalizedEmail,
-          password: formData.password,
-        });
+      const loginResponse = await authService.login({
+        email: normalizedEmail,
+        password: formData.password,
+      });
 
-        if (loginResponse.success && loginResponse.token && loginResponse.userInfo) {
-          setAuth(
-            loginResponse.token,
-            loginResponse.refreshToken || '',
-            loginResponse.userInfo
-          );
-          setSuccessMessage('Registration successful! Redirecting...');
-          setTimeout(() => navigate('/home'), 1500);
-        } else {
-          setError('Registration successful but login failed. Please try logging in.');
-          setTimeout(() => navigate('/'), 1500);
-        }
+      if (loginResponse.success && loginResponse.token && loginResponse.userInfo) {
+        setAuth(loginResponse.token, loginResponse.refreshToken || '', loginResponse.userInfo);
+        setSuccessMessage('Welcome aboard — taking you home…');
+        setTimeout(() => navigate('/home'), 1200);
+      } else {
+        setError('Account created. Please sign in to continue.');
+        setTimeout(() => navigate('/'), 1500);
       }
     } catch (err: any) {
-      setError('Registration error: ' + (err && err.message ? err.message : 'Unknown error'));
-      console.error('Registration error:', err);
+      setError(err?.message || 'Registration failed. Please try again.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -319,26 +359,31 @@ const Register = () => {
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
+    const { name, value } = e.target;
+    if (name === 'phone') {
+      setFormData((prev) => ({ ...prev, phone: value.replace(/[^\d+\s-]/g, '') }));
+      return;
+    }
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const closeMobileDialog = () => {
+    setMobileSignInOpen(false);
+    setMobileStep('phone');
+    setMobileData({ countryCode: '+91', phone: '', otp: '' });
+    setError('');
+    setSuccessMessage('');
   };
 
   const mobileSignInDialog = (
-    <Dialog
-      open={mobileSignInOpen}
-      fullWidth
-      maxWidth="xs"
-      onClose={() => {
-        setMobileSignInOpen(false);
-        setMobileStep('phone');
-        setMobileData({ countryCode: '+91', phone: '', otp: '' });
-        setError('');
-        setSuccessMessage('');
-      }}
-    >
-      <DialogTitle sx={{ fontWeight: 600, color: '#1e3a48' }}>
+    <Dialog open={mobileSignInOpen} fullWidth maxWidth="xs" onClose={closeMobileDialog}>
+      <DialogTitle
+        sx={{
+          fontWeight: 700,
+          fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
+          color: ACCENT,
+        }}
+      >
         Continue with mobile number
       </DialogTitle>
       <DialogContent>
@@ -350,7 +395,7 @@ const Register = () => {
             value={mobileData.countryCode}
             disabled={mobileStep === 'otp' || mobileLoading}
             onChange={(e) => setMobileData((prev) => ({ ...prev, countryCode: e.target.value }))}
-            sx={{ width: 150 }}
+            sx={{ width: 150, ...fieldSx, mb: 0 }}
           >
             {COUNTRY_CODES.map((country) => (
               <MenuItem key={country.code} value={country.code}>
@@ -367,6 +412,7 @@ const Register = () => {
             disabled={mobileStep === 'otp' || mobileLoading}
             onChange={(e) => setMobileData((prev) => ({ ...prev, phone: e.target.value.replace(/\D/g, '') }))}
             placeholder="7675023613"
+            sx={{ ...fieldSx, mb: 0 }}
           />
         </Box>
         {mobileStep === 'otp' && (
@@ -378,39 +424,62 @@ const Register = () => {
             disabled={mobileLoading}
             onChange={(e) => setMobileData((prev) => ({ ...prev, otp: e.target.value }))}
             placeholder="Enter OTP"
-            sx={{ mb: 2 }}
+            sx={{ ...fieldSx, mb: 2 }}
           />
         )}
         {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
+          <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
             {error}
           </Alert>
         )}
         {successMessage && (
-          <Alert severity="success" sx={{ mb: 2 }}>
+          <Alert severity="success" sx={{ mb: 2, borderRadius: 2 }}>
             {successMessage}
           </Alert>
         )}
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 3 }}>
         <Button
-          onClick={() => {
-            setMobileSignInOpen(false);
-            setMobileStep('phone');
-            setMobileData({ countryCode: '+91', phone: '', otp: '' });
-            setError('');
-            setSuccessMessage('');
-          }}
+          onClick={closeMobileDialog}
           disabled={mobileLoading}
+          sx={{
+            textTransform: 'none',
+            fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
+            color: '#3A4540',
+          }}
         >
           Cancel
         </Button>
         {mobileStep === 'phone' ? (
-          <Button onClick={handleSendMobileOTP} disabled={mobileLoading || !mobileData.phone.trim()}>
+          <Button
+            onClick={handleSendMobileOTP}
+            disabled={mobileLoading || !mobileData.phone.trim()}
+            variant="contained"
+            sx={{
+              textTransform: 'none',
+              fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
+              fontWeight: 700,
+              bgcolor: ACCENT,
+              color: '#EBE6D4',
+              '&:hover': { bgcolor: '#0F221C' },
+            }}
+          >
             {mobileLoading ? 'Sending...' : 'Send OTP'}
           </Button>
         ) : (
-          <Button onClick={handleVerifyMobileOTP} disabled={mobileLoading || !mobileData.otp.trim()}>
+          <Button
+            onClick={handleVerifyMobileOTP}
+            disabled={mobileLoading || !mobileData.otp.trim()}
+            variant="contained"
+            sx={{
+              textTransform: 'none',
+              fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
+              fontWeight: 700,
+              bgcolor: ACCENT,
+              color: '#EBE6D4',
+              '&:hover': { bgcolor: '#0F221C' },
+            }}
+          >
             {mobileLoading ? 'Verifying...' : 'Verify OTP'}
           </Button>
         )}
@@ -418,408 +487,526 @@ const Register = () => {
     </Dialog>
   );
 
-  // Step 1: Profession and Location Selection
-  if (currentStep === 1) {
-    return (
-      <Container component="main" maxWidth="sm" disableGutters>
-        <Box
-          sx={{
-            minHeight: '100vh',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            px: 2,
-            pt: 2,
-            pb: 8,
-          }}
-        >
+  const socialAuthDisabled = googleSigningIn || facebookSigningIn || mobileLoading;
+
+  return (
+    <Box
+      sx={{
+        minHeight: { xs: '100dvh', sm: '100vh' },
+        ...PAGE_ATMOSPHERE,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        px: { xs: 2, sm: 3 },
+        pt: { xs: 'max(12px, env(safe-area-inset-top))', sm: 3 },
+        pb: { xs: 'max(24px, env(safe-area-inset-bottom))', sm: 4 },
+        boxSizing: 'border-box',
+      }}
+    >
+      <Box sx={{ width: '100%', maxWidth: 520, mx: 'auto' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
           <IconButton
-            onClick={() => navigate('/')}
-            sx={{ alignSelf: 'flex-start' }}
+            onClick={() => (currentStep === 1 ? navigate('/') : setCurrentStep(1))}
+            sx={{
+              color: ACCENT,
+              bgcolor: 'rgba(235,230,212,0.7)',
+              border: '1px solid rgba(22,48,42,0.16)',
+              '&:hover': { bgcolor: '#0F221C' },
+            }}
           >
             <ArrowBack />
           </IconButton>
 
-          <Typography
-            variant="h5"
-            sx={{ fontWeight: 600, mt: 4, mb: 1, textAlign: 'center' }}
-          >
-            Select your profession
-          </Typography>
-          <Typography
-            variant="subtitle2"
-            sx={{ color: '#6B7280', mb: 4, textAlign: 'center' }}
-          >
-            Choose one or more options that describe your role
-          </Typography>
+          <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center' }}>
+            {[1, 2].map((step) => (
+              <Box
+                key={step}
+                sx={{
+                  height: 6,
+                  width: step === currentStep ? 28 : 10,
+                  borderRadius: 999,
+                  bgcolor: step <= currentStep ? ACCENT : 'rgba(30,58,72,0.18)',
+                  transition: 'all 0.25s ease',
+                }}
+              />
+            ))}
+            <Typography
+              sx={{
+                ml: 1,
+                fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
+                fontSize: 12,
+                fontWeight: 700,
+                color: '#3A4540',
+              }}
+            >
+              Step {currentStep} of 2
+            </Typography>
+          </Box>
+        </Box>
 
-          {error && (
-            <Alert severity="error" sx={{ width: '100%', mb: 2 }}>
-              {error}
-            </Alert>
-          )}
-          {successMessage && (
-            <Alert severity="success" sx={{ width: '100%', mb: 2 }}>
-              {successMessage}
-            </Alert>
-          )}
+        <Box sx={{ mb: 1.25, display: 'flex', justifyContent: 'center' }}>
+          <ZpcLogoMark size={148} showTagline animateStroke />
+        </Box>
+        <Typography
+          sx={{
+            fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
+            fontSize: 13,
+            fontWeight: 500,
+            color: '#3A4540',
+            textAlign: 'center',
+            mb: 3,
+          }}
+        >
+          {currentStep === 1
+            ? 'Tell us how you use property — we’ll tailor your feed'
+            : 'Create your account to join the charcha'}
+        </Typography>
 
-          <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
-              gap: 2,
-              width: '100%',
-              maxWidth: 500,
-              mb: 4,
-            }}
+        {currentStep === 1 ? (
+          <MagicCard
+            gradientSize={260}
+            gradientColor={ACCENT_SOFT}
+            gradientFrom="#5F8670"
+            gradientTo="#EBE6D4"
           >
-            {professionOptions.map((profession) => {
-              const IconComponent = profession.icon;
-              const isSelected = selectedProfession === profession.id;
+            <Box sx={{ px: { xs: 2, sm: 2.75 }, py: { xs: 2.25, sm: 2.75 } }}>
+              <Typography
+                sx={{
+                  fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
+                  fontWeight: 800,
+                  fontSize: { xs: '1.15rem', sm: '1.3rem' },
+                  color: '#0A1210',
+                  mb: 0.35,
+                }}
+              >
+                Select your profession
+              </Typography>
+              <Typography
+                sx={{
+                  fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
+                  fontSize: 13,
+                  color: '#3A4540',
+                  mb: 2.25,
+                }}
+              >
+                Choose the role that best describes you
+              </Typography>
 
-              return (
-                <Box
-                  key={profession.id}
-                  onClick={() => handleProfessionSelect(profession.id)}
+              {error && (
+                <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
+                  {error}
+                </Alert>
+              )}
+              {successMessage && (
+                <Alert severity="success" sx={{ mb: 2, borderRadius: 2 }}>
+                  {successMessage}
+                </Alert>
+              )}
+
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+                  gap: 1.25,
+                  mb: 2.5,
+                }}
+              >
+                {professionOptions.map((profession) => {
+                  const Icon = profession.icon;
+                  const selected = selectedProfession === profession.id;
+                  return (
+                    <Box
+                      key={profession.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => {
+                        setSelectedProfession(profession.id);
+                        setError('');
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setSelectedProfession(profession.id);
+                          setError('');
+                        }
+                      }}
+                      sx={{
+                        position: 'relative',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1.25,
+                        px: 1.5,
+                        py: 1.35,
+                        borderRadius: '14px',
+                        cursor: 'pointer',
+                        border: selected
+                          ? `1.5px solid ${ACCENT}`
+                          : '1.5px solid rgba(22, 48, 42, 0.18)',
+                        bgcolor: selected ? 'rgba(30, 58, 72, 0.06)' : 'rgba(235,230,212,0.72)',
+                        transition: 'border-color 0.2s ease, background 0.2s ease, transform 0.15s ease',
+                        '&:hover': {
+                          bgcolor: selected ? 'rgba(30, 58, 72, 0.08)' : 'rgba(235,230,212,0.92)',
+                          transform: 'translateY(-1px)',
+                        },
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: '12px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                          bgcolor: selected ? ACCENT : 'rgba(143, 169, 152, 0.35)',
+                          color: selected ? '#EBE6D4' : ACCENT,
+                        }}
+                      >
+                        <Icon sx={{ fontSize: 22 }} />
+                      </Box>
+                      <Box sx={{ minWidth: 0, flex: 1 }}>
+                        <Typography
+                          sx={{
+                            fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
+                            fontWeight: 700,
+                            fontSize: 14,
+                            color: '#0A1210',
+                            lineHeight: 1.2,
+                          }}
+                        >
+                          {profession.label}
+                        </Typography>
+                        <Typography
+                          sx={{
+                            fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
+                            fontSize: 11.5,
+                            fontWeight: 500,
+                            color: '#3A4540',
+                            mt: 0.2,
+                          }}
+                        >
+                          {profession.hint}
+                        </Typography>
+                      </Box>
+                      {selected && (
+                        <CheckCircle sx={{ color: ACCENT, fontSize: 20, flexShrink: 0 }} />
+                      )}
+                    </Box>
+                  );
+                })}
+              </Box>
+
+              <Typography
+                sx={{
+                  fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
+                  fontWeight: 700,
+                  fontSize: 13,
+                  color: ACCENT,
+                  mb: 1,
+                }}
+              >
+                Your location
+              </Typography>
+              <LocationAutocomplete
+                value={formData.address}
+                onChange={(value) => setFormData((prev) => ({ ...prev, address: value }))}
+                onLocationSelect={(location) => {
+                  setFormData((prev) => ({
+                    ...prev,
+                    address: location.address,
+                    latitude: location.latitude.toString(),
+                    longitude: location.longitude.toString(),
+                  }));
+                  setError('');
+                }}
+                error={Boolean(error && (!formData.address.trim() || !formData.latitude))}
+                helperText={
+                  formData.latitude
+                    ? 'Location locked in — you can change it later in profile'
+                    : 'Start typing and pick a suggestion'
+                }
+              />
+
+              <Button
+                fullWidth
+                variant="contained"
+                onClick={handleContinueFromStep1}
+                disabled={socialAuthDisabled}
+                sx={{
+                  mt: 2.5,
+                  py: 1.35,
+                  borderRadius: '12px',
+                  textTransform: 'none',
+                  fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
+                  fontWeight: 700,
+                  fontSize: '1rem',
+                  bgcolor: ACCENT,
+                  color: '#EBE6D4',
+                  boxShadow: '0 8px 22px rgba(30, 58, 72, 0.28)',
+                  '&:hover': { bgcolor: '#0F221C' },
+                }}
+              >
+                Continue with email
+              </Button>
+
+              <Divider
+                sx={{
+                  my: 2,
+                  fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
+                  fontSize: 12,
+                  color: '#3A4540',
+                  '&::before, &::after': { borderColor: 'rgba(22, 48, 42, 0.2)' },
+                }}
+              >
+                or
+              </Divider>
+
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+                <GoogleSignInButton
+                  text="continue_with"
+                  disabled={socialAuthDisabled}
+                  onCredential={handleGoogleCredential}
+                />
+                <FacebookSignInButton
+                  label="Continue with Facebook"
+                  disabled={socialAuthDisabled}
+                  onAccessToken={handleFacebookAccessToken}
+                />
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  disabled={socialAuthDisabled}
+                  onClick={() => setMobileSignInOpen(true)}
                   sx={{
-                    border: isSelected ? `2px solid ${profession.color}` : '1px solid #E5E7EB',
-                    borderRadius: 2,
-                    px: 2,
-                    py: 1.5,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 1.5,
-                    backgroundColor: isSelected ? '#F5F3FF' : '#fff',
-                    transition: '0.2s',
+                    textTransform: 'none',
+                    py: 1.25,
+                    borderRadius: '12px',
+                    fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
+                    fontWeight: 600,
+                    borderColor: 'rgba(22, 48, 42, 0.35)',
+                    color: ACCENT,
+                    bgcolor: 'rgba(235,230,212,0.5)',
                     '&:hover': {
-                      backgroundColor: '#F9FAFB',
+                      borderColor: ACCENT,
+                      bgcolor: 'rgba(235,230,212,0.85)',
                     },
                   }}
                 >
-                  <IconComponent sx={{ fontSize: 20, color: profession.color }} />
-                  <Typography
-                    variant="body1"
-                    sx={{ color: isSelected ? profession.color : '#374151', fontWeight: 500 }}
-                  >
-                    {profession.label}
-                  </Typography>
-                </Box>
-              );
-            })}
-          </Box>
+                  Continue with mobile number
+                </Button>
+              </Box>
 
-          <LocationAutocomplete
-            value={formData.address}
-            onChange={(value) => setFormData(prev => ({ ...prev, address: value }))}
-            onLocationSelect={handleLocationSelect}
-            error={Boolean(error && !formData.address.trim())}
-            helperText={error && !formData.address.trim() ? 'Please enter your location' : undefined}
-          />
-
-          <Box
-            sx={{
-              position: 'fixed',
-              bottom: 16,
-              left: 0,
-              right: 0,
-              px: 2,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 1,
-            }}
+              <Box sx={{ textAlign: 'center', mt: 2 }}>
+                <Typography
+                  component="span"
+                  sx={{ fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif', fontSize: 13, color: '#3A4540' }}
+                >
+                  Already have an account?{' '}
+                </Typography>
+                <Link
+                  component="button"
+                  type="button"
+                  onClick={() => navigate('/')}
+                  sx={{
+                    fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: ACCENT,
+                    textDecoration: 'none',
+                    '&:hover': { textDecoration: 'underline' },
+                  }}
+                >
+                  Sign in
+                </Link>
+              </Box>
+            </Box>
+          </MagicCard>
+        ) : (
+          <MagicCard
+            gradientSize={240}
+            gradientColor={ACCENT_SOFT}
+            gradientFrom="#5F8670"
+            gradientTo="#EBE6D4"
           >
-            <Button
-              fullWidth
-              variant="contained"
-              onClick={handleContinueFromStep1}
-              sx={{
-                maxWidth: 500,
-                bgcolor: '#8B5CF6',
-                fontSize: '1rem',
-                fontWeight: 600,
-                borderRadius: 2,
-                py: 1.5,
-                '&:hover': {
-                  bgcolor: '#7C3AED',
-                },
-              }}
-            >
-              Continue with email
-            </Button>
-            <Box sx={{ width: '100%', maxWidth: 500 }}>
-              <GoogleSignInButton
-                text="continue_with"
-                disabled={googleSigningIn || facebookSigningIn}
-                onCredential={handleGoogleCredential}
-              />
-            </Box>
-            <Box sx={{ width: '100%', maxWidth: 500 }}>
-              <FacebookSignInButton
-                label="Continue with Facebook"
-                disabled={googleSigningIn || facebookSigningIn}
-                onAccessToken={handleFacebookAccessToken}
-              />
-            </Box>
-            <Button
-              fullWidth
-              variant="outlined"
-              disabled={googleSigningIn || facebookSigningIn || mobileLoading}
-              onClick={() => setMobileSignInOpen(true)}
-              sx={{ width: '100%', maxWidth: 500, textTransform: 'none', py: 1.25 }}
-            >
-              Continue with mobile number
-            </Button>
-          </Box>
-          {mobileSignInDialog}
-        </Box>
-      </Container>
-    );
-  }
-
-  // Step 2: Personal Details Form
-  return (
-    <Container component="main" maxWidth="sm">
-      <Box
-        sx={{
-          marginTop: 4,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-        }}
-      >
-        <IconButton
-          onClick={() => setCurrentStep(1)}
-          sx={{ alignSelf: 'flex-start', mb: 2 }}
-        >
-          <ArrowBack />
-        </IconButton>
-
-        <Typography
-          component="h1"
-          variant="h3"
-          sx={{ color: '#6366F1', mb: 2, fontWeight: 500 }}
-        >
-          Zameen pe charcha
-        </Typography>
-        <Typography
-          variant="subtitle1"
-          sx={{ color: '#6B7280', mb: 6, textAlign: 'center' }}
-        >
-          A single platform for all your real needs
-        </Typography>
-
-        <Box sx={{ width: '100%', maxWidth: 400 }}>
-          <Typography variant="h4" component="h2" sx={{ mb: 4 }}>
-            Complete your profile
-          </Typography>
-
-          {error && (
-            <Alert severity="error" sx={{ width: '100%', mb: 2 }}>
-              {error}
-            </Alert>
-          )}
-          {successMessage && (
-            <Alert severity="success" sx={{ width: '100%', mb: 2 }}>
-              {successMessage}
-            </Alert>
-          )}
-
-          <Box component="form" onSubmit={handleSubmit} sx={{ width: '100%' }}>
-            <Typography variant="subtitle1" sx={{ mb: 2 }}>
-              First Name
-            </Typography>
-            <TextField
-              required
-              fullWidth
-              name="firstName"
-              placeholder="Enter your first name"
-              value={formData.firstName}
-              onChange={handleChange}
-              sx={{ mb: 3 }}
-              InputProps={{
-                sx: {
-                  bgcolor: '#F9FAFB',
-                  '&:hover': {
-                    bgcolor: '#F3F4F6',
-                  },
-                },
-              }}
-            />
-
-            <Typography variant="subtitle1" sx={{ mb: 2 }}>
-              Last Name
-            </Typography>
-            <TextField
-              required
-              fullWidth
-              name="lastName"
-              placeholder="Enter your last name"
-              value={formData.lastName}
-              onChange={handleChange}
-              sx={{ mb: 3 }}
-              InputProps={{
-                sx: {
-                  bgcolor: '#F9FAFB',
-                  '&:hover': {
-                    bgcolor: '#F3F4F6',
-                  },
-                },
-              }}
-            />
-
-            <Typography variant="subtitle1" sx={{ mb: 2 }}>
-              Email Address
-            </Typography>
-            <TextField
-              required
-              fullWidth
-              name="email"
-              type="email"
-              placeholder="Enter your email address"
-              value={formData.email}
-              onChange={handleChange}
-              sx={{ mb: 3 }}
-              InputProps={{
-                sx: {
-                  bgcolor: '#F9FAFB',
-                  '&:hover': {
-                    bgcolor: '#F3F4F6',
-                  },
-                },
-              }}
-            />
-
-            <Typography variant="subtitle1" sx={{ mb: 2 }}>
-              Phone Number
-            </Typography>
-            <TextField
-              required
-              fullWidth
-              name="phone"
-              placeholder="Enter your phone number (numbers only)"
-              value={formData.phone}
-              onChange={handleChange}
-              helperText="Only numbers will be saved"
-              sx={{ mb: 3 }}
-              InputProps={{
-                sx: {
-                  bgcolor: '#F9FAFB',
-                  '&:hover': {
-                    bgcolor: '#F3F4F6',
-                  },
-                },
-              }}
-            />
-
-            <Typography variant="subtitle1" sx={{ mb: 2 }}>
-              Password
-            </Typography>
-            <TextField
-              required
-              fullWidth
-              name="password"
-              type="password"
-              placeholder="Enter your password"
-              value={formData.password}
-              onChange={handleChange}
-              sx={{ mb: 3 }}
-              InputProps={{
-                sx: {
-                  bgcolor: '#F9FAFB',
-                  '&:hover': {
-                    bgcolor: '#F3F4F6',
-                  },
-                },
-              }}
-            />
-
-            <Typography variant="subtitle1" sx={{ mb: 2 }}>
-              Bio
-            </Typography>
-            <TextField
-              required
-              fullWidth
-              name="bio"
-              placeholder="Enter your bio"
-              value={formData.bio}
-              onChange={handleChange}
-              multiline
-              rows={3}
-              sx={{ mb: 3 }}
-              InputProps={{
-                sx: {
-                  bgcolor: '#F9FAFB',
-                  '&:hover': {
-                    bgcolor: '#F3F4F6',
-                  },
-                },
-              }}
-            />
-
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              sx={{
-                bgcolor: '#6366F1',
-                py: 1.5,
-                mb: 3,
-                '&:hover': {
-                  bgcolor: '#4F46E5',
-                },
-              }}
-            >
-              Register
-            </Button>
-
-            <Divider sx={{ mb: 3 }}>or</Divider>
-
-            <Box sx={{ mb: 3 }}>
-              <GoogleSignInButton
-                text="continue_with"
-                disabled={googleSigningIn || facebookSigningIn}
-                onCredential={handleGoogleCredential}
-              />
-            </Box>
-            <Box sx={{ mb: 3 }}>
-              <FacebookSignInButton
-                label="Continue with Facebook"
-                disabled={googleSigningIn || facebookSigningIn}
-                onAccessToken={handleFacebookAccessToken}
-              />
-            </Box>
-            <Button
-              fullWidth
-              variant="outlined"
-              disabled={googleSigningIn || facebookSigningIn || mobileLoading}
-              onClick={() => setMobileSignInOpen(true)}
-              sx={{ textTransform: 'none', py: 1.25, mb: 3 }}
-            >
-              Continue with mobile number
-            </Button>
-
-            <Box sx={{ textAlign: 'center' }}>
-              <Typography variant="body1" display="inline">
-                Already have an account?{' '}
-              </Typography>
-              <Link
-                component="button"
-                variant="body1"
-                onClick={() => navigate('/')}
-                sx={{ color: '#6366F1', textDecoration: 'none' }}
+            <Box component="form" onSubmit={handleSubmit}>
+              <Box
+                sx={{
+                  borderBottom: '1px solid rgba(90, 70, 50, 0.1)',
+                  px: 2.5,
+                  py: 2,
+                }}
               >
-                Sign in
-              </Link>
+                <Typography
+                  sx={{
+                    fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
+                    fontWeight: 800,
+                    fontSize: '1.2rem',
+                    color: '#0A1210',
+                  }}
+                >
+                  Complete your profile
+                </Typography>
+                <Typography
+                  sx={{
+                    fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
+                    fontSize: 13,
+                    color: '#3A4540',
+                    mt: 0.35,
+                  }}
+                >
+                  Joining as <strong style={{ color: ACCENT }}>{selectedLabel}</strong>
+                  {formData.address ? ` · ${formData.address.split(',')[0]}` : ''}
+                </Typography>
+              </Box>
+
+              <Box sx={{ px: 2.5, py: 2.25 }}>
+                {error && (
+                  <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
+                    {error}
+                  </Alert>
+                )}
+                {successMessage && (
+                  <Alert severity="success" sx={{ mb: 2, borderRadius: 2 }}>
+                    {successMessage}
+                  </Alert>
+                )}
+
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: { xs: 0, sm: 1.5 } }}>
+                  <Box>
+                    <Typography sx={{ fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif', fontSize: 13, fontWeight: 700, color: ACCENT, mb: 0.75 }}>
+                      First name
+                    </Typography>
+                    <TextField
+                      required
+                      fullWidth
+                      name="firstName"
+                      placeholder="Rohit"
+                      value={formData.firstName}
+                      onChange={handleChange}
+                      disabled={submitting}
+                      sx={fieldSx}
+                    />
+                  </Box>
+                  <Box>
+                    <Typography sx={{ fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif', fontSize: 13, fontWeight: 700, color: ACCENT, mb: 0.75 }}>
+                      Last name
+                    </Typography>
+                    <TextField
+                      required
+                      fullWidth
+                      name="lastName"
+                      placeholder="Sharma"
+                      value={formData.lastName}
+                      onChange={handleChange}
+                      disabled={submitting}
+                      sx={fieldSx}
+                    />
+                  </Box>
+                </Box>
+
+                <Typography sx={{ fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif', fontSize: 13, fontWeight: 700, color: ACCENT, mb: 0.75 }}>
+                  Email
+                </Typography>
+                <TextField
+                  required
+                  fullWidth
+                  name="email"
+                  type="email"
+                  placeholder="name@example.com"
+                  value={formData.email}
+                  onChange={handleChange}
+                  disabled={submitting}
+                  sx={fieldSx}
+                />
+
+                <Typography sx={{ fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif', fontSize: 13, fontWeight: 700, color: ACCENT, mb: 0.75 }}>
+                  Phone
+                </Typography>
+                <TextField
+                  required
+                  fullWidth
+                  name="phone"
+                  placeholder="10-digit mobile number"
+                  value={formData.phone}
+                  onChange={handleChange}
+                  disabled={submitting}
+                  helperText="Digits only — used for verification & contact"
+                  sx={fieldSx}
+                />
+
+                <Typography sx={{ fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif', fontSize: 13, fontWeight: 700, color: ACCENT, mb: 0.75 }}>
+                  Password
+                </Typography>
+                <TextField
+                  required
+                  fullWidth
+                  name="password"
+                  type="password"
+                  placeholder="At least 6 characters"
+                  value={formData.password}
+                  onChange={handleChange}
+                  disabled={submitting}
+                  sx={fieldSx}
+                />
+
+                <Typography sx={{ fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif', fontSize: 13, fontWeight: 700, color: ACCENT, mb: 0.75 }}>
+                  Short bio <Typography component="span" sx={{ color: '#A89F84', fontWeight: 500, fontSize: 12 }}>(optional)</Typography>
+                </Typography>
+                <TextField
+                  fullWidth
+                  name="bio"
+                  placeholder="What are you looking for on Zameen pe charcha?"
+                  value={formData.bio}
+                  onChange={handleChange}
+                  disabled={submitting}
+                  multiline
+                  minRows={2}
+                  maxRows={4}
+                  sx={{ ...fieldSx, mb: 0.5 }}
+                />
+              </Box>
+
+              <Box
+                sx={{
+                  borderTop: '1px solid rgba(90, 70, 50, 0.1)',
+                  px: 2.5,
+                  py: 2,
+                }}
+              >
+                <Button
+                  type="submit"
+                  fullWidth
+                  variant="contained"
+                  disabled={submitting}
+                  startIcon={
+                    submitting ? (
+                      <CircularProgress size={18} thickness={5} sx={{ color: '#EBE6D4' }} />
+                    ) : undefined
+                  }
+                  sx={{
+                    py: 1.3,
+                    borderRadius: '12px',
+                    textTransform: 'none',
+                    fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
+                    fontWeight: 700,
+                    fontSize: '1rem',
+                    bgcolor: ACCENT,
+                    color: '#EBE6D4',
+                    boxShadow: '0 8px 22px rgba(30, 58, 72, 0.28)',
+                    '&:hover': { bgcolor: '#0F221C' },
+                    '&.Mui-disabled': { bgcolor: ACCENT, color: '#EBE6D4', opacity: 0.85 },
+                  }}
+                >
+                  {submitting ? 'Creating account…' : 'Create account'}
+                </Button>
+              </Box>
             </Box>
-          </Box>
-        </Box>
-        {mobileSignInDialog}
+          </MagicCard>
+        )}
       </Box>
-    </Container>
+      {mobileSignInDialog}
+    </Box>
   );
 };
 

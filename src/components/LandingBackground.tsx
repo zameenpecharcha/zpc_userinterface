@@ -28,7 +28,7 @@ const LandingBackground: React.FC<Props> = ({ option, simSpeed, onHandle }) => {
     } catch (err) {
       console.error(`Landing background "${option.id}" failed`, err);
       el.style.background =
-        'radial-gradient(ellipse at 30% 20%, #1a2a40 0%, #0a1018 55%, #05080e 100%)';
+        'radial-gradient(ellipse at 30% 20%, #16302A 0%, #0A1210 55%, #0A1210 100%)';
       onHandle?.(null);
     }
 
@@ -61,7 +61,7 @@ const LandingBackground: React.FC<Props> = ({ option, simSpeed, onHandle }) => {
         zIndex: 0,
         overflow: 'hidden',
         pointerEvents: 'none',
-        background: '#03060c',
+        background: '#0A1210',
       }}
     />
   );

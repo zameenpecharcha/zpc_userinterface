@@ -94,9 +94,9 @@ const ResetPassword = () => {
             sx={{ mb: 3 }}
             InputProps={{
               sx: {
-                bgcolor: '#F9FAFB',
+                bgcolor: '#EBE6D4',
                 '&:hover': {
-                  bgcolor: '#F3F4F6',
+                  bgcolor: '#E8E2CE',
                 },
               },
             }}
@@ -111,9 +111,9 @@ const ResetPassword = () => {
             sx={{ mb: 3 }}
             InputProps={{
               sx: {
-                bgcolor: '#F9FAFB',
+                bgcolor: '#EBE6D4',
                 '&:hover': {
-                  bgcolor: '#F3F4F6',
+                  bgcolor: '#E8E2CE',
                 },
               },
             }}
@@ -129,9 +129,9 @@ const ResetPassword = () => {
             sx={{ mb: 3 }}
             InputProps={{
               sx: {
-                bgcolor: '#F9FAFB',
+                bgcolor: '#EBE6D4',
                 '&:hover': {
-                  bgcolor: '#F3F4F6',
+                  bgcolor: '#E8E2CE',
                 },
               },
             }}
@@ -147,9 +147,9 @@ const ResetPassword = () => {
             sx={{ mb: 3 }}
             InputProps={{
               sx: {
-                bgcolor: '#F9FAFB',
+                bgcolor: '#EBE6D4',
                 '&:hover': {
-                  bgcolor: '#F3F4F6',
+                  bgcolor: '#E8E2CE',
                 },
               },
             }}
@@ -159,12 +159,12 @@ const ResetPassword = () => {
             fullWidth
             variant="contained"
             sx={{
-              bgcolor: '#7C3AED',
-              color: '#fff',
+              bgcolor: '#16302A',
+              color: '#EBE6D4',
               py: 1.5,
               mb: 2,
               '&:hover': {
-                bgcolor: '#6D28D9',
+                bgcolor: '#16302A',
               },
             }}
             disabled={loading}
@@ -178,7 +178,7 @@ const ResetPassword = () => {
           component="button"
           variant="body2"
           onClick={() => navigate('/')}
-          sx={{ color: '#6366F1', textDecoration: 'none', mt: 2 }}
+          sx={{ color: '#16302A', textDecoration: 'none', mt: 2 }}
         >
           Back to Login
         </Link>

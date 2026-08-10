@@ -1,0 +1,410 @@
+/* 3D layered liquid glass — ZPC Liquid Glass login */
+
+:root {
+  --radius: 1rem;
+  --lg-white: 0 0% 100%;
+  --lg-black: 0 0% 0%;
+  --font-display: "Poppins", system-ui, sans-serif;
+  --font-serif: "Source Serif 4", "Source Serif Pro", Georgia, serif;
+  --lg-depth: 28px;
+  --lg-glow: rgba(190, 230, 210, 0.22);
+}
+
+.liquid-glass-page {
+  font-family: var(--font-display);
+  color: hsl(var(--lg-white));
+}
+
+.liquid-glass-page h1,
+.liquid-glass-page h2,
+.liquid-glass-page h3 {
+  font-family: var(--font-display);
+  font-weight: 500;
+}
+
+.liquid-glass-page h1 em,
+.liquid-glass-page h1 i,
+.liquid-glass-page h1 .italic,
+.liquid-glass-page h2 em,
+.liquid-glass-page h2 i,
+.liquid-glass-page h2 .italic,
+.liquid-glass-page h3 em,
+.liquid-glass-page h3 i,
+.liquid-glass-page h3 .italic {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 400;
+}
+
+@keyframes lg-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -6px, 0);
+  }
+}
+
+@keyframes lg-shimmer {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
+@keyframes lg-sheen {
+  0% {
+    transform: translateX(-120%) rotate(18deg);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.55;
+  }
+  55% {
+    opacity: 0.2;
+  }
+  100% {
+    transform: translateX(160%) rotate(18deg);
+    opacity: 0;
+  }
+}
+
+@layer components {
+  .liquid-glass {
+    background: rgba(255, 255, 255, 0.04);
+    background-blend-mode: luminosity;
+    backdrop-filter: blur(10px) saturate(1.2);
+    -webkit-backdrop-filter: blur(10px) saturate(1.2);
+    border: none;
+    box-shadow:
+      inset 0 1px 1px rgba(255, 255, 255, 0.22),
+      inset 0 -1px 1px rgba(0, 0, 0, 0.12),
+      0 8px 24px rgba(0, 0, 0, 0.18);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .liquid-glass::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    padding: 1.2px;
+    border-radius: inherit;
+    background: linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.65) 0%,
+      rgba(255, 255, 255, 0.18) 28%,
+      transparent 48%,
+      transparent 68%,
+      rgba(255, 255, 255, 0.2) 100%
+    );
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .liquid-glass-strong {
+    background: rgba(255, 255, 255, 0.06);
+    background-blend-mode: luminosity;
+    backdrop-filter: blur(40px) saturate(1.35);
+    -webkit-backdrop-filter: blur(40px) saturate(1.35);
+    border: none;
+    box-shadow:
+      8px 18px 40px rgba(0, 0, 0, 0.28),
+      inset 0 1px 1px rgba(255, 255, 255, 0.28),
+      inset 0 -1px 2px rgba(0, 0, 0, 0.18);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .liquid-glass-strong::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    padding: 1.4px;
+    border-radius: inherit;
+    background: linear-gradient(
+      160deg,
+      rgba(255, 255, 255, 0.7) 0%,
+      rgba(255, 255, 255, 0.22) 24%,
+      transparent 46%,
+      transparent 70%,
+      rgba(255, 255, 255, 0.18) 100%
+    );
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* Stack wrapper for parallax/3D panes */
+  .lg-stack {
+    position: relative;
+    width: 100%;
+    max-width: 420px;
+    perspective: 1200px;
+    transform-style: preserve-3d;
+    animation: lg-float 7s ease-in-out infinite;
+  }
+
+  .lg-stack-layer {
+    position: absolute;
+    inset: 0;
+    border-radius: 1.75rem;
+    pointer-events: none;
+    transform-style: preserve-3d;
+  }
+
+  /* Deep back plate */
+  .lg-stack-layer--back {
+    transform: translate3d(14px, 18px, -48px) rotateX(8deg) rotateY(-7deg) scale(0.96);
+    background:
+      linear-gradient(160deg, rgba(18, 48, 38, 0.55), rgba(6, 16, 14, 0.35)),
+      rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    box-shadow:
+      0 30px 60px rgba(0, 0, 0, 0.35),
+      inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  /* Mid frost plate */
+  .lg-stack-layer--mid {
+    transform: translate3d(7px, 9px, -24px) rotateX(4deg) rotateY(-3.5deg) scale(0.98);
+    background:
+      radial-gradient(120% 80% at 20% 0%, rgba(255, 255, 255, 0.18), transparent 55%),
+      linear-gradient(165deg, rgba(255, 255, 255, 0.08), rgba(20, 50, 40, 0.12));
+    backdrop-filter: blur(18px) saturate(1.25);
+    -webkit-backdrop-filter: blur(18px) saturate(1.25);
+    box-shadow:
+      0 18px 40px rgba(0, 0, 0, 0.28),
+      inset 0 1px 0 rgba(255, 255, 255, 0.28);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+  }
+
+  /* Main login panel — top glass slab */
+  .liquid-glass-login {
+    position: relative;
+    z-index: 3;
+    transform: translate3d(0, 0, 0) rotateX(1.5deg);
+    transform-style: preserve-3d;
+    background:
+      radial-gradient(140% 90% at 15% -10%, rgba(255, 255, 255, 0.3), transparent 42%),
+      radial-gradient(90% 70% at 90% 110%, rgba(95, 160, 130, 0.16), transparent 50%),
+      linear-gradient(165deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.05) 42%, rgba(8, 22, 18, 0.28) 100%);
+    background-blend-mode: soft-light, normal, normal;
+    backdrop-filter: blur(28px) saturate(1.45);
+    -webkit-backdrop-filter: blur(28px) saturate(1.45);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.35) inset,
+      0 -18px 40px rgba(0, 0, 0, 0.18) inset,
+      0 28px 60px rgba(0, 0, 0, 0.42),
+      0 0 0 1px rgba(255, 255, 255, 0.05),
+      0 0 48px var(--lg-glow);
+    overflow: hidden;
+  }
+
+  .liquid-glass-login::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    padding: 1.5px;
+    border-radius: inherit;
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.85) 0%,
+      rgba(255, 255, 255, 0.28) 18%,
+      rgba(255, 255, 255, 0.04) 40%,
+      rgba(255, 255, 255, 0.08) 70%,
+      rgba(255, 255, 255, 0.35) 100%
+    );
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  /* Top liquid highlight band */
+  .liquid-glass-login::after {
+    content: "";
+    position: absolute;
+    left: -20%;
+    top: -35%;
+    width: 140%;
+    height: 58%;
+    border-radius: 50%;
+    background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.34) 0%,
+      rgba(255, 255, 255, 0.08) 42%,
+      transparent 75%
+    );
+    filter: blur(2px);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .lg-login-sheen {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    border-radius: inherit;
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  .lg-login-sheen::before {
+    content: "";
+    position: absolute;
+    top: -20%;
+    left: 0;
+    width: 42%;
+    height: 140%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.18),
+      transparent
+    );
+    animation: lg-sheen 6.5s ease-in-out infinite;
+  }
+
+  .lg-login-content {
+    position: relative;
+    z-index: 3;
+  }
+}
+
+.lg-interactive {
+  transition: transform 0.22s ease, box-shadow 0.22s ease, filter 0.22s ease;
+  will-change: transform;
+}
+
+.lg-interactive:hover {
+  transform: translateY(-1px) scale(1.02);
+  filter: brightness(1.05);
+}
+
+.lg-interactive:active {
+  transform: translateY(1px) scale(0.98);
+}
+
+.lg-icon-circle {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.lg-field {
+  width: 100%;
+  height: 50px;
+  padding: 0 18px;
+  box-sizing: border-box;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  outline: none;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.06));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -8px 16px rgba(0, 0, 0, 0.12),
+    0 6px 16px rgba(0, 0, 0, 0.12);
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 400;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: background 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.lg-field::placeholder {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.lg-field:focus {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.1));
+  border-color: rgba(255, 255, 255, 0.42);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -8px 18px rgba(0, 0, 0, 0.1),
+    0 0 0 3px rgba(190, 230, 210, 0.16),
+    0 10px 24px rgba(0, 0, 0, 0.16);
+}
+
+.lg-field:disabled {
+  opacity: 0.7;
+}
+
+.lg-cta {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.05)),
+    rgba(10, 28, 24, 0.55) !important;
+  border: 1px solid rgba(255, 255, 255, 0.28) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    0 12px 28px rgba(0, 0, 0, 0.28) !important;
+}
+
+.lg-cta:hover {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.08)),
+    rgba(12, 34, 28, 0.62) !important;
+}
+
+.lg-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 12px;
+}
+
+.lg-divider::before,
+.lg-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.28),
+    transparent
+  );
+}
+
+.lg-social a {
+  color: #fff;
+  transition: color 0.2s ease;
+  display: inline-flex;
+}
+
+.lg-social a:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lg-stack,
+  .lg-login-sheen::before {
+    animation: none !important;
+  }
+}

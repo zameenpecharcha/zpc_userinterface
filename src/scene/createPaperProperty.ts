@@ -28,7 +28,7 @@ export function createPaperProperty(container: HTMLElement): SceneHandle {
   paperCanvas.width = 512;
   paperCanvas.height = 512;
   const ctx = paperCanvas.getContext('2d')!;
-  ctx.fillStyle = '#ebe2d2';
+  ctx.fillStyle = '#EBE6D4';
   ctx.fillRect(0, 0, 512, 512);
   for (let i = 0; i < 1800; i++) {
     ctx.fillStyle = `rgba(120,95,70,${Math.random() * 0.04})`;

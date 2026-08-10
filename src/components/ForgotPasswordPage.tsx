@@ -118,8 +118,8 @@ const ForgotPasswordPage = () => {
   return (
     <Container maxWidth="sm">
       <Box sx={{ mt: 10, textAlign: 'center' }}>
-        <Typography variant="h4" sx={{ mb: 2, color: '#4F46E5', fontWeight: 700 }}>Forgot Password</Typography>
-        <Typography sx={{ mb: 4, color: '#374151' }}>
+        <Typography variant="h4" sx={{ mb: 2, color: '#5F8670', fontWeight: 700 }}>Forgot Password</Typography>
+        <Typography sx={{ mb: 4, color: '#3A4540' }}>
           Enter your email or phone number and we'll send you a verification code to reset your password.
         </Typography>
         {step === 'email' && (
@@ -131,14 +131,14 @@ const ForgotPasswordPage = () => {
               placeholder="Enter your email or phone number"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              sx={{ mb: 3, bgcolor: '#F9FAFB', borderRadius: 2 }}
+              sx={{ mb: 3, bgcolor: '#EBE6D4', borderRadius: 2 }}
               InputProps={{ sx: { borderRadius: 2 } }}
             />
             <Button
               type="submit"
               fullWidth
               variant="contained"
-              sx={{ bgcolor: '#7C3AED', color: '#fff', py: 1.5, mb: 2, fontWeight: 600, fontSize: 16, borderRadius: 2 }}
+              sx={{ bgcolor: '#16302A', color: '#EBE6D4', py: 1.5, mb: 2, fontWeight: 600, fontSize: 16, borderRadius: 2 }}
               disabled={loading}
             >
               Send Verification Code
@@ -154,13 +154,13 @@ const ForgotPasswordPage = () => {
               placeholder="Enter the OTP you received"
               value={otp}
               onChange={(e) => setOtp(e.target.value)}
-              sx={{ mb: 3, bgcolor: '#F9FAFB', borderRadius: 2 }}
+              sx={{ mb: 3, bgcolor: '#EBE6D4', borderRadius: 2 }}
               InputProps={{ sx: { borderRadius: 2 } }}
             />
             <Button
               fullWidth
               variant="contained"
-              sx={{ bgcolor: '#7C3AED', color: '#fff', py: 1.5, mb: 2, fontWeight: 600, fontSize: 16, borderRadius: 2 }}
+              sx={{ bgcolor: '#16302A', color: '#EBE6D4', py: 1.5, mb: 2, fontWeight: 600, fontSize: 16, borderRadius: 2 }}
               disabled={loadingVerify}
               onClick={async () => {
                 setError('');
@@ -181,7 +181,7 @@ const ForgotPasswordPage = () => {
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              sx={{ mb: 3, bgcolor: '#F9FAFB', borderRadius: 2 }}
+              sx={{ mb: 3, bgcolor: '#EBE6D4', borderRadius: 2 }}
               InputProps={{ sx: { borderRadius: 2 } }}
             />
             <TextField
@@ -191,13 +191,13 @@ const ForgotPasswordPage = () => {
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              sx={{ mb: 3, bgcolor: '#F9FAFB', borderRadius: 2 }}
+              sx={{ mb: 3, bgcolor: '#EBE6D4', borderRadius: 2 }}
               InputProps={{ sx: { borderRadius: 2 } }}
             />
             <Button
               fullWidth
               variant="contained"
-              sx={{ bgcolor: '#7C3AED', color: '#fff', py: 1.5, mb: 2, fontWeight: 600, fontSize: 16, borderRadius: 2 }}
+              sx={{ bgcolor: '#16302A', color: '#EBE6D4', py: 1.5, mb: 2, fontWeight: 600, fontSize: 16, borderRadius: 2 }}
               disabled={loadingReset}
               onClick={async () => {
                 setError('');
@@ -230,7 +230,7 @@ const ForgotPasswordPage = () => {
           component="button"
           variant="body2"
           onClick={() => navigate('/')}
-          sx={{ color: '#6366F1', textDecoration: 'none', mt: 2, fontWeight: 500 }}
+          sx={{ color: '#16302A', textDecoration: 'none', mt: 2, fontWeight: 500 }}
         >
           Back to Login
         </Link>

@@ -1,8 +1,8 @@
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: 'Source Serif 4', 'Source Serif Pro', Georgia, serif;
+  color: #0A1210;
+  background-color: #EBE6D4;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -53,10 +53,19 @@ code {
 /* Shiny style for modern premium feel */
 .liked-heart-icon {
   animation: shinyHeart 2s infinite ease-in-out;
-  color: #EF4444 !important; /* Vibrant Red */
-  fill: #EF4444 !important;
+  color: #E11D48 !important;
+  fill: #E11D48 !important;
 }
 
 .liked-heart-icon-clicked {
   animation: heartClick 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+}
+
+.liked-heart-emoji {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  line-height: 1;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.15));
 }

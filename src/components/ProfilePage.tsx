@@ -40,8 +40,11 @@ import { CREATE_DM_ROOM_MUTATION } from '../graphql/chat';
 import { renderMentionContent, nameInitials, stringToColor, avatarPlaceholderIndex } from '../utils/mentions';
 import CommentListItem from './comments/CommentListItem';
 import CommentComposer from './comments/CommentComposer';
+import { nestComments } from '../utils/nestComments';
 import { normalizeReactionEmoji } from './comments/commentReactions';
 import { MATTE_SURFACE, MATTE_HEADER, PAGE_ATMOSPHERE, MATTE_INSET } from '../theme/surfaces';
+import AdminBackground from './admin/AdminBackground';
+import { ZpcLogoMark } from './brand/ZpcLogo';
 
 const isActiveFollowStatus = (status?: string | null) =>
     (status || '').toUpperCase() === 'ACTIVE';
@@ -51,8 +54,14 @@ const isPendingFollowStatus = (status?: string | null) =>
 const GRAPHQL_URL = process.env.REACT_APP_GRAPHQL_URL || 'http://localhost:8080/api/v1/graphql';
 
 const interFont = {
-    fontFamily: 'Inter, Roboto, Arial, sans-serif',
+    fontFamily: "'DM Sans', 'Source Sans 3', system-ui, sans-serif",
 };
+
+const displayFont = {
+    fontFamily: "'Source Serif 4', 'Source Serif Pro', Georgia, serif",
+};
+
+const CARD_RADIUS = 2; // LinkedIn-like modest corners
 
 /** Soft matte card surface (not flat white). */
 const MATTE_POST_SX = MATTE_SURFACE;
@@ -1466,7 +1475,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                 ...interFont
             }}>
                 <Box sx={{ textAlign: 'center' }}>
-                    <CircularProgress size={48} sx={{ color: '#2563EB', mb: 2 }} />
+                    <CircularProgress size={48} sx={{ color: '#16302A', mb: 2 }} />
                     <Typography sx={{ color: '#6B7280' }}>Loading profile...</Typography>
                 </Box>
             </Box>
@@ -1484,19 +1493,21 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                     position="fixed"
                     elevation={0}
                     sx={{
-                        ...MATTE_HEADER,
+                        ...MATTE_SURFACE,
+                        borderRadius: 0,
+                        borderLeft: 'none',
+                        borderRight: 'none',
+                        borderTop: 'none',
                         zIndex: 1201,
-                        bgcolor: '#F3EFE8 !important',
-                        backgroundColor: '#F3EFE8 !important',
-                        backgroundImage: 'linear-gradient(180deg, #F6F2EB 0%, #EFEAE2 100%) !important',
+                        color: '#16302A',
                     }}
                 >
                     <Toolbar sx={{ justifyContent: 'space-between', px: { xs: 1, sm: 2 }, minHeight: { xs: 56, sm: 64 }, gap: 1 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.5, sm: 2 }, minWidth: 0 }}>
-                            <IconButton onClick={onGoBack} size={isMobile ? 'small' : 'medium'} sx={{ color: '#2563EB' }}>
+                            <IconButton onClick={onGoBack} size={isMobile ? 'small' : 'medium'} sx={{ color: '#16302A' }}>
                                 <ArrowBackIcon />
                             </IconButton>
-                            <Typography variant="h6" sx={{ fontWeight: 700, color: '#2563EB', fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+                            <Typography variant="h6" sx={{ fontWeight: 700, color: '#16302A', fontSize: { xs: '1rem', sm: '1.25rem' } }}>
                                 Profile
                             </Typography>
                         </Box>
@@ -1504,7 +1515,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                             variant="h5"
                             sx={{
                                 fontWeight: 900,
-                                color: '#2563EB',
+                                color: '#16302A',
                                 letterSpacing: 1,
                                 fontSize: { xs: 'clamp(0.85rem, 3.5vw, 1.1rem)', sm: '1.5rem' },
                                 whiteSpace: 'nowrap',
@@ -1534,56 +1545,75 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
         <Box sx={{
             ...PAGE_ATMOSPHERE,
             minHeight: '100vh',
+            position: 'relative',
             ...interFont,
         }}>
+            <AdminBackground />
             <AppBar
                 position="fixed"
                 elevation={0}
                 sx={{
-                    ...MATTE_HEADER,
+                    ...MATTE_SURFACE,
+                    borderRadius: 0,
+                    borderLeft: 'none',
+                    borderRight: 'none',
+                    borderTop: 'none',
                     zIndex: 1201,
-                    bgcolor: '#F3EFE8 !important',
-                    backgroundColor: '#F3EFE8 !important',
-                    backgroundImage: 'linear-gradient(180deg, #F6F2EB 0%, #EFEAE2 100%) !important',
+                    color: '#16302A',
                 }}
             >
                 <Toolbar sx={{ justifyContent: 'space-between', px: { xs: 1, sm: 2 }, minHeight: { xs: 56, sm: 64 }, gap: 1, bgcolor: 'transparent' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.5, sm: 2 }, minWidth: 0 }}>
-                        <IconButton onClick={onGoBack} size={isMobile ? 'small' : 'medium'} sx={{ color: '#2563EB' }}>
+                        <IconButton onClick={onGoBack} size={isMobile ? 'small' : 'medium'} sx={{ color: '#16302A' }}>
                             <ArrowBackIcon />
                         </IconButton>
-                        <Typography variant="h6" sx={{ fontWeight: 700, color: '#2563EB', fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+                        <Typography variant="h6" sx={{ fontWeight: 700, color: '#16302A', fontSize: { xs: '1rem', sm: '1.25rem' } }}>
                             Profile
                         </Typography>
                     </Box>
-                    <Typography
-                        variant="h5"
-                        sx={{
-                            fontWeight: 900,
-                            color: '#2563EB',
-                            letterSpacing: 1,
-                            fontSize: { xs: 'clamp(0.85rem, 3.5vw, 1.1rem)', sm: '1.5rem' },
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            minWidth: 0,
-                            maxWidth: { xs: '48%', sm: 'none' },
-                        }}
-                    >
-                        Zameen pe charcha
-                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+                        <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center' }}>
+                            <ZpcLogoMark size={36} showTagline={false} animateStroke={false} />
+                        </Box>
+                        <Typography
+                            variant="h5"
+                            sx={{
+                                fontWeight: 800,
+                                color: '#16302A',
+                                letterSpacing: 0.2,
+                                fontSize: { xs: 'clamp(0.85rem, 3.5vw, 1.1rem)', sm: '1.25rem' },
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                minWidth: 0,
+                                maxWidth: { xs: '48%', sm: 'none' },
+                            }}
+                        >
+                            Zameen pe charcha
+                        </Typography>
+                    </Box>
                 </Toolbar>
             </AppBar>
 
-            <Box sx={{ pt: { xs: 9, sm: 10 }, px: { xs: 1.25, sm: 2 }, pb: { xs: 3, sm: 4 } }}>
-                <Box sx={{ position: 'relative', borderRadius: { xs: 1.5, sm: 2 }, overflow: 'hidden', mb: { xs: 2, sm: 3 } }}>
+            <Box sx={{ position: 'relative', zIndex: 1, pt: { xs: 9, sm: 10 }, px: { xs: 1.25, sm: 2 }, pb: { xs: 3, sm: 4 } }}>
+                <Box sx={{ maxWidth: 1128, mx: 'auto' }}>
+                {/* LinkedIn-style identity card: cover + overlapping avatar */}
+                <Box
+                    sx={{
+                        ...MATTE_SURFACE,
+                        borderRadius: CARD_RADIUS,
+                        overflow: 'hidden',
+                        mb: 1.5,
+                    }}
+                >
+                <Box sx={{ position: 'relative', overflow: 'hidden' }}>
                     <Box
                         component="img"
                         src={(user as any).coverPhotoSignedUrl || 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&h=300&fit=crop'}
                         alt="Cover"
                         sx={{
                             width: '100%',
-                            height: { xs: 140, sm: 200, md: 250 },
+                            height: { xs: 120, sm: 160, md: 200 },
                             objectFit: 'cover',
                             display: 'block',
                         }}
@@ -1597,18 +1627,21 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                             size={isMobile ? 'small' : 'medium'}
                             sx={{
                                 position: 'absolute',
-                                top: { xs: 8, sm: 16 },
-                                right: { xs: 8, sm: 16 },
-                                bgcolor: 'rgba(255,255,255,0.9)',
-                                color: '#2563EB',
+                                top: { xs: 8, sm: 12 },
+                                right: { xs: 8, sm: 12 },
+                                bgcolor: 'rgba(235,230,212,0.92)',
+                                color: '#16302A',
                                 textTransform: 'none',
-                                fontWeight: 600,
+                                fontWeight: 700,
                                 minWidth: { xs: 0, sm: 'auto' },
                                 px: { xs: 1.25, sm: 2 },
+                                borderRadius: 1,
+                                border: '1px solid rgba(22,48,42,0.14)',
+                                '&:hover': { bgcolor: 'rgba(235,230,212,1)' },
                             }}
                             onClick={handleChooseCoverPhoto}
                         >
-                            {isMobile ? 'Edit' : 'Edit Cover'}
+                            {isMobile ? 'Edit' : 'Edit cover'}
                         </Button>
                     )}
                 </Box>
@@ -1625,13 +1658,9 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
 
                 <Box
                     sx={{
-                        ...MATTE_SURFACE,
-                        borderRadius: { xs: 2, sm: 3 },
-                        p: { xs: 1.5, sm: 3 },
-                        mb: { xs: 2, sm: 3 },
-                        bgcolor: '#F3EFE8',
-                        backgroundColor: '#F3EFE8',
-                        backgroundImage: 'linear-gradient(165deg, #F6F2EB 0%, #EFEAE2 55%, #EAE4DB 100%)',
+                        px: { xs: 1.5, sm: 2.5 },
+                        pb: { xs: 1.5, sm: 2 },
+                        pt: 0,
                     }}
                 >
                     <Box sx={{
@@ -1639,65 +1668,60 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                         flexDirection: { xs: 'column', sm: 'row' },
                         alignItems: { xs: 'stretch', sm: 'flex-start' },
                         justifyContent: 'space-between',
-                        gap: 2,
-                        mb: { xs: 2, sm: 3 },
+                        gap: 1.5,
+                        mb: 1.25,
                     }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1.5, sm: 2 }, minWidth: 0 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: { xs: 1.5, sm: 2 }, minWidth: 0, mt: { xs: -5, sm: -7 } }}>
                             <Box sx={{ position: 'relative', flexShrink: 0 }}>
                                 <Avatar
                                     src={(user as any).profilePhotoSignedUrl || user.profilePhoto || 'https://randomuser.me/api/portraits/lego/1.jpg'}
-                                    sx={{ width: { xs: 72, sm: 100 }, height: { xs: 72, sm: 100 }, border: '4px solid white', boxShadow: 2 }}
+                                    sx={{
+                                        width: { xs: 96, sm: 132 },
+                                        height: { xs: 96, sm: 132 },
+                                        border: '4px solid #EBE6D4',
+                                        boxShadow: '0 2px 10px rgba(10,18,16,0.18)',
+                                        bgcolor: stringToColor(`${user.firstName} ${user.lastName}`),
+                                        fontWeight: 800,
+                                        fontSize: { xs: 32, sm: 40 },
+                                    }}
                                     onError={(e) => {
                                         (e.target as HTMLImageElement).src = 'https://randomuser.me/api/portraits/lego/1.jpg';
                                     }}
-                                />
+                                >
+                                    {nameInitials(`${user.firstName || ''} ${user.lastName || ''}`)}
+                                </Avatar>
                                 {user.isActive && (
                                     <Box sx={{
                                         position: 'absolute',
-                                        bottom: { xs: 4, sm: 8 },
-                                        right: { xs: 4, sm: 8 },
-                                        width: { xs: 12, sm: 16 },
-                                        height: { xs: 12, sm: 16 },
+                                        bottom: { xs: 6, sm: 10 },
+                                        right: { xs: 6, sm: 10 },
+                                        width: { xs: 14, sm: 18 },
+                                        height: { xs: 14, sm: 18 },
                                         bgcolor: '#4CAF50',
                                         borderRadius: '50%',
-                                        border: '2px solid white'
+                                        border: '2px solid #EBE6D4'
                                     }} />
                                 )}
                             </Box>
-                            <Box sx={{ minWidth: 0, flex: 1 }}>
-                                <Typography sx={{
-                                    fontWeight: 700,
-                                    color: '#2563EB',
-                                    mb: 0.5,
-                                    fontSize: { xs: '1.25rem', sm: '2.125rem' },
-                                    lineHeight: 1.2,
-                                    wordBreak: 'break-word',
-                                }}>
-                                    {user.firstName} {user.lastName}
-                                </Typography>
-                                <Typography sx={{ color: '#6B7280', mb: 0.5, fontSize: { xs: '0.875rem', sm: '1rem' } }}>{user.role || 'User'}</Typography>
-                                <Typography sx={{ color: '#9CA3AF', fontSize: '0.875rem' }}>{user.address || 'No location provided'}</Typography>
-                                {user.bio && (
-                                    <Typography sx={{ color: '#6B7280', fontSize: '0.875rem', mt: 1, maxWidth: { xs: '100%', sm: 300 } }}>
-                                        {user.bio}
-                                    </Typography>
-                                )}
-                            </Box>
                         </Box>
+                        {/* actions stay right - extracted below */}
+                        <Box sx={{
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: 1,
+                            width: { xs: '100%', sm: 'auto' },
+                            flexShrink: 0,
+                            justifyContent: { xs: 'stretch', sm: 'flex-end' },
+                            mt: { xs: 0.5, sm: 1.5 },
+                        }}>
                         {!isOwnProfile && (
-                            <Box sx={{
-                                display: 'flex',
-                                flexWrap: 'wrap',
-                                gap: 1,
-                                width: { xs: '100%', sm: 'auto' },
-                                flexShrink: 0,
-                            }}>
+                            <>
                                 {incomingFollowStatus && isPendingFollowStatus(incomingFollowStatus?.status) ? (
                                     <>
                                         <Button
                                             variant="contained"
                                             size={isMobile ? 'small' : 'medium'}
-                                            sx={{ bgcolor: '#16A34A', '&:hover': { bgcolor: '#15803D' }, flex: { xs: '1 1 auto', sm: '0 0 auto' } }}
+                                            sx={{ bgcolor: '#16A34A', '&:hover': { bgcolor: '#15803D' }, flex: { xs: '1 1 auto', sm: '0 0 auto' }, textTransform: 'none', fontWeight: 700, borderRadius: 999 }}
                                             onClick={async () => {
                                                 try {
                                                     const data = await apiService.graphqlRequest(GRAPHQL_QUERIES.UPDATE_FOLLOW_STATUS, {
@@ -1715,7 +1739,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                         <Button
                                             variant="outlined"
                                             size={isMobile ? 'small' : 'medium'}
-                                            sx={{ borderColor: '#EF4444', color: '#EF4444', flex: { xs: '1 1 auto', sm: '0 0 auto' } }}
+                                            sx={{ borderColor: '#EF4444', color: '#EF4444', flex: { xs: '1 1 auto', sm: '0 0 auto' }, textTransform: 'none', fontWeight: 700, borderRadius: 999 }}
                                             onClick={async () => {
                                                 try {
                                                     const data = await apiService.graphqlRequest(GRAPHQL_QUERIES.UPDATE_FOLLOW_STATUS, {
@@ -1740,14 +1764,15 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                             onClick={handleFollow}
                                             disabled={followingInProgress}
                                             sx={{
-                                                bgcolor: isFollowing ? 'transparent' : '#2563EB',
-                                                borderColor: '#2563EB',
-                                                color: isFollowing ? '#2563EB' : 'white',
+                                                bgcolor: isFollowing ? 'transparent' : '#16302A',
+                                                borderColor: '#16302A',
+                                                color: isFollowing ? '#16302A' : 'white',
                                                 textTransform: 'none',
-                                                fontWeight: 600,
+                                                fontWeight: 700,
+                                                borderRadius: 999,
                                                 flex: { xs: '1 1 auto', sm: '0 0 auto' },
                                                 '&:hover': {
-                                                    bgcolor: isFollowing ? 'rgba(37, 99, 235, 0.1)' : '#1D4ED8'
+                                                    bgcolor: isFollowing ? 'rgba(22, 48, 42, 0.08)' : '#0A1C18'
                                                 }
                                             }}
                                         >
@@ -1782,10 +1807,11 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                                 }
                                             }}
                                             sx={{
-                                                borderColor: '#2563EB',
-                                                color: '#2563EB',
+                                                borderColor: '#16302A',
+                                                color: '#16302A',
                                                 textTransform: 'none',
-                                                fontWeight: 600,
+                                                fontWeight: 700,
+                                                borderRadius: 999,
                                                 flex: { xs: '1 1 auto', sm: '0 0 auto' },
                                             }}
                                         >
@@ -1793,14 +1819,14 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                         </Button>
                                     </>
                                 )}
-                            </Box>
+                            </>
                         )}
                         {isOwnProfile && isPendingFollowStatus(followingStatus?.status) && (
-                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, width: { xs: '100%', sm: 'auto' } }}>
+                            <>
                                 <Button
                                     variant="contained"
                                     size={isMobile ? 'small' : 'medium'}
-                                    sx={{ bgcolor: '#16A34A', '&:hover': { bgcolor: '#15803D' }, flex: { xs: '1 1 auto', sm: '0 0 auto' } }}
+                                    sx={{ bgcolor: '#16A34A', '&:hover': { bgcolor: '#15803D' }, flex: { xs: '1 1 auto', sm: '0 0 auto' }, textTransform: 'none', fontWeight: 700, borderRadius: 999 }}
                                     onClick={async () => {
                                         try {
                                             const data = await apiService.graphqlRequest(GRAPHQL_QUERIES.UPDATE_FOLLOW_STATUS, {
@@ -1821,7 +1847,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                 <Button
                                     variant="outlined"
                                     size={isMobile ? 'small' : 'medium'}
-                                    sx={{ borderColor: '#EF4444', color: '#EF4444', flex: { xs: '1 1 auto', sm: '0 0 auto' } }}
+                                    sx={{ borderColor: '#EF4444', color: '#EF4444', flex: { xs: '1 1 auto', sm: '0 0 auto' }, textTransform: 'none', fontWeight: 700, borderRadius: 999 }}
                                     onClick={async () => {
                                         try {
                                             const data = await apiService.graphqlRequest(GRAPHQL_QUERIES.UPDATE_FOLLOW_STATUS, {
@@ -1838,28 +1864,22 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                         }
                                     }}
                                 >Decline</Button>
-                            </Box>
+                            </>
                         )}
                         {isOwnProfile && (
-                            <Box sx={{
-                                display: 'flex',
-                                flexWrap: 'wrap',
-                                gap: 1,
-                                width: { xs: '100%', sm: 'auto' },
-                                flexShrink: 0,
-                            }}>
+                            <>
                                 <Button
                                     variant="outlined"
                                     size={isMobile ? 'small' : 'medium'}
-                                    sx={{ flex: { xs: '1 1 auto', sm: '0 0 auto' }, textTransform: 'none' }}
+                                    sx={{ flex: { xs: '1 1 auto', sm: '0 0 auto' }, textTransform: 'none', fontWeight: 700, borderRadius: 999, borderColor: 'rgba(22,48,42,0.28)', color: '#16302A' }}
                                     onClick={handleChooseProfilePhoto}
                                 >
-                                    {isMobile ? 'Change Photo' : 'Change Profile Photo'}
+                                    {isMobile ? 'Photo' : 'Edit photo'}
                                 </Button>
                                 <Button
                                     variant="contained"
                                     size={isMobile ? 'small' : 'medium'}
-                                    sx={{ bgcolor: '#2563EB', '&:hover': { bgcolor: '#1D4ED8' }, flex: { xs: '1 1 auto', sm: '0 0 auto' }, textTransform: 'none' }}
+                                    sx={{ bgcolor: '#16302A', '&:hover': { bgcolor: '#0A1C18' }, flex: { xs: '1 1 auto', sm: '0 0 auto' }, textTransform: 'none', fontWeight: 700, borderRadius: 999 }}
                                     onClick={async () => {
                                         try {
                                             setLoadingFF(true);
@@ -1872,85 +1892,130 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                 >
                                     {isMobile ? 'Pending' : 'Pending requests'}
                                 </Button>
-                            </Box>
+                            </>
+                        )}
+                        </Box>
+                    </Box>
+
+                    <Box sx={{ minWidth: 0, mt: { xs: 0.5, sm: 0 } }}>
+                        <Typography sx={{
+                            fontWeight: 750,
+                            color: '#16302A',
+                            mb: 0.35,
+                            fontSize: { xs: '1.35rem', sm: '1.65rem' },
+                            lineHeight: 1.2,
+                            wordBreak: 'break-word',
+                            ...displayFont,
+                        }}>
+                            {user.firstName} {user.lastName}
+                        </Typography>
+                        <Typography sx={{ color: '#3A4540', mb: 0.35, fontSize: { xs: '0.95rem', sm: '1.05rem' }, fontWeight: 600, textTransform: 'capitalize' }}>
+                            {user.role ? String(user.role).replace(/_/g, ' ') : 'Member'}{user.bio ? '' : ' on Zameen pe charcha'}
+                        </Typography>
+                        <Typography sx={{ color: '#5C675F', fontSize: '0.875rem', mb: user.bio ? 0.75 : 0 }}>
+                            {user.address || 'Location not set'}
+                        </Typography>
+                        {user.bio && (
+                            <Typography sx={{ color: '#3A4540', fontSize: '0.9rem', mt: 0.25, maxWidth: 560, lineHeight: 1.45 }}>
+                                {user.bio}
+                            </Typography>
                         )}
                     </Box>
 
                     <Box sx={{
                         display: 'flex',
-                        flexWrap: 'nowrap',
-                        justifyContent: 'space-between',
-                        alignItems: 'flex-start',
-                        gap: { xs: 0.5, sm: 4 },
-                        pt: 2,
-                        borderTop: '1px solid #E5E7EB',
+                        flexWrap: 'wrap',
+                        alignItems: 'center',
+                        gap: { xs: 1.25, sm: 2 },
+                        pt: 1.5,
+                        mt: 1.25,
+                        borderTop: '1px solid rgba(22,48,42,0.1)',
                     }}>
-                        <Box sx={{ textAlign: 'center', cursor: 'pointer', flex: 1, minWidth: 0 }} onClick={async () => {
-                            try {
-                                setLoadingFF(true);
-                                const list = await apiService.fetchUserFollowers(userId);
-                                setFollowersList(list);
-                                setFollowersDetails(list.map((f: UserFollower) => followToDetail(f, f.followerId)));
-                                setFollowersOpen(true);
-                            } finally { setLoadingFF(false); }
-                        }}>
-                            <Typography sx={{ fontWeight: 700, color: '#2563EB', fontSize: { xs: '1.05rem', sm: '1.5rem' }, lineHeight: 1.2 }}>
-                                {user.followersCount.toLocaleString()}
-                            </Typography>
-                            <Typography sx={{ color: '#6B7280', fontSize: { xs: '0.7rem', sm: '0.875rem' }, whiteSpace: 'nowrap' }}>Followers</Typography>
-                        </Box>
-                        <Box sx={{ textAlign: 'center', cursor: 'pointer', flex: 1, minWidth: 0 }} onClick={async () => {
-                            try {
-                                setLoadingFF(true);
-                                const list = await apiService.fetchUserFollowing(userId);
-                                setFollowingList(list);
-                                setFollowingDetails(list.map((f: UserFollower) => followToDetail(f, f.followingId)));
-                                setFollowingOpen(true);
-                            } finally { setLoadingFF(false); }
-                        }}>
-                            <Typography sx={{ fontWeight: 700, color: '#2563EB', fontSize: { xs: '1.05rem', sm: '1.5rem' }, lineHeight: 1.2 }}>
-                                {user.followingCount}
-                            </Typography>
-                            <Typography sx={{ color: '#6B7280', fontSize: { xs: '0.7rem', sm: '0.875rem' }, whiteSpace: 'nowrap' }}>Following</Typography>
-                        </Box>
-                        <Box sx={{ textAlign: 'center', flex: 1, minWidth: 0 }}>
-                            <Typography sx={{ fontWeight: 700, color: '#2563EB', fontSize: { xs: '1.05rem', sm: '1.5rem' }, lineHeight: 1.2 }}>
-                                {user.averageRating.toFixed(1)}
-                            </Typography>
-                            <Typography sx={{ color: '#6B7280', fontSize: { xs: '0.7rem', sm: '0.875rem' }, whiteSpace: 'nowrap' }}>Rating</Typography>
-                        </Box>
-                        <Box sx={{ textAlign: 'center', flex: 1, minWidth: 0 }}>
-                            <Typography sx={{ fontWeight: 700, color: '#2563EB', fontSize: { xs: '1.05rem', sm: '1.5rem' }, lineHeight: 1.2 }}>
-                                {user.ratings.length}
-                            </Typography>
-                            <Typography sx={{ color: '#6B7280', fontSize: { xs: '0.7rem', sm: '0.875rem' }, whiteSpace: 'nowrap' }}>Reviews</Typography>
-                        </Box>
+                        <Typography
+                            component="button"
+                            onClick={async () => {
+                                try {
+                                    setLoadingFF(true);
+                                    const list = await apiService.fetchUserFollowers(userId);
+                                    setFollowersList(list);
+                                    setFollowersDetails(list.map((f: UserFollower) => followToDetail(f, f.followerId)));
+                                    setFollowersOpen(true);
+                                } finally { setLoadingFF(false); }
+                            }}
+                            sx={{
+                                all: 'unset',
+                                cursor: 'pointer',
+                                fontSize: 14,
+                                color: '#5C675F',
+                                '& strong': { color: '#16302A', fontWeight: 750 },
+                                '&:hover': { textDecoration: 'underline' },
+                            }}
+                        >
+                            <strong>{user.followersCount.toLocaleString()}</strong> followers
+                        </Typography>
+                        <Typography
+                            component="button"
+                            onClick={async () => {
+                                try {
+                                    setLoadingFF(true);
+                                    const list = await apiService.fetchUserFollowing(userId);
+                                    setFollowingList(list);
+                                    setFollowingDetails(list.map((f: UserFollower) => followToDetail(f, f.followingId)));
+                                    setFollowingOpen(true);
+                                } finally { setLoadingFF(false); }
+                            }}
+                            sx={{
+                                all: 'unset',
+                                cursor: 'pointer',
+                                fontSize: 14,
+                                color: '#5C675F',
+                                '& strong': { color: '#16302A', fontWeight: 750 },
+                                '&:hover': { textDecoration: 'underline' },
+                            }}
+                        >
+                            <strong>{user.followingCount}</strong> following
+                        </Typography>
+                        <Typography sx={{ fontSize: 14, color: '#5C675F' }}>
+                            <Box component="span" sx={{ color: '#16302A', fontWeight: 750 }}>{user.averageRating.toFixed(1)}</Box> rating
+                            <Box component="span" sx={{ mx: 0.75, color: 'rgba(22,48,42,0.35)' }}>·</Box>
+                            <Box component="span" sx={{ color: '#16302A', fontWeight: 750 }}>{user.ratings.length}</Box> reviews
+                        </Typography>
                     </Box>
                 </Box>
+                </Box>
 
-                {/* User Posts Section */}
-                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '2fr 1fr' }, gap: { xs: 2, sm: 3 } }}>
+                {/* Activity + ratings */}
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) 300px' }, gap: 1.5, alignItems: 'start' }}>
                     <Box sx={{ minWidth: 0 }}>
+                        <Box sx={{ ...MATTE_SURFACE, borderRadius: CARD_RADIUS, px: { xs: 1.5, sm: 2 }, py: 1.5, mb: 1.25 }}>
+                            <Typography sx={{ fontWeight: 750, color: '#16302A', fontSize: 18, ...displayFont }}>
+                                Activity
+                            </Typography>
+                            <Typography sx={{ fontSize: 13, color: '#5C675F', mt: 0.25 }}>
+                                Posts by {isOwnProfile ? 'you' : user.firstName}
+                            </Typography>
+                        </Box>
                         {postsLoading ? (
-                            <Stack spacing={4}>
+                            <Stack spacing={1.25}>
                                 <PostSkeleton />
                                 <PostSkeleton />
                                 <PostSkeleton />
                             </Stack>
                         ) : posts.length === 0 ? (
-                            <Box sx={{ ...MATTE_POST_SX, borderRadius: { xs: 2, sm: 3 }, p: { xs: 2.5, sm: 4 }, textAlign: 'center' }}>
-                                <Typography variant="h6" sx={{ color: '#6B7280', mb: 1 }}>
-                                    No Posts Yet
+                            <Box sx={{ ...MATTE_POST_SX, borderRadius: CARD_RADIUS, p: { xs: 2.5, sm: 3.5 }, textAlign: 'center' }}>
+                                <Typography sx={{ color: '#16302A', fontWeight: 750, mb: 0.5, fontSize: 16, ...displayFont }}>
+                                    No posts yet
                                 </Typography>
-                                <Typography sx={{ color: '#9CA3AF', fontSize: '0.875rem' }}>
+                                <Typography sx={{ color: '#5C675F', fontSize: 13.5 }}>
                                     {isOwnProfile
-                                        ? "You haven't created any posts yet."
+                                        ? "When you share a post, it will show up here."
                                         : `${user.firstName} hasn't posted anything yet.`
                                     }
                                 </Typography>
                             </Box>
                         ) : (
-                            posts.map((post) => {
+                            <Stack spacing={1.25}>
+                            {posts.map((post) => {
                                 const authorName = `${(post as any).userFirstName || ''} ${(post as any).userLastName || ''}`.trim()
                                     || `${user?.firstName || ''} ${user?.lastName || ''}`.trim();
                                 const photoUrl =
@@ -1962,7 +2027,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                     undefined;
                                 const canManage = currentUserId != null && String(currentUserId) === String((post as any).userId);
                                 return (
-                                <Box key={post.id} sx={{ ...MATTE_POST_SX, borderRadius: { xs: 2, sm: 3 }, p: { xs: 1.5, sm: 3 }, mb: { xs: 2, sm: 3 }, minWidth: 0 }}>
+                                <Box key={post.id} sx={{ ...MATTE_POST_SX, borderRadius: CARD_RADIUS, p: { xs: 1.5, sm: 2 }, minWidth: 0 }}>
                                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, minWidth: 0 }}>
                                         <Avatar
                                             src={photoUrl}
@@ -1986,7 +2051,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                             role="button"
                                             aria-label={`Open profile of ${(post as any).userFirstName} ${(post as any).userLastName}`}
                                         >
-                                            <Typography sx={{ fontWeight: 700, fontSize: { xs: 16, sm: 18 }, color: '#2563EB', ...interFont, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            <Typography sx={{ fontWeight: 700, fontSize: { xs: 16, sm: 18 }, color: '#16302A', ...interFont, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                                 {(post as any).userFirstName} {(post as any).userLastName}
                                             </Typography>
                                             <Typography sx={{ fontSize: 13, color: '#6B7280', fontWeight: 500 }}>
@@ -2007,7 +2072,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                         )}
                                     </Box>
 
-                                    <Typography sx={{ color: '#2563EB', fontWeight: 700, fontSize: { xs: 15, sm: 17 }, mb: 1, wordBreak: 'break-word' }}>{(post as any).title}</Typography>
+                                    <Typography sx={{ color: '#16302A', fontWeight: 700, fontSize: { xs: 15, sm: 17 }, mb: 1, wordBreak: 'break-word' }}>{(post as any).title}</Typography>
                                     <Typography sx={{ color: '#374151', lineHeight: 1.6, mb: 2, wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
                                         {renderMentionContent((post as any).content || '', {
                                             onOpenProfile: onOpenProfile || undefined,
@@ -2131,7 +2196,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                                 py: 0.5,
                                                 px: 0.75,
                                                 '& .MuiButton-startIcon': { mr: 0.35 },
-                                                '&:hover': { bgcolor: 'transparent', color: '#2563EB' },
+                                                '&:hover': { bgcolor: 'transparent', color: '#16302A' },
                                             }}
                                         >
                                             {post.commentCount ?? post.commentsCount ?? 0}
@@ -2143,7 +2208,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                                 borderRadius: 2,
                                                 p: 0.65,
                                                 bgcolor: 'transparent',
-                                                '&:hover': { bgcolor: 'transparent', color: '#2563EB' },
+                                                '&:hover': { bgcolor: 'transparent', color: '#16302A' },
                                             }}
                                         >
                                             <ShareSymbol sx={{ fontSize: 21 }} />
@@ -2170,27 +2235,25 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                     )}
                                 </Box>
                                 );
-                            })
+                            })}
+                            </Stack>
                         )}
                     </Box>
 
-                    <Box sx={{ minWidth: 0 }}>
+                    <Box sx={{ minWidth: 0, position: { lg: 'sticky' }, top: { lg: 80 } }}>
                         <Box
                             sx={{
                                 ...MATTE_SURFACE,
-                                borderRadius: { xs: 2, sm: 3 },
-                                p: { xs: 1.5, sm: 3 },
-                                bgcolor: '#F3EFE8',
-                                backgroundColor: '#F3EFE8',
-                                backgroundImage: 'linear-gradient(165deg, #F6F2EB 0%, #EFEAE2 55%, #EAE4DB 100%)',
+                                borderRadius: CARD_RADIUS,
+                                p: { xs: 1.5, sm: 2 },
                             }}
                         >
-                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, mb: 3 }}>
-                                <Typography variant="h6" sx={{ fontWeight: 700, color: '#2563EB', fontSize: { xs: '1.05rem', sm: '1.25rem' } }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                                <Typography sx={{ fontWeight: 750, color: '#16302A', fontSize: 16, ...displayFont }}>
                                     Ratings & Reviews
                                 </Typography>
                                 {!isOwnProfile && currentUserId && (
-                                    <Button size={isMobile ? 'small' : 'medium'} onClick={() => setRatingOpen(v => !v)} sx={{ color: '#2563EB', textTransform: 'none', fontWeight: 600 }}>
+                                    <Button size={isMobile ? 'small' : 'medium'} onClick={() => setRatingOpen(v => !v)} sx={{ color: '#16302A', textTransform: 'none', fontWeight: 600 }}>
                                         {ratingOpen ? 'Close' : 'Rate User'}
                                     </Button>
                                 )}
@@ -2224,7 +2287,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                         <Button
                                             variant="contained"
                                             disabled={ratingSubmitting}
-                                            sx={{ bgcolor: '#2563EB', '&:hover': { bgcolor: '#1D4ED8' } }}
+                                            sx={{ bgcolor: '#16302A', '&:hover': { bgcolor: '#0A1C18' } }}
                                             onClick={async () => {
                                                 if (!currentUserId) return;
                                                 try {
@@ -2282,7 +2345,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                             )}
 
                             <Box sx={{ textAlign: 'center', mb: 3 }}>
-                                <Typography sx={{ fontWeight: 700, color: '#2563EB', mb: 1, fontSize: { xs: '2rem', sm: '3.75rem' }, lineHeight: 1.1 }}>
+                                <Typography sx={{ fontWeight: 700, color: '#16302A', mb: 1, fontSize: { xs: '2rem', sm: '3.75rem' }, lineHeight: 1.1 }}>
                                     {user.averageRating > 0 ? user.averageRating.toFixed(1) : 'N/A'}
                                 </Typography>
                                 <Box sx={{ display: 'flex', justifyContent: 'center', mb: 1 }}>
@@ -2357,7 +2420,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                                             {formatDateShort(review.createdAt)}
                                                         </Typography>
                                                         {review.ratingType && (
-                                                            <Typography sx={{ color: '#2563EB', fontSize: '0.75rem', fontWeight: 600 }}>
+                                                            <Typography sx={{ color: '#16302A', fontSize: '0.75rem', fontWeight: 600 }}>
                                                                 {review.ratingType}
                                                             </Typography>
                                                         )}
@@ -2370,6 +2433,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                             </Stack>
                         </Box>
                     </Box>
+                </Box>
                 </Box>
             </Box>
 
@@ -2451,7 +2515,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, mb: 1.25, minWidth: 0 }}>
                                             <Avatar
                                                 src={(currentPost as any).userProfilePhotoSignedUrl || currentPost.user?.profilePhoto || (currentPost as any).profilePhoto || 'https://randomuser.me/api/portraits/lego/1.jpg'}
-                                                sx={{ width: 44, height: 44, flexShrink: 0, fontWeight: 800, bgcolor: '#2563EB' }}
+                                                sx={{ width: 44, height: 44, flexShrink: 0, fontWeight: 800, bgcolor: '#16302A' }}
                                             />
                                             <Box sx={{ minWidth: 0, flex: 1 }}>
                                                 <Typography sx={{ fontWeight: 800, fontSize: 15, color: '#0F172A', ...interFont, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -2480,11 +2544,11 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
 
                                 {isLoadingComments ? (
                                     <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                                        <CircularProgress size={28} sx={{ color: '#2563EB' }} />
+                                        <CircularProgress size={28} sx={{ color: '#16302A' }} />
                                     </Box>
                                 ) : comments && comments.length > 0 ? (
                                     <Stack spacing={1.75}>
-                                        {comments.map((comment: any) => (
+                                        {nestComments(comments).map((comment: any) => (
                                             <CommentListItem
                                                 key={comment.id}
                                                 comment={comment}
@@ -2540,7 +2604,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
             {followersOpen && (
                 <Box sx={{ position: 'fixed', inset: 0, bgcolor: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setFollowersOpen(false)}>
                     <Box sx={{ ...MATTE_SURFACE, borderRadius: 3, width: { xs: '94vw', sm: 420 }, maxWidth: '94vw', maxHeight: { xs: '80vh', sm: '70vh' }, overflowY: 'auto', p: { xs: 1.5, sm: 2 } }} onClick={e => e.stopPropagation()}>
-                        <Typography sx={{ fontWeight: 700, color: '#2563EB', mb: 1 }}>Followers</Typography>
+                        <Typography sx={{ fontWeight: 700, color: '#16302A', mb: 1 }}>Followers</Typography>
                         {loadingFF ? (
                             <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress /></Box>
                         ) : followersDetails.length === 0 ? (
@@ -2600,7 +2664,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
             {followingOpen && (
                 <Box sx={{ position: 'fixed', inset: 0, bgcolor: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setFollowingOpen(false)}>
                     <Box sx={{ ...MATTE_SURFACE, borderRadius: 3, width: { xs: '94vw', sm: 420 }, maxWidth: '94vw', maxHeight: { xs: '80vh', sm: '70vh' }, overflowY: 'auto', p: { xs: 1.5, sm: 2 } }} onClick={e => e.stopPropagation()}>
-                        <Typography sx={{ fontWeight: 700, color: '#2563EB', mb: 1 }}>Following</Typography>
+                        <Typography sx={{ fontWeight: 700, color: '#16302A', mb: 1 }}>Following</Typography>
                         {loadingFF ? (
                             <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress /></Box>
                         ) : followingDetails.length === 0 ? (

@@ -9,7 +9,7 @@ function makeDocTexture(kind: 'deed' | 'blueprint' | 'survey' | 'contract') {
   const ctx = c.getContext('2d')!;
 
   if (kind === 'blueprint') {
-    ctx.fillStyle = '#1a3a55';
+    ctx.fillStyle = '#16302A';
     ctx.fillRect(0, 0, 512, 680);
     ctx.strokeStyle = 'rgba(140, 200, 230, 0.55)';
     ctx.lineWidth = 1;
@@ -25,18 +25,18 @@ function makeDocTexture(kind: 'deed' | 'blueprint' | 'survey' | 'contract') {
       ctx.lineTo(512, g);
       ctx.stroke();
     }
-    ctx.strokeStyle = '#9fd4f0';
+    ctx.strokeStyle = '#5F8670';
     ctx.lineWidth = 2.5;
     ctx.strokeRect(80, 120, 340, 420);
     ctx.strokeRect(80, 120, 160, 200);
     ctx.strokeRect(240, 320, 180, 220);
-    ctx.fillStyle = '#b8e0f5';
-    ctx.font = '600 28px "DM Sans", sans-serif';
+    ctx.fillStyle = '#DDD6C0';
+    ctx.font = '600 28px "Source Serif 4", "Source Serif Pro", Georgia, serif';
     ctx.fillText('FLOOR PLAN', 160, 70);
   } else if (kind === 'survey') {
-    ctx.fillStyle = '#f2ebe0';
+    ctx.fillStyle = '#EBE6D4';
     ctx.fillRect(0, 0, 512, 680);
-    ctx.strokeStyle = '#5a6a4a';
+    ctx.strokeStyle = '#5F8670';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(70, 160);
@@ -48,44 +48,44 @@ function makeDocTexture(kind: 'deed' | 'blueprint' | 'survey' | 'contract') {
     ctx.setLineDash([6, 6]);
     ctx.strokeRect(120, 220, 240, 200);
     ctx.setLineDash([]);
-    ctx.fillStyle = '#3d4a38';
-    ctx.font = '600 26px "DM Sans", sans-serif';
+    ctx.fillStyle = '#16302A';
+    ctx.font = '600 26px "Source Serif 4", "Source Serif Pro", Georgia, serif';
     ctx.fillText('SURVEY MAP', 160, 80);
-    ctx.font = '16px "DM Sans", sans-serif';
+    ctx.font = '16px "Source Serif 4", "Source Serif Pro", Georgia, serif';
     ctx.fillText('Plot 42 · Sector B', 170, 110);
   } else if (kind === 'contract') {
-    ctx.fillStyle = '#f7f4ef';
+    ctx.fillStyle = '#EBE6D4';
     ctx.fillRect(0, 0, 512, 680);
-    ctx.fillStyle = '#2a3340';
-    ctx.font = '600 26px "DM Sans", sans-serif';
+    ctx.fillStyle = '#16302A';
+    ctx.font = '600 26px "Source Serif 4", "Source Serif Pro", Georgia, serif';
     ctx.fillText('AGREEMENT', 170, 70);
     for (let i = 0; i < 16; i++) {
       ctx.fillStyle = `rgba(40,50,60,${0.25 + (i % 3) * 0.1})`;
       ctx.fillRect(60, 110 + i * 32, 380 - (i % 4) * 30, 8);
     }
-    ctx.strokeStyle = '#8a6a4a';
+    ctx.strokeStyle = '#A89F84';
     ctx.strokeRect(40, 40, 432, 600);
   } else {
     // sale deed
-    ctx.fillStyle = '#f4efe6';
+    ctx.fillStyle = '#EBE6D4';
     ctx.fillRect(0, 0, 512, 680);
     ctx.fillStyle = '#6b3a2a';
-    ctx.font = '700 30px "Cormorant Garamond", serif';
+    ctx.font = '700 30px "Libre Caslon Text", "Libre Baskerville", Georgia, serif';
     ctx.fillText('SALE DEED', 160, 80);
-    ctx.font = '16px "DM Sans", sans-serif';
-    ctx.fillStyle = '#4a3a30';
+    ctx.font = '16px "Source Serif 4", "Source Serif Pro", Georgia, serif';
+    ctx.fillStyle = '#3A4540';
     ctx.fillText('Zameen pe charcha', 175, 115);
     for (let i = 0; i < 14; i++) {
       ctx.fillStyle = `rgba(60,45,35,${0.2 + (i % 3) * 0.08})`;
       ctx.fillRect(70, 150 + i * 34, 360 - (i % 5) * 20, 7);
     }
-    ctx.strokeStyle = '#a08060';
+    ctx.strokeStyle = '#A89F84';
     ctx.lineWidth = 3;
     ctx.strokeRect(28, 28, 456, 624);
     // seal
     ctx.beginPath();
     ctx.arc(400, 560, 36, 0, Math.PI * 2);
-    ctx.strokeStyle = '#b04030';
+    ctx.strokeStyle = '#16302A';
     ctx.stroke();
   }
 

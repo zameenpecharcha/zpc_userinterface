@@ -158,11 +158,11 @@ const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
         error={error}
         helperText={helperText}
         InputProps={{
-          startAdornment: <LocationOn sx={{ color: '#9CA3AF', mr: 1 }} />,
+          startAdornment: <LocationOn sx={{ color: '#A89F84', mr: 1 }} />,
           endAdornment: loading && <CircularProgress size={20} />,
           sx: {
-            bgcolor: '#F9FAFB',
-            '&:hover': { bgcolor: '#F3F4F6' },
+            bgcolor: '#EBE6D4',
+            '&:hover': { bgcolor: '#E8E2CE' },
             borderRadius: 2,
             px: 1,
             height: 56,
@@ -190,11 +190,11 @@ const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
                   onClick={() => handleSuggestionClick(suggestion)}
                   sx={{
                     '&:hover': {
-                      bgcolor: '#F3F4F6',
+                      bgcolor: '#E8E2CE',
                     },
                   }}
                 >
-                  <LocationOn sx={{ color: '#9CA3AF', mr: 1 }} />
+                  <LocationOn sx={{ color: '#A89F84', mr: 1 }} />
                   <ListItemText 
                     primary={suggestion.description}
                     secondary={suggestion.types?.join(', ')}

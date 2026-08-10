@@ -22,6 +22,27 @@ export const SEARCH_USERS_LIGHT = gql`
       lastName
       email
       role
+      address
+      bio
+      profilePhotoSignedUrl
+      profilePhoto
+    }
+  }
+`;
+
+export const SEARCH_USERS = gql`
+  query SearchUsers($search: String, $page: Int, $limit: Int, $role: String) {
+    users(search: $search, page: $page, limit: $limit, role: $role) {
+      id
+      firstName
+      lastName
+      email
+      phone
+      role
+      address
+      bio
+      profilePhoto
+      profilePhotoSignedUrl
     }
   }
 `;

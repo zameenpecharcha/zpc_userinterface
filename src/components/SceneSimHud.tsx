@@ -30,12 +30,12 @@ const SceneSimHud: React.FC<Props> = ({ option, simSpeed, onSimSpeed }) => {
       >
         <Typography
           sx={{
-            fontFamily: '"DM Sans", sans-serif',
+            fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
             fontSize: 10,
             fontWeight: 700,
             letterSpacing: '0.14em',
             textTransform: 'uppercase',
-            color: 'rgba(255,255,255,0.45)',
+            color: 'rgba(235,230,212,0.45)',
             mb: 0.4,
           }}
         >
@@ -43,10 +43,10 @@ const SceneSimHud: React.FC<Props> = ({ option, simSpeed, onSimSpeed }) => {
         </Typography>
         <Typography
           sx={{
-            fontFamily: '"DM Sans", sans-serif',
+            fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
             fontSize: 15,
             fontWeight: 600,
-            color: 'rgba(255,255,255,0.92)',
+            color: 'rgba(235,230,212,0.92)',
             textShadow: '0 1px 12px rgba(0,0,0,0.45)',
           }}
         >
@@ -54,9 +54,9 @@ const SceneSimHud: React.FC<Props> = ({ option, simSpeed, onSimSpeed }) => {
         </Typography>
         <Typography
           sx={{
-            fontFamily: '"DM Sans", sans-serif',
+            fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
             fontSize: 12,
-            color: 'rgba(255,255,255,0.55)',
+            color: 'rgba(235,230,212,0.55)',
             mt: 0.25,
           }}
         >
@@ -78,12 +78,12 @@ const SceneSimHud: React.FC<Props> = ({ option, simSpeed, onSimSpeed }) => {
       >
         <Typography
           sx={{
-            fontFamily: '"DM Sans", sans-serif',
+            fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
             fontSize: 10,
             fontWeight: 700,
             letterSpacing: '0.12em',
             textTransform: 'uppercase',
-            color: 'rgba(255,255,255,0.4)',
+            color: 'rgba(235,230,212,0.4)',
           }}
         >
           Status
@@ -94,16 +94,16 @@ const SceneSimHud: React.FC<Props> = ({ option, simSpeed, onSimSpeed }) => {
               width: 7,
               height: 7,
               borderRadius: '50%',
-              bgcolor: '#5dcea0',
-              boxShadow: '0 0 10px #5dcea0',
+              bgcolor: '#5F8670',
+              boxShadow: '0 0 10px #5F8670',
             }}
           />
           <Typography
             sx={{
-              fontFamily: '"DM Sans", sans-serif',
+              fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
               fontSize: 12,
               fontWeight: 600,
-              color: 'rgba(255,255,255,0.85)',
+              color: 'rgba(235, 230, 212,0.85)',
             }}
           >
             Live · {simSpeed}×
@@ -131,18 +131,18 @@ const SceneSimHud: React.FC<Props> = ({ option, simSpeed, onSimSpeed }) => {
           background: 'rgba(12, 18, 24, 0.55)',
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
-          border: '1px solid rgba(255,255,255,0.14)',
+          border: '1px solid rgba(235,230,212,0.22)',
           pointerEvents: 'auto',
           maxWidth: 'calc(100vw - 20px)',
         }}
       >
         <Typography
           sx={{
-            fontFamily: '"DM Sans", sans-serif',
+            fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
             fontSize: 10,
             fontWeight: 600,
             letterSpacing: '0.06em',
-            color: 'rgba(255,255,255,0.45)',
+            color: 'rgba(235,230,212,0.45)',
             px: 0.8,
             display: { xs: 'none', sm: 'block' },
           }}
@@ -166,14 +166,14 @@ const SceneSimHud: React.FC<Props> = ({ option, simSpeed, onSimSpeed }) => {
                 py: { xs: 0.45, sm: 0.55 },
                 minWidth: { xs: 34, sm: 40 },
                 minHeight: { xs: 32, sm: 'auto' },
-                fontFamily: '"DM Sans", sans-serif',
+                fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
                 fontSize: { xs: 10, sm: 11 },
                 fontWeight: 700,
-                color: active ? '#0c1218' : 'rgba(255,255,255,0.75)',
-                background: active ? 'rgba(255,255,255,0.92)' : 'transparent',
+                color: active ? '#0A1210' : 'rgba(235,230,212,0.78)',
+                background: active ? 'rgba(235,230,212,0.92)' : 'transparent',
                 transition: 'background 0.2s ease, color 0.2s ease',
                 '&:hover': {
-                  background: active ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.1)',
+                  background: active ? 'rgba(235,230,212,0.92)' : 'rgba(235, 230, 212,0.1)',
                 },
               }}
             >

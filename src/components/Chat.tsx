@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useApolloClient } from '@apollo/client';
 import {
   Box, Typography, TextField, IconButton, Avatar, Menu, MenuItem,
@@ -17,8 +17,15 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { WS_CHAT_URL } from '../apollo-client';
 import { GET_CHAT_MESSAGES, REQUEST_CHAT_UPLOAD } from '../graphql/chat';
-import { nameInitials, stringToColor } from '../utils/mentions';
-import { MATTE_HEADER, MATTE_INSET } from '../theme/surfaces';
+import {
+  nameInitials,
+  stringToColor,
+  renderMentionContent,
+  getActiveMentionQuery,
+  insertMentionToken,
+} from '../utils/mentions';
+import { notifyMentionedUsers } from '../utils/notifyMentions';
+import { MATTE_SURFACE, MATTE_INSET } from '../theme/surfaces';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -51,6 +58,8 @@ interface ChatProps {
   userAvatars?: Record<string, string>;
   /** Display name map keyed by userId — used for initials when photo missing. */
   userNames?: Record<string, string>;
+  /** People you can @mention in this room (typically other participants). */
+  mentionCandidates?: Array<{ id: string; name: string }>;
   peerAvatarUrl?: string;
   peerDisplayName?: string;
 }
@@ -148,12 +157,17 @@ const Chat: React.FC<ChatProps> = ({
   onPeerPresenceChange,
   userAvatars,
   userNames,
+  mentionCandidates,
   peerAvatarUrl,
   peerDisplayName,
 }) => {
   const apollo = useApolloClient();
   const [messages, setMessages]   = useState<ChatMessage[]>([]);
   const [input, setInput]         = useState('');
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [mentionStart, setMentionStart] = useState<number | null>(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
   const [connected, setConnected] = useState(false);
   const [typingSet, setTypingSet] = useState<Set<string>>(new Set());
   const [msgMenu, setMsgMenu] = useState<{
@@ -342,9 +356,96 @@ const Chat: React.FC<ChatProps> = ({
 
   // Input is local-only while typing; websocket is used only on send.
 
+  const resolvedMentionCandidates = useMemo(() => {
+    const byId = new Map<string, string>();
+    (mentionCandidates || []).forEach((c) => {
+      if (c.id && c.id !== userId) byId.set(String(c.id), c.name || String(c.id));
+    });
+    Object.entries(userNames || {}).forEach(([id, name]) => {
+      if (id !== userId && !byId.has(id)) byId.set(id, name || id);
+    });
+    if (peerDisplayName) {
+      // Prefer peer for DMs when id is known from candidates/names only
+      messages.forEach((m) => {
+        if (m.userId !== userId && !byId.has(m.userId)) {
+          byId.set(m.userId, userNames?.[m.userId] || peerDisplayName || m.userId);
+        }
+      });
+    } else {
+      messages.forEach((m) => {
+        if (m.userId !== userId && !byId.has(m.userId)) {
+          byId.set(m.userId, userNames?.[m.userId] || m.userId);
+        }
+      });
+    }
+    return Array.from(byId.entries()).map(([id, name]) => ({ id, name }));
+  }, [mentionCandidates, userNames, userId, messages, peerDisplayName]);
+
+  const filteredMentions = useMemo(() => {
+    const q = mentionQuery.trim().toLowerCase();
+    const list = resolvedMentionCandidates.filter((c) =>
+      !q || c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q)
+    );
+    return list.slice(0, 8);
+  }, [resolvedMentionCandidates, mentionQuery]);
+
+  const authorDisplayName = useMemo(() => {
+    return userNames?.[userId] || 'Someone';
+  }, [userNames, userId]);
+
+  const notifyChatMentions = useCallback(
+    (text: string) => {
+      const authorId = parseInt(String(userId), 10);
+      if (Number.isNaN(authorId) || !text.includes('@[')) return;
+      void notifyMentionedUsers(apollo, {
+        content: text,
+        authorId,
+        authorName: authorDisplayName,
+        title: 'You were mentioned in chat',
+        message: `${authorDisplayName} mentioned you in a chat`,
+        metadata: { roomId: canonicalRoomId, kind: 'chat' },
+      });
+    },
+    [apollo, userId, authorDisplayName, canonicalRoomId]
+  );
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setInput(e.target.value);
+    const value = e.target.value;
+    setInput(value);
+    const cursor = e.target.selectionStart ?? value.length;
+    const active = getActiveMentionQuery(value, cursor);
+    if (active) {
+      setMentionOpen(true);
+      setMentionQuery(active.query);
+      setMentionStart(active.start);
+      setMentionIndex(0);
+    } else {
+      setMentionOpen(false);
+      setMentionQuery('');
+      setMentionStart(null);
+    }
   };
+
+  const selectMention = useCallback(
+    (person: { id: string; name: string }) => {
+      if (mentionStart === null) return;
+      const el = inputRef.current;
+      const cursor = el?.selectionStart ?? input.length;
+      const label = (person.name || 'User').replace(/[\[\]]/g, '').slice(0, 40);
+      const token = `@[${person.id}:${label}]`;
+      const { text, cursor: nextCursor } = insertMentionToken(input, cursor, mentionStart, token);
+      setInput(text);
+      setMentionOpen(false);
+      setMentionQuery('');
+      setMentionStart(null);
+      setTimeout(() => {
+        if (!inputRef.current) return;
+        inputRef.current.focus();
+        inputRef.current.setSelectionRange(nextCursor, nextCursor);
+      }, 0);
+    },
+    [input, mentionStart]
+  );
 
   const clearPendingFile = useCallback(() => {
     if (pendingPreview) URL.revokeObjectURL(pendingPreview);
@@ -410,6 +511,7 @@ const Chat: React.FC<ChatProps> = ({
       }
       setEditingMessage(null);
       setInput('');
+      notifyChatMentions(text);
       return;
     }
 
@@ -472,6 +574,7 @@ const Chat: React.FC<ChatProps> = ({
         );
         setInput('');
         clearPendingFile();
+        if (text) notifyChatMentions(text);
       } catch (err) {
         console.error('Chat media upload failed:', err);
         window.alert(err instanceof Error ? err.message : 'Failed to upload media');
@@ -491,12 +594,35 @@ const Chat: React.FC<ChatProps> = ({
       }
     );
     setInput('');
+    notifyChatMentions(text);
   }, [
     input, pendingFile, uploading, apollo, userId, canonicalRoomId,
-    sendPayload, clearPendingFile, pendingPreview, editingMessage,
+    sendPayload, clearPendingFile, pendingPreview, editingMessage, notifyChatMentions,
   ]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (mentionOpen && filteredMentions.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setMentionIndex((i) => (i + 1) % filteredMentions.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setMentionIndex((i) => (i - 1 + filteredMentions.length) % filteredMentions.length);
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        selectMention(filteredMentions[mentionIndex] || filteredMentions[0]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setMentionOpen(false);
+        return;
+      }
+    }
     if (e.key === 'Escape' && editingMessage) {
       e.preventDefault();
       setEditingMessage(null);
@@ -637,7 +763,7 @@ const Chat: React.FC<ChatProps> = ({
 
   const otherTyping = Array.from(typingSet).filter(u => u !== userId);
 
-  const LI_BLUE = '#0A66C2';
+  const LI_BLUE = '#16302A';
 
   const avatarFor = (uid: string) =>
     userAvatars?.[uid] || (peerAvatarUrl && uid !== userId ? peerAvatarUrl : undefined);
@@ -647,8 +773,10 @@ const Chat: React.FC<ChatProps> = ({
       display: 'flex',
       flexDirection: 'column',
       height: '100%',
-      bgcolor: '#F3EFE8',
-      backgroundImage: 'linear-gradient(165deg, #F6F2EB 0%, #EFEAE2 55%, #EAE4DB 100%)',
+      bgcolor: 'rgba(235,230,212,0.28)',
+      backgroundImage: 'linear-gradient(165deg, rgba(235,230,212,0.35) 0%, rgba(235,230,212,0.16) 100%)',
+      backdropFilter: 'blur(14px) saturate(1.15)',
+      WebkitBackdropFilter: 'blur(14px) saturate(1.15)',
     }}>
 
       {/* Messages — LinkedIn-style thread */}
@@ -663,9 +791,9 @@ const Chat: React.FC<ChatProps> = ({
         bgcolor: 'transparent',
       }}>
         {messages.length === 0 && (
-          <Box sx={{ m: 'auto', textAlign: 'center', color: '#666', userSelect: 'none', px: 2 }}>
-            <Typography variant="body2" fontWeight={600} color="#191919" mb={0.5}>No messages yet</Typography>
-            <Typography variant="caption" color="#666">Send a message to start the conversation.</Typography>
+          <Box sx={{ m: 'auto', textAlign: 'center', color: '#3A4540', userSelect: 'none', px: 2 }}>
+            <Typography variant="body2" fontWeight={600} color="#0A1210" mb={0.5}>No messages yet</Typography>
+            <Typography variant="caption" color="#3A4540">Send a message to start the conversation.</Typography>
           </Box>
         )}
 
@@ -713,8 +841,8 @@ const Chat: React.FC<ChatProps> = ({
                       ...(isMe ? { left: 4 } : { right: 4 }),
                       display: 'flex',
                       alignItems: 'center',
-                      bgcolor: '#fff',
-                      border: '1px solid rgba(90,70,50,0.12)',
+                      bgcolor: '#EBE6D4',
+                      border: '1px solid rgba(22,48,42,0.18)',
                       borderRadius: 2,
                       boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
                       zIndex: 2,
@@ -730,7 +858,7 @@ const Chat: React.FC<ChatProps> = ({
                         e.stopPropagation();
                         openMessageActions(msg, e.currentTarget, { x: e.clientX, y: e.clientY });
                       }}
-                      sx={{ p: 0.45, color: '#555' }}
+                      sx={{ p: 0.45, color: '#3A4540' }}
                     >
                       <MoreHorizIcon sx={{ fontSize: 18 }} />
                     </IconButton>
@@ -754,8 +882,8 @@ const Chat: React.FC<ChatProps> = ({
                   onTouchEnd={clearLongPress}
                   onTouchMove={clearLongPress}
                   sx={{
-                    bgcolor: isMe ? LI_BLUE : 'rgba(255,255,255,0.72)',
-                    color: isMe ? '#fff' : '#191919',
+                    bgcolor: isMe ? LI_BLUE : 'rgba(235,230,212,0.72)',
+                    color: isMe ? '#EBE6D4' : '#0A1210',
                     borderRadius: isMe ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
                     border: isMe ? 'none' : '1px solid rgba(90, 70, 50, 0.08)',
                     px: 1.5,
@@ -768,7 +896,7 @@ const Chat: React.FC<ChatProps> = ({
                   }}
                 >
                   {msg.isDeleted ? (
-                    <Typography variant="body2" sx={{ fontStyle: 'italic', color: isMe ? 'rgba(255,255,255,0.75)' : '#999', fontSize: 13 }}>
+                    <Typography variant="body2" sx={{ fontStyle: 'italic', color: isMe ? 'rgba(235,230,212,0.78)' : '#A89F84', fontSize: 13 }}>
                       This message was deleted
                     </Typography>
                   ) : (
@@ -796,12 +924,16 @@ const Chat: React.FC<ChatProps> = ({
                                 gap: 1,
                                 px: 1,
                                 py: 0.75,
-                                borderRadius: 1,
-                                bgcolor: isMe ? 'rgba(255,255,255,0.15)' : '#F4F2EE',
+                                borderRadius: 1.5,
+                                bgcolor: isMe ? 'rgba(235, 230, 212,0.15)' : '#EBE6D4',
                               }}
                             >
-                              <InsertDriveFileOutlinedIcon sx={{ fontSize: 20, opacity: 0.85 }} />
-                              <Typography variant="body2" sx={{ fontSize: 13, fontWeight: 600 }} noWrap>
+                              <InsertDriveFileOutlinedIcon sx={{ fontSize: 20, opacity: 0.85, color: isMe ? '#EBE6D4' : '#0A1210' }} />
+                              <Typography
+                                variant="body2"
+                                sx={{ fontSize: 13, fontWeight: 600, color: isMe ? '#EBE6D4' : '#0A1210' }}
+                                noWrap
+                              >
                                 {msg.mediaName || 'Attachment'}
                               </Typography>
                             </Box>
@@ -809,8 +941,21 @@ const Chat: React.FC<ChatProps> = ({
                         </Box>
                       )}
                       {msg.text ? (
-                        <Typography variant="body2" sx={{ lineHeight: 1.45, fontSize: 14, fontWeight: 400, whiteSpace: 'pre-wrap' }}>
-                          {msg.text}
+                        <Typography
+                          variant="body2"
+                          component="div"
+                          sx={{
+                            lineHeight: 1.45,
+                            fontSize: 14,
+                            fontWeight: 400,
+                            whiteSpace: 'pre-wrap',
+                            color: isMe ? '#EBE6D4' : '#0A1210',
+                          }}
+                        >
+                          {renderMentionContent(msg.text, {
+                            variant: 'chip',
+                            ink: isMe ? 'light' : 'dark',
+                          })}
                         </Typography>
                       ) : null}
                     </>
@@ -824,19 +969,19 @@ const Chat: React.FC<ChatProps> = ({
 
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '3px', mt: 0.5 }}>
                     {!!msg.editedAt && !msg.isDeleted && (
-                      <Typography variant="caption" sx={{ color: isMe ? 'rgba(255,255,255,0.7)' : '#8C8C8C', fontSize: 10, fontStyle: 'italic', lineHeight: 1 }}>
+                      <Typography variant="caption" sx={{ color: isMe ? 'rgba(235, 230, 212,0.7)' : '#A89F84', fontSize: 10, fontStyle: 'italic', lineHeight: 1 }}>
                         Edited
                       </Typography>
                     )}
-                    <Typography variant="caption" sx={{ color: isMe ? 'rgba(255,255,255,0.7)' : '#8C8C8C', fontSize: 10, lineHeight: 1 }}>
+                    <Typography variant="caption" sx={{ color: isMe ? 'rgba(235, 230, 212,0.7)' : '#A89F84', fontSize: 10, lineHeight: 1 }}>
                       {fmtTime(msg.sentAt)}
                     </Typography>
                     {isMe && !msg.isDeleted && (
                       msg.status >= 3
-                        ? <DoneAllIcon sx={{ fontSize: 13, color: '#fff' }} />
+                        ? <DoneAllIcon sx={{ fontSize: 13, color: '#EBE6D4' }} />
                         : msg.status >= 2
-                          ? <DoneAllIcon sx={{ fontSize: 13, color: 'rgba(255,255,255,0.65)' }} />
-                          : <DoneIcon sx={{ fontSize: 13, color: 'rgba(255,255,255,0.65)' }} />
+                          ? <DoneAllIcon sx={{ fontSize: 13, color: 'rgba(235,230,212,0.65)' }} />
+                          : <DoneIcon sx={{ fontSize: 13, color: 'rgba(235,230,212,0.65)' }} />
                     )}
                   </Box>
                 </Box>
@@ -853,11 +998,11 @@ const Chat: React.FC<ChatProps> = ({
             >
               {initialsFor(otherTyping[0])}
             </Avatar>
-            <Box sx={{ ...MATTE_INSET, bgcolor: 'rgba(255,255,255,0.72)', borderRadius: '12px 12px 12px 2px', px: 1.5, py: 1 }}>
+            <Box sx={{ ...MATTE_INSET, bgcolor: 'rgba(235,230,212,0.72)', borderRadius: '12px 12px 12px 2px', px: 1.5, py: 1 }}>
               <Box sx={{ display: 'flex', gap: '4px', alignItems: 'center', height: 16 }}>
                 {[0, 0.2, 0.4].map((delay, i) => (
                   <Box key={i} sx={{
-                    width: 5, height: 5, borderRadius: '50%', bgcolor: '#8C8C8C',
+                    width: 5, height: 5, borderRadius: '50%', bgcolor: '#A89F84',
                     animation: 'typingBounce 1.2s infinite',
                     animationDelay: `${delay}s`,
                     '@keyframes typingBounce': {
@@ -915,7 +1060,7 @@ const Chat: React.FC<ChatProps> = ({
             </MenuItem>
             <MenuItem
               onClick={() => msgMenu && deleteMessage(msgMenu.message)}
-              sx={{ color: '#DC2626', fontSize: 14, gap: 1 }}
+              sx={{ color: '#16302A', fontSize: 14, gap: 1 }}
             >
               <DeleteOutlineIcon sx={{ fontSize: 18 }} /> Delete for everyone
             </MenuItem>
@@ -950,7 +1095,7 @@ const Chat: React.FC<ChatProps> = ({
           },
         }}
       >
-        <Box sx={{ width: 36, height: 4, borderRadius: 2, bgcolor: '#D1D5DB', mx: 'auto', mb: 1.5 }} />
+        <Box sx={{ width: 36, height: 4, borderRadius: 2, bgcolor: '#DDD6C0', mx: 'auto', mb: 1.5 }} />
         <Box sx={{ display: 'flex', justifyContent: 'center', gap: 0.5, px: 1, pb: 1 }}>
           {REACTION_EMOJIS.map((emoji) => (
             <IconButton
@@ -969,7 +1114,7 @@ const Chat: React.FC<ChatProps> = ({
             <MenuItem onClick={() => startEdit(actionSheet)} sx={{ py: 1.5, gap: 1.5 }}>
               <EditOutlinedIcon /> Edit message
             </MenuItem>
-            <MenuItem onClick={() => deleteMessage(actionSheet)} sx={{ py: 1.5, gap: 1.5, color: '#DC2626' }}>
+            <MenuItem onClick={() => deleteMessage(actionSheet)} sx={{ py: 1.5, gap: 1.5, color: '#16302A' }}>
               <DeleteOutlineIcon /> Delete for everyone
             </MenuItem>
           </>
@@ -982,14 +1127,15 @@ const Chat: React.FC<ChatProps> = ({
             </MenuItem>
           </>
         )}
-        <MenuItem onClick={() => setActionSheet(null)} sx={{ py: 1.5, justifyContent: 'center', color: '#64748B' }}>
+        <MenuItem onClick={() => setActionSheet(null)} sx={{ py: 1.5, justifyContent: 'center', color: '#3A4540' }}>
           Cancel
         </MenuItem>
       </Drawer>
 
       {/* Composer */}
       <Box sx={{
-        ...MATTE_HEADER,
+        ...MATTE_SURFACE,
+        borderRadius: 0,
         borderBottom: 'none',
         borderTop: '1px solid rgba(90, 70, 50, 0.1)',
         boxShadow: 'none',
@@ -1001,9 +1147,9 @@ const Chat: React.FC<ChatProps> = ({
             px: 1.5, pt: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             borderBottom: '1px solid rgba(90,70,50,0.08)',
           }}>
-            <Box sx={{ minWidth: 0, borderLeft: '3px solid #0A66C2', pl: 1 }}>
-              <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#0A66C2' }}>Editing message</Typography>
-              <Typography noWrap sx={{ fontSize: 12, color: '#666', maxWidth: 280 }}>
+            <Box sx={{ minWidth: 0, borderLeft: '3px solid #16302A', pl: 1 }}>
+              <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#16302A' }}>Editing message</Typography>
+              <Typography noWrap sx={{ fontSize: 12, color: '#3A4540', maxWidth: 280 }}>
                 {editingMessage.text}
               </Typography>
             </Box>
@@ -1023,12 +1169,12 @@ const Chat: React.FC<ChatProps> = ({
                 component="img"
                 src={pendingPreview}
                 alt="Preview"
-                sx={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 1, border: '1px solid #E0E0E0' }}
+                sx={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 1, border: '1px solid #DDD6C0' }}
               />
             ) : (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, px: 1, py: 0.75, bgcolor: '#F4F2EE', borderRadius: 1 }}>
-                <InsertDriveFileOutlinedIcon sx={{ fontSize: 18, color: '#666' }} />
-                <Typography fontSize={12} fontWeight={600} color="#333" noWrap sx={{ maxWidth: 180 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, px: 1, py: 0.75, bgcolor: '#EBE6D4', borderRadius: 1 }}>
+                <InsertDriveFileOutlinedIcon sx={{ fontSize: 18, color: '#3A4540' }} />
+                <Typography fontSize={12} fontWeight={600} color="#0A1210" noWrap sx={{ maxWidth: 180 }}>
                   {pendingFile.name}
                 </Typography>
               </Box>
@@ -1038,7 +1184,7 @@ const Chat: React.FC<ChatProps> = ({
             </IconButton>
           </Box>
         )}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 1.25 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 1.25, position: 'relative' }}>
           <input
             ref={fileInputRef}
             type="file"
@@ -1046,6 +1192,60 @@ const Chat: React.FC<ChatProps> = ({
             accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip"
             onChange={onPickFile}
           />
+          {mentionOpen && filteredMentions.length > 0 && (
+            <Box
+              sx={{
+                position: 'absolute',
+                left: 12,
+                right: 56,
+                bottom: '100%',
+                mb: 0.5,
+                maxHeight: 220,
+                overflowY: 'auto',
+                bgcolor: '#F7F3E7',
+                border: '1px solid rgba(90,70,50,0.12)',
+                borderRadius: 1.5,
+                boxShadow: '0 8px 24px rgba(10,18,16,0.12)',
+                zIndex: 5,
+              }}
+            >
+              {filteredMentions.map((person, idx) => (
+                <Box
+                  key={person.id}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    selectMention(person);
+                  }}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1,
+                    px: 1.25,
+                    py: 0.85,
+                    cursor: 'pointer',
+                    bgcolor: idx === mentionIndex ? 'rgba(22,48,42,0.1)' : 'transparent',
+                    '&:hover': { bgcolor: 'rgba(22,48,42,0.1)' },
+                  }}
+                >
+                  <Avatar
+                    src={userAvatars?.[person.id]}
+                    sx={{
+                      width: 28,
+                      height: 28,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      bgcolor: stringToColor(person.name),
+                    }}
+                  >
+                    {nameInitials(person.name)}
+                  </Avatar>
+                  <Typography fontSize={13} fontWeight={600} color="#0A1210">
+                    {person.name}
+                  </Typography>
+                </Box>
+              ))}
+            </Box>
+          )}
           <TextField
             fullWidth
             multiline
@@ -1055,7 +1255,7 @@ const Chat: React.FC<ChatProps> = ({
               editingMessage
                 ? 'Edit your message…'
                 : connected
-                  ? 'Write a message…'
+                  ? 'Write a message… Type @ to mention'
                   : 'Write a message… (connecting)'
             }
             value={input}
@@ -1072,7 +1272,7 @@ const Chat: React.FC<ChatProps> = ({
                     disabled={uploading}
                     onClick={() => fileInputRef.current?.click()}
                     aria-label="Attach file"
-                    sx={{ color: '#666', p: 0.45, '&:hover': { color: LI_BLUE } }}
+                    sx={{ color: '#3A4540', p: 0.45, '&:hover': { color: LI_BLUE } }}
                   >
                     <AttachFileIcon sx={{ fontSize: 20 }} />
                   </IconButton>
@@ -1082,7 +1282,7 @@ const Chat: React.FC<ChatProps> = ({
                     onClick={(e) => setEmojiAnchor(e.currentTarget)}
                     aria-label="Insert emoji"
                     edge="end"
-                    sx={{ color: '#666', p: 0.45, '&:hover': { color: LI_BLUE } }}
+                    sx={{ color: '#3A4540', p: 0.45, '&:hover': { color: LI_BLUE } }}
                   >
                     <InsertEmoticonIcon sx={{ fontSize: 20 }} />
                   </IconButton>
@@ -1090,7 +1290,7 @@ const Chat: React.FC<ChatProps> = ({
               ),
             }}
             sx={{
-              bgcolor: '#F4F2EE',
+              bgcolor: '#EBE6D4',
               borderRadius: 1.5,
               '& .MuiOutlinedInput-root': {
                 borderRadius: 1.5,
@@ -1100,8 +1300,8 @@ const Chat: React.FC<ChatProps> = ({
                 minHeight: 40,
                 fontSize: 14,
                 alignItems: 'center',
-                '& fieldset': { borderColor: '#E0E0E0' },
-                '&:hover fieldset': { borderColor: '#B0B0B0' },
+                '& fieldset': { borderColor: '#DDD6C0' },
+                '&:hover fieldset': { borderColor: '#A89F84' },
                 '&.Mui-focused fieldset': { borderColor: LI_BLUE, borderWidth: 1 },
               },
               '& .MuiOutlinedInput-input': {
@@ -1113,19 +1313,19 @@ const Chat: React.FC<ChatProps> = ({
             onClick={() => { void send(); }}
             disabled={uploading || (!input.trim() && !pendingFile)}
             sx={{
-              bgcolor: !uploading && (input.trim() || pendingFile) ? LI_BLUE : '#E0E0E0',
-              color: !uploading && (input.trim() || pendingFile) ? '#fff' : '#8C8C8C',
+              bgcolor: !uploading && (input.trim() || pendingFile) ? LI_BLUE : '#DDD6C0',
+              color: !uploading && (input.trim() || pendingFile) ? '#EBE6D4' : '#A89F84',
               width: 40,
               height: 40,
               flexShrink: 0,
               borderRadius: 1.5,
               alignSelf: 'center',
-              '&:hover': { bgcolor: !uploading && (input.trim() || pendingFile) ? '#004182' : '#E0E0E0' },
-              '&:disabled': { bgcolor: '#E0E0E0', color: '#8C8C8C' },
+              '&:hover': { bgcolor: !uploading && (input.trim() || pendingFile) ? '#0F221C' : '#DDD6C0' },
+              '&:disabled': { bgcolor: '#DDD6C0', color: '#A89F84' },
               transition: 'background-color 0.15s',
             }}
           >
-            {uploading ? <CircularProgress size={18} sx={{ color: '#8C8C8C' }} /> : <SendIcon sx={{ fontSize: 18 }} />}
+            {uploading ? <CircularProgress size={18} sx={{ color: '#A89F84' }} /> : <SendIcon sx={{ fontSize: 18 }} />}
           </IconButton>
         </Box>
       </Box>
@@ -1173,7 +1373,7 @@ const Chat: React.FC<ChatProps> = ({
                 p: 0.5,
                 borderRadius: 1,
                 fontFamily: 'Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji, sans-serif',
-                '&:hover': { bgcolor: '#F4F2EE' },
+                '&:hover': { bgcolor: '#EBE6D4' },
               }}
             >
               {emoji}

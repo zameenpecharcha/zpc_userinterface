@@ -1,63 +1,37 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
-  Typography,
   TextField,
   Button,
-  Link,
   Alert,
-  Divider,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  CircularProgress,
   MenuItem,
-  useMediaQuery,
 } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
 import { AuthService } from '../services/authService';
 import { gql, useApolloClient, useMutation } from '@apollo/client';
 import { OTPType } from '../types/auth';
-import LandingBackground from './LandingBackground';
-import BackgroundPreviewSwitcher from './BackgroundPreviewSwitcher';
-import SceneSimHud from './SceneSimHud';
-import GoogleSignInButton from './GoogleSignInButton';
-import FacebookSignInButton from './FacebookSignInButton';
-import {
-  BACKGROUND_STORAGE_KEY,
-  BackgroundId,
-  getBackgroundOption,
-  readStoredBackgroundId,
-} from '../scene/backgroundRegistry';
+import LandingAtmosphereLogin from './LandingAtmosphereLogin';
+import LandingLiquidGlassLogin from './LandingLiquidGlassLogin';
 import { COUNTRY_CODES } from '../constants/countryCodes';
+import { postLoginPath } from '../utils/roles';
 
-const glassFieldSx = {
-  mb: { xs: 1.5, sm: 2.5 },
-  '& .MuiOutlinedInput-root': {
-    bgcolor: { xs: 'rgba(255,255,255,0.92)', sm: 'rgba(255,255,255,0.55)' },
-    backdropFilter: 'blur(8px)',
-    borderRadius: { xs: '10px', sm: '12px' },
-    fontFamily: '"DM Sans", sans-serif',
-    fontSize: { xs: '16px', sm: '1rem' },
-    transition: 'background 0.25s ease, box-shadow 0.25s ease',
-    '& fieldset': { borderColor: 'rgba(255,255,255,0.35)' },
-    '&:hover': {
-      bgcolor: { xs: '#fff', sm: 'rgba(255,255,255,0.72)' },
-      '& fieldset': { borderColor: 'rgba(255,255,255,0.55)' },
-    },
-    '&.Mui-focused': {
-      bgcolor: '#fff',
-      boxShadow: '0 0 0 3px rgba(30, 58, 72, 0.15)',
-      '& fieldset': { borderColor: 'rgba(30, 58, 72, 0.45)' },
-    },
-  },
-  '& .MuiInputBase-input': {
-    color: '#1a2a32',
-    py: { xs: 1.4, sm: 1.5 },
-  },
-};
+const LOGIN_LAYOUT_KEY = 'zpc_login_layout';
+type LoginLayoutId = 'atmosphere' | 'liquid-glass';
+
+function readStoredLoginLayout(): LoginLayoutId {
+  try {
+    const v = localStorage.getItem(LOGIN_LAYOUT_KEY);
+    if (v === 'atmosphere' || v === 'liquid-glass') return v;
+  } catch {
+    /* ignore */
+  }
+  return 'atmosphere';
+}
 
 const LOGIN_MUTATION = gql`
   mutation Login($email: String!, $password: String!) {
@@ -149,11 +123,17 @@ const Landing = () => {
     otp: '',
     newPassword: '',
   });
-  const [bgId, setBgId] = useState<BackgroundId>(() => readStoredBackgroundId());
-  const [simSpeed, setSimSpeed] = useState(1);
-  const bgOption = useMemo(() => getBackgroundOption(bgId), [bgId]);
-  const isMobile = useMediaQuery('(max-width:900px)');
-  const isNarrow = useMediaQuery('(max-width:600px)');
+  const [loginLayout, setLoginLayout] = useState<LoginLayoutId>(() => readStoredLoginLayout());
+  const isAtmosphere = loginLayout === 'atmosphere';
+
+  const setLayout = (id: LoginLayoutId) => {
+    setLoginLayout(id);
+    try {
+      localStorage.setItem(LOGIN_LAYOUT_KEY, id);
+    } catch {
+      /* ignore */
+    }
+  };
 
   const [login] = useMutation(LOGIN_MUTATION, {
     onCompleted: (data) => {
@@ -163,7 +143,7 @@ const Landing = () => {
         // Optionally store userInfo if needed
         localStorage.setItem('userInfo', JSON.stringify(data.login.userInfo));
         setSuccessMessage(data.login.message);
-        navigate('/home');
+        navigate(postLoginPath(data.login.userInfo));
       } else {
         setError(data?.login?.message || 'Login failed. Please try again.');
       }
@@ -246,7 +226,7 @@ const Landing = () => {
           response.userInfo
         );
         setSuccessMessage(response.message || 'Login successful');
-        navigate('/home');
+        navigate(postLoginPath(response.userInfo));
       } else {
         setError(response.message || 'Login failed. Please try again.');
       }
@@ -444,306 +424,124 @@ const Landing = () => {
         minHeight: { xs: '100dvh', sm: '100vh' },
         width: '100%',
         maxWidth: '100vw',
-        overflowX: 'hidden',
-        overflowY: 'auto',
-        WebkitOverflowScrolling: 'touch',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        px: { xs: 2, sm: 3 },
-        pt: {
-          xs: 'max(20px, env(safe-area-inset-top))',
-          sm: 4,
-          md: 6,
-        },
-        pb: {
-          xs: 'max(24px, env(safe-area-inset-bottom))',
-          sm: isMobile ? 'calc(88px + env(safe-area-inset-bottom))' : 6,
-          md: 6,
-        },
+        overflow: isAtmosphere ? 'auto' : 'hidden',
         boxSizing: 'border-box',
+        ...(isAtmosphere
+          ? {
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              px: { xs: 2, sm: 3 },
+              pt: {
+                xs: 'max(20px, env(safe-area-inset-top))',
+                sm: 4,
+                md: 6,
+              },
+              pb: {
+                xs: 'max(24px, env(safe-area-inset-bottom))',
+                sm: 6,
+                md: 6,
+              },
+              bgcolor: '#16302A',
+              backgroundColor: '#16302A',
+              backgroundImage: 'none',
+            }
+          : { bgcolor: '#000' }),
       }}
     >
-      <LandingBackground option={bgOption} simSpeed={simSpeed} />
+      {/* Layout toggle: Atmosphere vs Liquid Glass */}
       <Box
-        aria-hidden
         sx={{
           position: 'fixed',
-          inset: 0,
-          zIndex: 1,
-          pointerEvents: 'none',
-          background: {
-            xs: 'linear-gradient(180deg, rgba(12,20,28,0.35) 0%, rgba(12,20,28,0.55) 100%)',
-            sm: bgOption.vignette,
-          },
-          transition: 'background 0.5s ease',
-        }}
-      />
-
-      {/* Keep sim HUD / bg switcher off phones so login stays usable */}
-      {!isNarrow && (
-        <SceneSimHud option={bgOption} simSpeed={simSpeed} onSimSpeed={setSimSpeed} />
-      )}
-
-      {!isNarrow && (
-        <BackgroundPreviewSwitcher
-          value={bgId}
-          onChange={(id) => {
-            setBgId(id);
-            try {
-              localStorage.setItem(BACKGROUND_STORAGE_KEY, id);
-            } catch {
-              /* ignore */
-            }
-          }}
-        />
-      )}
-
-      <Box
-        sx={{
-          position: 'relative',
-          zIndex: 2,
-          width: '100%',
-          maxWidth: { xs: 380, sm: 440 },
+          top: { xs: 'max(10px, env(safe-area-inset-top))', sm: 16 },
+          right: { xs: 12, sm: 18 },
+          zIndex: 40,
           display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          mx: 'auto',
+          gap: 0.5,
+          p: 0.4,
+          borderRadius: 999,
+          bgcolor: isAtmosphere ? 'rgba(22, 48, 42, 0.9)' : 'rgba(0, 0, 0, 0.45)',
+          backdropFilter: 'blur(12px)',
+          boxShadow: '0 6px 20px rgba(0,0,0,0.18)',
         }}
       >
-        <Typography
-          component="h1"
-          sx={{
-            fontFamily: '"Cormorant Garamond", Georgia, serif',
-            fontWeight: 600,
-            fontSize: { xs: '1.65rem', sm: '2.85rem' },
-            letterSpacing: '0.02em',
-            color: bgOption.brandColor,
-            textAlign: 'center',
-            mb: { xs: 0.35, sm: 0.75 },
-            px: 0.5,
-            textShadow: '0 2px 24px rgba(0,0,0,0.35)',
-            lineHeight: 1.15,
-            transition: 'color 0.4s ease',
-          }}
-        >
-          Zameen pe charcha
-        </Typography>
-        <Typography
-          sx={{
-            fontFamily: '"DM Sans", sans-serif',
-            fontSize: { xs: '0.78rem', sm: '0.95rem' },
-            fontWeight: 500,
-            color: bgOption.taglineColor,
-            mb: { xs: 2, sm: 3.5 },
-            px: 1,
-            textAlign: 'center',
-            textShadow: '0 1px 12px rgba(0,0,0,0.3)',
-            transition: 'color 0.4s ease',
-            maxWidth: 300,
-            lineHeight: 1.4,
-          }}
-        >
-          A single platform for all your real needs
-        </Typography>
-
-        <Box
-          sx={{
-            width: '100%',
-            p: { xs: 2.5, sm: 3.5 },
-            borderRadius: { xs: '16px', sm: '20px' },
-            background: {
-              xs: 'rgba(255, 252, 248, 0.94)',
-              sm: 'rgba(248, 244, 238, 0.55)',
-            },
-            backdropFilter: { xs: 'blur(20px) saturate(1.2)', sm: 'blur(22px) saturate(1.35)' },
-            WebkitBackdropFilter: { xs: 'blur(20px) saturate(1.2)', sm: 'blur(22px) saturate(1.35)' },
-            border: '1px solid rgba(255,255,255,0.55)',
-            boxShadow:
-              '0 8px 32px rgba(12, 24, 32, 0.22), inset 0 1px 0 rgba(255,255,255,0.55)',
-          }}
-        >
-          <Typography
-            sx={{
-              fontFamily: '"DM Sans", sans-serif',
-              fontWeight: 600,
-              fontSize: { xs: '1.1rem', sm: '1.35rem' },
-              color: '#1a2a32',
-              mb: { xs: 1.5, sm: 2.5 },
-            }}
-          >
-            Login to your account
-          </Typography>
-          {error && (
-            <Alert severity="error" sx={{ width: '100%', mb: 2, borderRadius: 2 }}>
-              {error}
-            </Alert>
-          )}
-          {successMessage && (
-            <Alert severity="success" sx={{ width: '100%', mb: 2, borderRadius: 2 }}>
-              {successMessage}
-            </Alert>
-          )}
-          <Box component="form" onSubmit={handleSubmit} sx={{ width: '100%' }}>
-            <Typography sx={{ fontFamily: '"DM Sans", sans-serif', fontSize: 13, fontWeight: 600, color: '#2c3e48', mb: 1 }}>
-              Email
-            </Typography>
-            <TextField
-              required
-              fullWidth
-              name="email"
-              type="email"
-              placeholder="Enter your email"
-              value={formData.email}
-              onChange={handleChange}
-              disabled={loggingIn}
-              sx={glassFieldSx}
-            />
-            <Typography sx={{ fontFamily: '"DM Sans", sans-serif', fontSize: 13, fontWeight: 600, color: '#2c3e48', mb: 1 }}>
-              Password
-            </Typography>
-            <TextField
-              required
-              fullWidth
-              name="password"
-              type="password"
-              placeholder="Enter your password"
-              value={formData.password}
-              onChange={handleChange}
-              disabled={loggingIn}
-              sx={{ ...glassFieldSx, mb: 1 }}
-            />
-            <Box sx={{ textAlign: 'right', mb: { xs: 2, sm: 2.5 } }}>
-              <Link
-                component="button"
-                type="button"
-                disabled={loggingIn}
-                onClick={() => setForgotPasswordOpen(true)}
-                sx={{
-                  fontFamily: '"DM Sans", sans-serif',
-                  color: '#1e3a48',
-                  fontWeight: 600,
-                  fontSize: { xs: 13, sm: 14 },
-                  textDecoration: 'none',
-                  minHeight: 44,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  '&:hover': { textDecoration: 'underline' },
-                  '&.Mui-disabled': { color: 'rgba(30,58,72,0.4)' },
-                }}
-              >
-                Forgot password?
-              </Link>
-            </Box>
+        {(
+          [
+            { id: 'atmosphere' as const, label: 'Atmosphere' },
+            { id: 'liquid-glass' as const, label: 'Liquid Glass' },
+          ] as const
+        ).map((opt) => {
+          const active = loginLayout === opt.id;
+          return (
             <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              disabled={loggingIn}
-              startIcon={
-                loggingIn ? (
-                  <CircularProgress size={18} thickness={5} sx={{ color: '#f7f3ec' }} />
-                ) : undefined
-              }
+              key={opt.id}
+              size="small"
+              onClick={() => setLayout(opt.id)}
               sx={{
-                fontFamily: '"DM Sans", sans-serif',
-                fontWeight: 600,
-                bgcolor: '#1e3a48',
-                color: '#f7f3ec',
-                py: { xs: 1.4, sm: 1.5 },
-                mb: { xs: 1.75, sm: 2.5 },
-                borderRadius: '12px',
                 textTransform: 'none',
-                fontSize: { xs: '1rem', sm: '1rem' },
-                minHeight: 48,
-                touchAction: 'manipulation',
-                boxShadow: '0 8px 24px rgba(30, 58, 72, 0.35)',
-                transition: 'background 0.25s ease, transform 0.2s ease',
-                '&:hover': { bgcolor: '#162c38', transform: 'translateY(-1px)' },
-                '&.Mui-disabled': {
-                  bgcolor: '#1e3a48',
-                  color: '#f7f3ec',
-                  opacity: 0.85,
+                fontFamily: isAtmosphere
+                  ? '"Source Serif 4", "Source Serif Pro", Georgia, serif'
+                  : '"Poppins", system-ui, sans-serif',
+                fontWeight: 700,
+                fontSize: 12,
+                px: 1.5,
+                py: 0.55,
+                minWidth: 0,
+                borderRadius: 999,
+                color: active
+                  ? isAtmosphere
+                    ? '#16302A'
+                    : '#0A0A0A'
+                  : 'rgba(255,255,255,0.85)',
+                bgcolor: active ? '#EBE6D4' : 'transparent',
+                '&:hover': {
+                  bgcolor: active ? '#EBE6D4' : 'rgba(255,255,255,0.12)',
                 },
               }}
             >
-              {loggingIn ? 'Signing in…' : 'Login'}
+              {opt.label}
             </Button>
-            <Divider
-              sx={{
-                fontFamily: '"DM Sans", sans-serif',
-                fontSize: 12,
-                color: '#52646c',
-                mb: { xs: 1.75, sm: 2 },
-              }}
-            >
-              or
-            </Divider>
-            <Box sx={{ mb: { xs: 1.75, sm: 2.5 } }}>
-              <GoogleSignInButton
-                text="continue_with"
-                disabled={loggingIn || googleSigningIn || facebookSigningIn || mobileLoading}
-                onCredential={handleGoogleCredential}
-              />
-            </Box>
-            <Box sx={{ mb: { xs: 1.75, sm: 2.5 } }}>
-              <FacebookSignInButton
-                disabled={loggingIn || googleSigningIn || facebookSigningIn || mobileLoading}
-                onAccessToken={handleFacebookAccessToken}
-              />
-            </Box>
-            <Button
-              fullWidth
-              variant="outlined"
-              disabled={loggingIn || googleSigningIn || facebookSigningIn || mobileLoading}
-              onClick={() => setMobileSignInOpen(true)}
-              sx={{
-                fontFamily: '"DM Sans", sans-serif',
-                textTransform: 'none',
-                borderRadius: '12px',
-                py: 1.25,
-                mb: { xs: 1.75, sm: 2.5 },
-                color: '#1e3a48',
-                borderColor: 'rgba(30, 58, 72, 0.35)',
-                bgcolor: 'rgba(255,255,255,0.65)',
-              }}
-            >
-              Continue with mobile number
-            </Button>
-            <Box sx={{ textAlign: 'center' }}>
-              <Typography
-                display="inline"
-                sx={{
-                  fontFamily: '"DM Sans", sans-serif',
-                  color: '#3a4f58',
-                  fontSize: { xs: 13, sm: 14 },
-                }}
-              >
-                Don't have an account?{' '}
-              </Typography>
-              <Link
-                component="button"
-                type="button"
-                onClick={() => navigate('/register')}
-                sx={{
-                  fontFamily: '"DM Sans", sans-serif',
-                  color: '#1e3a48',
-                  fontWeight: 700,
-                  fontSize: { xs: 13, sm: 14 },
-                  textDecoration: 'none',
-                  minHeight: 44,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  verticalAlign: 'middle',
-                  '&:hover': { textDecoration: 'underline' },
-                }}
-              >
-                Sign up
-              </Link>
-            </Box>
-          </Box>
-        </Box>
+          );
+        })}
       </Box>
+
+      {isAtmosphere ? (
+        <LandingAtmosphereLogin
+          email={formData.email}
+          password={formData.password}
+          error={error}
+          successMessage={successMessage}
+          loggingIn={loggingIn}
+          googleSigningIn={googleSigningIn}
+          facebookSigningIn={facebookSigningIn}
+          mobileLoading={mobileLoading}
+          onChange={handleChange}
+          onSubmit={handleSubmit}
+          onForgotPassword={() => setForgotPasswordOpen(true)}
+          onSignUp={() => navigate('/register')}
+          onGoogleCredential={handleGoogleCredential}
+          onFacebookAccessToken={handleFacebookAccessToken}
+          onMobileSignIn={() => setMobileSignInOpen(true)}
+        />
+      ) : (
+        <LandingLiquidGlassLogin
+          email={formData.email}
+          password={formData.password}
+          error={error}
+          successMessage={successMessage}
+          loggingIn={loggingIn}
+          googleSigningIn={googleSigningIn}
+          facebookSigningIn={facebookSigningIn}
+          mobileLoading={mobileLoading}
+          onChange={handleChange}
+          onSubmit={handleSubmit}
+          onForgotPassword={() => setForgotPasswordOpen(true)}
+          onSignUp={() => navigate('/register')}
+          onGoogleCredential={handleGoogleCredential}
+          onFacebookAccessToken={handleFacebookAccessToken}
+          onMobileSignIn={() => setMobileSignInOpen(true)}
+        />
+      )}
 
       <Dialog
         open={mobileSignInOpen}
@@ -861,7 +659,7 @@ const Landing = () => {
           },
         }}
       >
-        <DialogTitle sx={{ fontWeight: 600, fontSize: 22, color: '#1e3a48', textAlign: 'center', pb: 1, fontFamily: '"DM Sans", sans-serif' }}>
+        <DialogTitle sx={{ fontWeight: 600, fontSize: 22, color: '#16302A', textAlign: 'center', pb: 1, fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif' }}>
           Reset Password
         </DialogTitle>
         <DialogContent sx={{ pt: 0 }}>
@@ -876,7 +674,7 @@ const Landing = () => {
               variant="outlined"
               value={resetData.email}
               onChange={handleResetDataChange}
-              sx={{ mb: 2, bgcolor: '#F9FAFB' }}
+              sx={{ mb: 2, bgcolor: '#EBE6D4' }}
               InputProps={{ sx: { borderRadius: 2 } }}
             />
           )}
@@ -892,20 +690,20 @@ const Landing = () => {
                 variant="outlined"
                 value={resetData.otp}
                 onChange={handleResetDataChange}
-                sx={{ mb: 2, bgcolor: '#F9FAFB' }}
+                sx={{ mb: 2, bgcolor: '#EBE6D4' }}
                 InputProps={{ sx: { borderRadius: 2 } }}
               />
               <Button
                 fullWidth
                 variant="contained"
                 sx={{
-                  bgcolor: '#1e3a48',
-                  color: '#fff',
+                  bgcolor: '#16302A',
+                  color: '#EBE6D4',
                   fontWeight: 600,
                   mb: 2,
                   mt: 1,
                   textTransform: 'none',
-                  '&:hover': { bgcolor: '#162c38' },
+                  '&:hover': { bgcolor: '#0F221C' },
                 }}
                 onClick={handleVerifyOTP}
               >
@@ -933,14 +731,14 @@ const Landing = () => {
               setError('');
               setSuccessMessage('');
             }}
-            sx={{ color: '#1e3a48', fontWeight: 500, textTransform: 'none' }}
+            sx={{ color: '#16302A', fontWeight: 500, textTransform: 'none' }}
           >
             Cancel
           </Button>
           {resetStep === 'email' && (
             <Button
               onClick={handleForgotPassword}
-              sx={{ color: '#1e3a48', fontWeight: 600, textTransform: 'none' }}
+              sx={{ color: '#16302A', fontWeight: 600, textTransform: 'none' }}
             >
               Send OTP
             </Button>

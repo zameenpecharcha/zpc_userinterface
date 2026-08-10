@@ -43,9 +43,15 @@ export function renderMentionContent(
   opts: {
     onOpenProfile?: (userId: string) => void;
     onOpenProperty?: (propertyId: string) => void;
+    /** Teams-like filled chip (chat); default is underlined link style. */
+    variant?: 'link' | 'chip';
+    /** Chip colors for dark (outgoing) bubbles */
+    ink?: 'dark' | 'light';
   } = {}
 ): React.ReactNode {
   if (!content) return content;
+  const variant = opts.variant || 'link';
+  const ink = opts.ink || 'dark';
   const parts: React.ReactNode[] = [];
   let lastIndex = 0;
   let match: RegExpExecArray | null;
@@ -57,6 +63,7 @@ export function renderMentionContent(
     const isProperty = match[1] === 'p';
     const id = match[2];
     const label = match[3];
+    const chipLight = ink === 'light';
     parts.push(
       <Box
         component="span"
@@ -69,12 +76,41 @@ export function renderMentionContent(
             opts.onOpenProfile?.(id);
           }
         }}
-        sx={{
-          color: isProperty ? '#0D9488' : '#2563EB',
-          fontWeight: 600,
-          cursor: 'pointer',
-          '&:hover': { textDecoration: 'underline' },
-        }}
+        sx={
+          variant === 'chip'
+            ? {
+                display: 'inline',
+                fontWeight: 700,
+                cursor: 'pointer',
+                px: 0.6,
+                py: 0.1,
+                mx: 0.1,
+                borderRadius: 1,
+                bgcolor: chipLight
+                  ? 'rgba(235,230,212,0.22)'
+                  : isProperty
+                    ? 'rgba(95,134,112,0.18)'
+                    : 'rgba(22,48,42,0.12)',
+                color: chipLight
+                  ? '#EBE6D4'
+                  : isProperty
+                    ? '#5F8670'
+                    : '#16302A',
+                '&:hover': {
+                  bgcolor: chipLight
+                    ? 'rgba(235,230,212,0.32)'
+                    : isProperty
+                      ? 'rgba(95,134,112,0.28)'
+                      : 'rgba(22,48,42,0.2)',
+                },
+              }
+            : {
+                color: isProperty ? '#5F8670' : '#16302A',
+                fontWeight: 600,
+                cursor: 'pointer',
+                '&:hover': { textDecoration: 'underline' },
+              }
+        }
       >
         @{label}
       </Box>
@@ -85,4 +121,27 @@ export function renderMentionContent(
     parts.push(content.slice(lastIndex));
   }
   return parts.length > 0 ? parts : content;
+}
+
+/** Match trailing @query for autocomplete (Teams-style). */
+export function getActiveMentionQuery(text: string, cursorPos: number): { start: number; query: string } | null {
+  const before = text.slice(0, cursorPos);
+  const m = before.match(/@([\w.\s-]{0,40})$/);
+  if (!m) return null;
+  // Don't trigger inside an existing completed token
+  if (/@\[[^\]]*$/.test(before)) return null;
+  return { start: cursorPos - m[0].length, query: m[1] };
+}
+
+export function insertMentionToken(
+  text: string,
+  cursorPos: number,
+  start: number,
+  token: string
+): { text: string; cursor: number } {
+  const before = text.slice(0, start);
+  const after = text.slice(cursorPos);
+  const next = `${before}${token} ${after}`;
+  const cursor = before.length + token.length + 1;
+  return { text: next, cursor };
 }
