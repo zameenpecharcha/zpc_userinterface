@@ -32,7 +32,7 @@ const BackgroundPreviewSwitcher: React.FC<Props> = ({ value, onChange }) => {
         background: 'rgba(18, 24, 28, 0.72)',
         backdropFilter: 'blur(16px) saturate(1.2)',
         WebkitBackdropFilter: 'blur(16px) saturate(1.2)',
-        border: '1px solid rgba(255,255,255,0.18)',
+        border: '1px solid rgba(235,230,212,0.28)',
         boxShadow: '0 10px 40px rgba(0,0,0,0.28)',
         pointerEvents: 'auto',
         boxSizing: 'border-box',
@@ -40,12 +40,12 @@ const BackgroundPreviewSwitcher: React.FC<Props> = ({ value, onChange }) => {
     >
       <Typography
         sx={{
-          fontFamily: '"DM Sans", sans-serif',
+          fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
           fontSize: { xs: 9, sm: 11 },
           fontWeight: 600,
           letterSpacing: '0.08em',
           textTransform: 'uppercase',
-          color: 'rgba(255,255,255,0.55)',
+          color: 'rgba(235,230,212,0.55)',
           textAlign: 'center',
           mb: { xs: 0.5, sm: 0.85 },
           display: { xs: 'none', sm: 'block' },
@@ -55,12 +55,12 @@ const BackgroundPreviewSwitcher: React.FC<Props> = ({ value, onChange }) => {
       </Typography>
       <Typography
         sx={{
-          fontFamily: '"DM Sans", sans-serif',
+          fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
           fontSize: 9,
           fontWeight: 600,
           letterSpacing: '0.06em',
           textTransform: 'uppercase',
-          color: 'rgba(255,255,255,0.5)',
+          color: 'rgba(235,230,212,0.5)',
           textAlign: 'center',
           mb: 0.5,
           display: { xs: 'block', sm: 'none' },
@@ -94,19 +94,19 @@ const BackgroundPreviewSwitcher: React.FC<Props> = ({ value, onChange }) => {
                 cursor: 'pointer',
                 touchAction: 'manipulation',
                 border: active
-                  ? '1px solid rgba(255,255,255,0.55)'
-                  : '1px solid rgba(255,255,255,0.12)',
-                background: active ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.06)',
-                color: '#f5f2eb',
+                  ? '1px solid rgba(235,230,212,0.55)'
+                  : '1px solid rgba(235,230,212,0.2)',
+                background: active ? 'rgba(235,230,212,0.28)' : 'rgba(235, 230, 212,0.06)',
+                color: '#EBE6D4',
                 borderRadius: { xs: '10px', sm: '12px' },
                 px: { xs: 1, sm: 1.35 },
                 py: { xs: 0.7, sm: 0.85 },
                 minWidth: { xs: 58, sm: 96 },
                 minHeight: { xs: 40, sm: 'auto' },
-                fontFamily: '"DM Sans", sans-serif',
+                fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
                 transition: 'background 0.2s ease, border-color 0.2s ease, transform 0.2s ease',
                 '&:hover': {
-                  background: 'rgba(255,255,255,0.14)',
+                  background: 'rgba(235,230,212,0.22)',
                   transform: 'translateY(-1px)',
                 },
               }}

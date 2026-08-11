@@ -38,7 +38,7 @@ export const BACKGROUND_OPTIONS: BackgroundOption[] = [
     create: createEarthPropertyGlobe,
     vignette:
       'radial-gradient(ellipse at 50% 42%, rgba(5, 10, 18, 0.0) 0%, rgba(5, 10, 18, 0.08) 100%)',
-    brandColor: '#eef6ff',
+    brandColor: '#E8E2CE',
     taglineColor: 'rgba(220,235,255,0.82)',
     showSimHud: true,
     hudTitle: 'Property Field · Earth',
@@ -52,7 +52,7 @@ export const BACKGROUND_OPTIONS: BackgroundOption[] = [
     create: createConstructionTimeline,
     vignette:
       'radial-gradient(ellipse at 50% 40%, rgba(20, 28, 32, 0.08) 0%, rgba(16, 22, 26, 0.42) 100%)',
-    brandColor: '#f4f1ea',
+    brandColor: '#EBE6D4',
     taglineColor: 'rgba(244,241,234,0.85)',
     showSimHud: true,
     hudTitle: 'Construction Timeline',
@@ -66,7 +66,7 @@ export const BACKGROUND_OPTIONS: BackgroundOption[] = [
     create: createPropertyNetwork,
     vignette:
       'radial-gradient(ellipse at 50% 45%, rgba(8, 16, 20, 0.2) 0%, rgba(6, 12, 16, 0.55) 100%)',
-    brandColor: '#e8f4ef',
+    brandColor: '#E8E2CE',
     taglineColor: 'rgba(232,244,239,0.8)',
     showSimHud: true,
     hudTitle: 'Community Network',
@@ -80,7 +80,7 @@ export const BACKGROUND_OPTIONS: BackgroundOption[] = [
     create: createFloatingDocuments,
     vignette:
       'radial-gradient(ellipse at 50% 45%, rgba(12, 16, 24, 0.15) 0%, rgba(10, 14, 20, 0.5) 100%)',
-    brandColor: '#f2ebe3',
+    brandColor: '#EBE6D4',
     taglineColor: 'rgba(242,235,227,0.82)',
     showSimHud: true,
     hudTitle: 'Property Records',
@@ -94,7 +94,7 @@ export const BACKGROUND_OPTIONS: BackgroundOption[] = [
     create: createSmartCity,
     vignette:
       'radial-gradient(ellipse at 50% 45%, rgba(12, 24, 32, 0.08) 0%, rgba(12, 24, 32, 0.42) 100%)',
-    brandColor: '#f7f3ec',
+    brandColor: '#EBE6D4',
     taglineColor: 'rgba(247,243,236,0.82)',
     showSimHud: false,
     hudTitle: 'Living City',

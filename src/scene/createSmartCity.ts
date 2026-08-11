@@ -146,9 +146,9 @@ export function createSmartCity(container: HTMLElement): SmartCityHandle {
   const tmp = new THREE.Object3D();
 
   // ---- Instanced buildings (skyline, offices, apartments) ----
-  const facadeOffice = makeBuildingTexture('#4a5568', 14, 6, false);
-  const facadeApt = makeBuildingTexture('#8b7355', 10, 5, true);
-  const facadeGlass = makeBuildingTexture('#5c6b7a', 16, 7, false);
+  const facadeOffice = makeBuildingTexture('#3A4540', 14, 6, false);
+  const facadeApt = makeBuildingTexture('#A89F84', 10, 5, true);
+  const facadeGlass = makeBuildingTexture('#3A4540', 16, 7, false);
 
   function addInstancedBuildings(
     count: number,

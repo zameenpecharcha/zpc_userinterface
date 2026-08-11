@@ -34,7 +34,18 @@ export const POST_FIELDS = gql`
     }
     likeCount
     commentCount
+    shareCount
+    viewCount
+    reportCount
     isLiked
+    isPinned
+    pinnedAt
+    allowComments
+    allowShare
+    allowReactions
+    propertyId
+    postCode
+    isAnonymous
   }
 `;
 
@@ -58,8 +69,28 @@ export const GET_POSTS_BY_USER = gql`
 `;
 
 export const SEARCH_POSTS = gql`
-  query SearchPosts($page: Int = 1, $limit: Int = 10) {
-    searchPosts(page: $page, limit: $limit) {
+  query SearchPosts(
+    $page: Int = 1
+    $limit: Int = 10
+    $query: String
+    $location: String
+    $propertyType: String
+    $minPrice: Float
+    $maxPrice: Float
+    $status: String
+    $hashtag: String
+  ) {
+    searchPosts(
+      page: $page
+      limit: $limit
+      query: $query
+      location: $location
+      propertyType: $propertyType
+      minPrice: $minPrice
+      maxPrice: $maxPrice
+      status: $status
+      hashtag: $hashtag
+    ) {
       id
       userId
       userFirstName
@@ -384,6 +415,81 @@ export const DELETE_POST_MEDIA = gql`
     deletePostMedia(mediaId: $mediaId) {
       success
       message
+    }
+  }
+`;
+
+export const SHARE_POST = gql`
+  mutation SharePost($postId: String!, $sharedBy: String!, $shareType: String, $caption: String, $visibility: String) {
+    sharePost(
+      postId: $postId
+      sharedBy: $sharedBy
+      shareType: $shareType
+      caption: $caption
+      visibility: $visibility
+    ) {
+      success
+      message
+      share {
+        id
+        shareCode
+        postId
+        shareType
+      }
+    }
+  }
+`;
+
+export const REPORT_POST = gql`
+  mutation ReportPost(
+    $postId: String!
+    $reportedBy: String!
+    $reportedUserId: String
+    $reasonCode: String
+    $description: String
+  ) {
+    reportPost(
+      postId: $postId
+      reportedBy: $reportedBy
+      reportedUserId: $reportedUserId
+      reasonCode: $reasonCode
+      description: $description
+    ) {
+      success
+      message
+      report {
+        id
+        reportCode
+        status
+      }
+    }
+  }
+`;
+
+export const PIN_POST = gql`
+  mutation PinPost($postId: String!, $userId: String!) {
+    pinPost(postId: $postId, userId: $userId) {
+      success
+      message
+      post {
+        id
+        isPinned
+        pinnedAt
+      }
+    }
+  }
+`;
+
+export const UNPIN_POST = gql`
+  mutation UnpinPost($postId: String!, $userId: String!) {
+    unpinPost(postId: $postId, userId: $userId) {
+      success
+      message
+      post {
+        id
+        isPinned
+        pinnedAt
+      }
     }
   }
 `;

@@ -60,6 +60,7 @@ export const GET_USER_ROOMS = gql`
         firstName
         lastName
         avatarUrl
+        lastLoginAt
       }
     }
   }

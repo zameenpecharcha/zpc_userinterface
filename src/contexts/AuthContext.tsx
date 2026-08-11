@@ -8,6 +8,7 @@ interface AuthContextType {
   refreshToken: string | null;
   loading: boolean;
   setAuth: (token: string, refreshToken: string, user: UserInfo) => void;
+  updateUser: (partial: Partial<UserInfo>) => void;
   clearAuth: () => void;
 }
 
@@ -18,6 +19,7 @@ const AuthContext = createContext<AuthContextType>({
   refreshToken: null,
   loading: false,
   setAuth: () => {},
+  updateUser: () => {},
   clearAuth: () => {},
 });
 
@@ -97,6 +99,30 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setIsAuthenticated(true);
   };
 
+  const updateUser = (partial: Partial<UserInfo>) => {
+    setUser((prev) => {
+      const base = prev || (() => {
+        try {
+          const raw = localStorage.getItem('user') || localStorage.getItem('userInfo');
+          return raw ? JSON.parse(raw) : null;
+        } catch {
+          return null;
+        }
+      })();
+      if (!base) return prev;
+      const next = { ...base, ...partial, id: String(partial.id ?? base.id) };
+      const userString = JSON.stringify(next);
+      localStorage.setItem('user', userString);
+      localStorage.setItem('userInfo', userString);
+      try {
+        window.dispatchEvent(new CustomEvent('zpc:user-photos-updated', { detail: next }));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
+
   const clearAuth = () => {
     console.log('AuthProvider: Clearing auth state');
     localStorage.removeItem('token');
@@ -119,6 +145,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         refreshToken,
         loading,
         setAuth,
+        updateUser,
         clearAuth,
       }}
     >

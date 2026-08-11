@@ -7,11 +7,14 @@ import {
   InputBase,
   Menu,
   MenuItem,
+  Stack,
   Typography,
 } from '@mui/material';
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
+import SubdirectoryArrowRightIcon from '@mui/icons-material/SubdirectoryArrowRight';
 import { renderMentionContent, nameInitials, stringToColor } from '../../utils/mentions';
+import { formatDateTime } from '../../utils/datetime';
 import { MATTE_INSET } from '../../theme/surfaces';
 import {
   COMMENT_REACTION_EMOJIS,
@@ -38,13 +41,7 @@ export type CommentListItemProps = {
   showReplyAction?: boolean;
 };
 
-const defaultFormatTime = (value: any) => {
-  try {
-    return new Date(value).toLocaleString();
-  } catch {
-    return '';
-  }
-};
+const defaultFormatTime = (value: any) => formatDateTime(value);
 
 const CommentBubble: React.FC<{
   item: any;
@@ -76,7 +73,6 @@ const CommentBubble: React.FC<{
   onDeleteComment,
 }) => {
   const [menuAnchor, setMenuAnchor] = useState<{ el: HTMLElement; x: number; y: number } | null>(null);
-  const [reactAnchor, setReactAnchor] = useState<{ el: HTMLElement; x: number; y: number } | null>(null);
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(item.comment || '');
   const [saving, setSaving] = useState(false);
@@ -91,11 +87,6 @@ const CommentBubble: React.FC<{
   const openMenu = (e: React.MouseEvent<HTMLElement>) => {
     e.stopPropagation();
     setMenuAnchor({ el: e.currentTarget, x: e.clientX, y: e.clientY });
-  };
-
-  const openReactMenu = (e: React.MouseEvent<HTMLElement>) => {
-    e.stopPropagation();
-    setReactAnchor({ el: e.currentTarget, x: e.clientX, y: e.clientY });
   };
 
   const handleSaveEdit = async () => {
@@ -114,7 +105,6 @@ const CommentBubble: React.FC<{
   };
 
   const handleReact = async (emoji: string) => {
-    setReactAnchor(null);
     setAnimating(true);
     setTimeout(() => setAnimating(false), 500);
     await onReactComment(item.id, emoji);
@@ -147,20 +137,20 @@ const CommentBubble: React.FC<{
         >
           <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 0.5 }}>
             <Box sx={{ minWidth: 0, flex: 1 }}>
-              <Typography sx={{ fontWeight: 800, fontSize: isReply ? 12.5 : 13.5, color: '#0F172A', wordBreak: 'break-word' }}>
+              <Typography sx={{ fontWeight: 800, fontSize: isReply ? 12.5 : 13.5, color: '#0A1210', wordBreak: 'break-word' }}>
                 {item.userFirstName} {item.userLastName}
               </Typography>
               {!isReply && item.userRole && (
-                <Typography sx={{ fontSize: 11, color: '#64748B', fontWeight: 700, mt: 0.15 }}>
+                <Typography sx={{ fontSize: 11, color: '#3A4540', fontWeight: 700, mt: 0.15 }}>
                   {item.userRole}
                 </Typography>
               )}
             </Box>
-            {isOwner && !editing && (
+            {!editing && (
               <IconButton
                 size="small"
                 onClick={openMenu}
-                sx={{ color: '#94A3B8', p: 0.25, mt: -0.25, '&:hover': { color: '#475569', bgcolor: 'rgba(15,23,42,0.04)' } }}
+                sx={{ color: '#A89F84', p: 0.25, mt: -0.25, '&:hover': { color: '#3A4540', bgcolor: 'rgba(15,23,42,0.04)' } }}
                 aria-label="Comment options"
               >
                 <MoreHorizIcon sx={{ fontSize: isReply ? 16 : 18 }} />
@@ -179,8 +169,8 @@ const CommentBubble: React.FC<{
                 maxRows={4}
                 sx={{
                   width: '100%',
-                  bgcolor: '#F8FAFC',
-                  border: '1.5px solid #E2E8F0',
+                  bgcolor: '#EBE6D4',
+                  border: '1.5px solid #DDD6C0',
                   borderRadius: 2,
                   px: 1.25,
                   py: 0.75,
@@ -195,7 +185,7 @@ const CommentBubble: React.FC<{
                   disableElevation
                   disabled={saving || !editText.trim()}
                   onClick={handleSaveEdit}
-                  sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 999, px: 1.5, bgcolor: '#2563EB' }}
+                  sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 999, px: 1.5, bgcolor: '#16302A' }}
                 >
                   {saving ? 'Saving…' : 'Save'}
                 </Button>
@@ -203,17 +193,17 @@ const CommentBubble: React.FC<{
                   size="small"
                   disabled={saving}
                   onClick={() => { setEditing(false); setEditText(item.comment || ''); }}
-                  sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 999, color: '#64748B' }}
+                  sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 999, color: '#3A4540' }}
                 >
                   Cancel
                 </Button>
               </Box>
             </Box>
           ) : (
-            <Typography sx={{ fontSize: isReply ? 13 : 14.5, color: '#1E293B', mt: 0.5, fontWeight: 500, lineHeight: 1.45, wordBreak: 'break-word' }}>
-              {renderMentionContent(item.comment || '', {})}
+            <Typography sx={{ fontSize: isReply ? 13 : 14.5, color: '#0A1210', mt: 0.5, fontWeight: 500, lineHeight: 1.45, wordBreak: 'break-word' }}>
+              {renderMentionContent(item.comment || '', { variant: 'chip' })}
               {item.editedAt ? (
-                <Typography component="span" sx={{ fontSize: 11, color: '#94A3B8', fontWeight: 600, ml: 0.75 }}>
+                <Typography component="span" sx={{ fontSize: 11, color: '#A89F84', fontWeight: 600, ml: 0.75 }}>
                   (edited)
                 </Typography>
               ) : null}
@@ -223,22 +213,32 @@ const CommentBubble: React.FC<{
 
         {!editing && (
           <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5, mt: 0.5, pl: 0.5 }}>
-            <Typography sx={{ fontSize: isReply ? 10 : 11, color: '#94A3B8', fontWeight: 600, mr: 0.5 }}>
+            <Typography sx={{ fontSize: isReply ? 10 : 11, color: '#A89F84', fontWeight: 600, mr: 0.5 }}>
               {formatTime(item.addedAt)}
             </Typography>
             <Button
               size="small"
               startIcon={
                 reaction ? (
-                  <Box component="span" sx={{ fontSize: isReply ? 13 : 15, lineHeight: 1, display: 'inline-flex', transform: animating ? 'scale(1.25)' : 'scale(1)', transition: 'transform 0.2s' }}>
+                  <Box
+                    component="span"
+                    className={animating ? 'liked-heart-emoji' : undefined}
+                    sx={{
+                      fontSize: isReply ? 13 : 15,
+                      lineHeight: 1,
+                      display: 'inline-flex',
+                      transform: animating ? 'scale(1.25)' : 'scale(1)',
+                      transition: 'transform 0.2s',
+                    }}
+                  >
                     {reaction}
                   </Box>
                 ) : (
-                  <FavoriteBorderIcon sx={{ fontSize: isReply ? 13 : 15, color: '#64748B' }} />
+                  <FavoriteBorderIcon sx={{ fontSize: isReply ? 13 : 15, color: '#E11D48' }} />
                 )
               }
               sx={{
-                color: reaction ? '#EF4444' : '#64748B',
+                color: reaction ? '#E11D48' : '#3A4540',
                 textTransform: 'none',
                 fontWeight: 500,
                 fontSize: isReply ? 11 : 12,
@@ -246,9 +246,15 @@ const CommentBubble: React.FC<{
                 px: 0.5,
                 bgcolor: 'transparent',
                 '& .MuiButton-startIcon': { mr: 0.35 },
-                '&:hover': { bgcolor: 'transparent', color: '#EF4444' },
+                '&:hover': { bgcolor: 'transparent', color: '#E11D48' },
               }}
-              onClick={openReactMenu}
+              onClick={async (e) => {
+                e.stopPropagation();
+                setAnimating(true);
+                setTimeout(() => setAnimating(false), 500);
+                // Direct like/unlike with ❤️ — emoji picker lives under ⋯
+                await onReactComment(item.id, '❤️');
+              }}
               disabled={likingComment}
             >
               {likeCount}
@@ -257,14 +263,14 @@ const CommentBubble: React.FC<{
               <Button
                 size="small"
                 sx={{
-                  color: '#2563EB',
+                  color: '#16302A',
                   textTransform: 'none',
                   fontWeight: 600,
                   fontSize: isReply ? 11 : 12,
                   minWidth: 0,
                   px: 0.5,
                   bgcolor: 'transparent',
-                  '&:hover': { bgcolor: 'transparent', color: '#1D4ED8' },
+                  '&:hover': { bgcolor: 'transparent', color: '#0F221C' },
                 }}
                 onClick={onStartReply}
               >
@@ -282,67 +288,58 @@ const CommentBubble: React.FC<{
         anchorReference="anchorPosition"
         anchorPosition={menuAnchor ? { top: menuAnchor.y, left: menuAnchor.x } : undefined}
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-        PaperProps={{ sx: { minWidth: 140, borderRadius: 2, zIndex: 12000 } }}
+        PaperProps={{ sx: { minWidth: 168, borderRadius: 2, zIndex: 12000, py: 0.5 } }}
         sx={{ zIndex: 12000 }}
       >
-        <MenuItem
-          onClick={() => {
-            setMenuAnchor(null);
-            setEditText(item.comment || '');
-            setEditing(true);
-          }}
-          sx={{ fontWeight: 600, fontSize: 14 }}
-        >
-          Edit
-        </MenuItem>
-        <MenuItem
-          onClick={() => {
-            setMenuAnchor(null);
-            onDeleteComment(item.id);
-          }}
-          sx={{ fontWeight: 600, fontSize: 14, color: '#DC2626' }}
-        >
-          Delete
-        </MenuItem>
-      </Menu>
-
-      <Menu
-        open={Boolean(reactAnchor)}
-        anchorEl={reactAnchor?.el}
-        onClose={() => setReactAnchor(null)}
-        anchorReference="anchorPosition"
-        anchorPosition={reactAnchor ? { top: reactAnchor.y, left: reactAnchor.x } : undefined}
-        transformOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-        PaperProps={{
-          sx: {
-            display: 'flex',
-            flexDirection: 'row',
-            px: 0.75,
-            py: 0.5,
-            borderRadius: 999,
-            gap: 0.25,
-            zIndex: 12000,
-          },
-        }}
-        sx={{ zIndex: 12000 }}
-        MenuListProps={{ sx: { display: 'flex', flexDirection: 'row', p: 0, gap: 0.25 } }}
-      >
-        {COMMENT_REACTION_EMOJIS.map((emoji) => (
-          <MenuItem
-            key={emoji}
-            onClick={() => handleReact(emoji)}
-            sx={{
-              minWidth: 36,
-              justifyContent: 'center',
-              borderRadius: 999,
-              fontSize: 20,
-              px: 0.75,
-              bgcolor: reaction === emoji ? 'rgba(37,99,235,0.12)' : 'transparent',
-            }}
-          >
-            {emoji}
-          </MenuItem>
-        ))}
+        <Box sx={{ px: 1, pb: 0.75, pt: 0.25 }}>
+          <Typography sx={{ fontSize: 11, fontWeight: 700, color: '#A89F84', px: 0.75, mb: 0.5 }}>
+            React
+          </Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.25 }}>
+            {COMMENT_REACTION_EMOJIS.map((emoji) => (
+              <MenuItem
+                key={emoji}
+                onClick={() => {
+                  setMenuAnchor(null);
+                  handleReact(emoji);
+                }}
+                sx={{
+                  minWidth: 36,
+                  justifyContent: 'center',
+                  borderRadius: 999,
+                  fontSize: 20,
+                  px: 0.75,
+                  bgcolor: reaction === emoji ? 'rgba(225,29,72,0.12)' : 'transparent',
+                }}
+              >
+                {emoji}
+              </MenuItem>
+            ))}
+          </Box>
+        </Box>
+        {isOwner && (
+          <>
+            <MenuItem
+              onClick={() => {
+                setMenuAnchor(null);
+                setEditText(item.comment || '');
+                setEditing(true);
+              }}
+              sx={{ fontWeight: 600, fontSize: 14 }}
+            >
+              Edit
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                setMenuAnchor(null);
+                onDeleteComment(item.id);
+              }}
+              sx={{ fontWeight: 600, fontSize: 14, color: '#E11D48' }}
+            >
+              Delete
+            </MenuItem>
+          </>
+        )}
       </Menu>
     </Box>
   );
@@ -383,43 +380,86 @@ const CommentListItem: React.FC<CommentListItemProps> = ({
         commentLikeCounts={commentLikeCounts}
         likingComment={likingComment}
         showReplyAction={showReplyAction}
-        onStartReply={() => setReplyingCommentId(comment.id)}
+        onStartReply={() => setReplyingCommentId(String(comment.id))}
         onReactComment={onReactComment}
         onEditComment={onEditComment}
         onDeleteComment={onDeleteComment}
       />
 
       {comment.replies && comment.replies.length > 0 && (
-        <Box sx={{ mt: 1.25, ml: 0.5, pl: 1.5, borderLeft: '3px solid #E2E8F0' }}>
+        <Stack spacing={1.1} sx={{ mt: 1.1, ml: { xs: 2.25, sm: 4.5 } }}>
           {comment.replies.map((reply: any) => (
-            <CommentBubble
+            <Box
               key={reply.id}
-              item={reply}
-              isReply
-              currentUserId={currentUserId}
-              formatTime={formatTime}
-              likedComments={likedComments}
-              commentReactions={commentReactions}
-              commentLikeCounts={commentLikeCounts}
-              likingComment={likingComment}
-              showReplyAction={false}
-              onReactComment={onReactComment}
-              onEditComment={onEditComment}
-              onDeleteComment={onDeleteComment}
-            />
+              sx={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 0.75,
+                minWidth: 0,
+              }}
+            >
+              <SubdirectoryArrowRightIcon
+                aria-hidden
+                sx={{
+                  mt: 0.85,
+                  flexShrink: 0,
+                  fontSize: 20,
+                  color: '#7A847C',
+                }}
+              />
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <CommentBubble
+                  item={reply}
+                  isReply
+                  currentUserId={currentUserId}
+                  formatTime={formatTime}
+                  likedComments={likedComments}
+                  commentReactions={commentReactions}
+                  commentLikeCounts={commentLikeCounts}
+                  likingComment={likingComment}
+                  showReplyAction={false}
+                  onReactComment={onReactComment}
+                  onEditComment={onEditComment}
+                  onDeleteComment={onDeleteComment}
+                />
+              </Box>
+            </Box>
           ))}
-        </Box>
+        </Stack>
       )}
 
-      {replyingCommentId === comment.id && (
-        <Box sx={{ mt: 1.25, display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 1, alignItems: { xs: 'stretch', sm: 'center' }, pl: { xs: 0, sm: 5.5 } }}>
+      {String(replyingCommentId) === String(comment.id) && (
+        <Box
+          sx={{
+            mt: 1.25,
+            ml: { xs: 2.25, sm: 4.5 },
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 0.75,
+            minWidth: 0,
+          }}
+        >
+          <SubdirectoryArrowRightIcon
+            aria-hidden
+            sx={{ mt: 1.15, flexShrink: 0, fontSize: 20, color: '#7A847C' }}
+          />
+          <Box
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              display: 'flex',
+              flexDirection: { xs: 'column', sm: 'row' },
+              gap: 1,
+              alignItems: { xs: 'stretch', sm: 'center' },
+            }}
+          >
           <InputBase
             value={replyText}
             onChange={(e) => setReplyText(e.target.value)}
             placeholder="Write a reply..."
             autoFocus
             sx={{
-              bgcolor: '#F1F5F9',
+              bgcolor: '#EBE6D4',
               px: 1.5,
               py: 1,
               borderRadius: 999,
@@ -427,7 +467,7 @@ const CommentListItem: React.FC<CommentListItemProps> = ({
               fontWeight: 600,
               flex: 1,
               minWidth: 0,
-              border: '1.5px solid #E2E8F0',
+              border: '1.5px solid #DDD6C0',
             }}
             multiline
             minRows={1}
@@ -438,14 +478,14 @@ const CommentListItem: React.FC<CommentListItemProps> = ({
               variant="contained"
               disableElevation
               sx={{
-                bgcolor: '#2563EB',
+                bgcolor: '#16302A',
                 fontWeight: 800,
                 borderRadius: 999,
                 px: 2,
                 py: 0.85,
                 minWidth: 0,
                 textTransform: 'none',
-                '&:hover': { bgcolor: '#1D4ED8' },
+                '&:hover': { bgcolor: '#0F221C' },
               }}
               onClick={handleSendReply}
               disabled={replying || !replyText.trim()}
@@ -453,11 +493,12 @@ const CommentListItem: React.FC<CommentListItemProps> = ({
               Send
             </Button>
             <Button
-              sx={{ color: '#64748B', fontWeight: 700, borderRadius: 999, px: 1.5, textTransform: 'none' }}
+              sx={{ color: '#3A4540', fontWeight: 700, borderRadius: 999, px: 1.5, textTransform: 'none' }}
               onClick={() => { setReplyingCommentId(null); setReplyText(''); }}
             >
               Cancel
             </Button>
+          </Box>
           </Box>
         </Box>
       )}

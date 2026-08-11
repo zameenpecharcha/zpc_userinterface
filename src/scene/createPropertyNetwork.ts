@@ -162,8 +162,8 @@ export function createPropertyNetwork(container: HTMLElement): SceneHandle {
       cctx.roundRect(12, 10, 232, 44, 14);
       cctx.fill();
     }
-    cctx.fillStyle = '#e8f4ef';
-    cctx.font = '600 22px "DM Sans", sans-serif';
+    cctx.fillStyle = '#E8E2CE';
+    cctx.font = '600 22px "Source Serif 4", "Source Serif Pro", Georgia, serif';
     cctx.textAlign = 'center';
     cctx.fillText(text, 128, 40);
   };

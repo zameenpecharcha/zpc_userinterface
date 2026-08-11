@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   Box, Typography, TextField, IconButton, Avatar, InputAdornment,
   Divider, List, ListItemButton, ListItemAvatar, ListItemText,
@@ -21,7 +21,8 @@ import { useApolloClient, useQuery } from '@apollo/client';
 import { SEARCH_USERS_LIGHT, GET_USER_PROFILE } from '../graphql/user';
 import { CREATE_DM_ROOM_MUTATION, CREATE_GROUP_ROOM_MUTATION, GET_USER_ROOMS, GET_PRESENCE } from '../graphql/chat';
 import Chat from './Chat';
-import { MATTE_SURFACE, MATTE_HEADER, PAGE_ATMOSPHERE } from '../theme/surfaces';
+import { MATTE_SURFACE, PAGE_ATMOSPHERE } from '../theme/surfaces';
+import { isRecentlyActive } from '../utils/datetime';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -112,10 +113,10 @@ const SIDEBAR_W = 360;
 const DOCK_LIST_W = 340;
 const DOCK_CHAT_W = 380;
 const DOCK_H = 520;
-const LI_BLUE   = '#0A66C2';
-const LI_BG     = '#EFEAE2';
-const LI_BORDER = 'rgba(90, 70, 50, 0.12)';
-const LI_TEXT   = '#191919';
+const LI_BLUE   = '#16302A';
+const LI_BG     = '#EAE6D6';
+const LI_BORDER = 'rgba(22, 48, 42, 0.18)';
+const LI_TEXT   = '#0A1210';
 
 // ── ConvItem ──────────────────────────────────────────────────────────────────
 
@@ -130,9 +131,9 @@ const ConvItem: React.FC<{
       onClick={onClick}
       sx={{
         py: 1.5, px: 2,
-        bgcolor: active ? '#EAF0F8' : 'transparent',
+        bgcolor: active ? '#E8E2CE' : 'transparent',
         borderLeft: active ? `3px solid ${LI_BLUE}` : '3px solid transparent',
-        '&:hover': { bgcolor: active ? '#EAF0F8' : LI_BG },
+        '&:hover': { bgcolor: active ? '#E8E2CE' : LI_BG },
         transition: 'background 0.15s',
       }}
     >
@@ -142,11 +143,11 @@ const ConvItem: React.FC<{
           anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
           badgeContent={
             conv.type === 'group'
-              ? <Box sx={{ width: 14, height: 14, bgcolor: '#fff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              ? <Box sx={{ width: 14, height: 14, bgcolor: '#EBE6D4', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <GroupAddOutlinedIcon sx={{ fontSize: 10, color: LI_BLUE }} />
                 </Box>
               : online
-                ? <Box sx={{ width: 12, height: 12, bgcolor: '#057642', borderRadius: '50%', border: '2px solid #fff' }} />
+                ? <Box sx={{ width: 12, height: 12, bgcolor: '#16302A', borderRadius: '50%', border: '2px solid #EBE6D4' }} />
                 : null
           }
         >
@@ -169,26 +170,26 @@ const ConvItem: React.FC<{
               noWrap
               sx={{
                 fontSize: 14,
-                color: conv.labelReady === false ? '#8C8C8C' : '#000',
+                color: conv.labelReady === false ? '#A89F84' : '#0A1210',
                 maxWidth: 160,
                 fontStyle: conv.labelReady === false ? 'italic' : 'normal',
               }}
             >
               {conv.label}
             </Typography>
-            <Typography variant="caption" sx={{ color: conv.unread > 0 ? LI_BLUE : '#777', fontSize: 11, flexShrink: 0, ml: 1 }}>
+            <Typography variant="caption" sx={{ color: conv.unread > 0 ? LI_BLUE : '#3A4540', fontSize: 11, flexShrink: 0, ml: 1 }}>
               {fmtTime(conv.lastTime)}
             </Typography>
           </Box>
         }
         secondary={
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 0.25 }}>
-            <Typography variant="caption" noWrap sx={{ color: conv.unread > 0 ? '#333' : '#777', fontSize: 12, fontWeight: conv.unread > 0 ? 600 : 400, maxWidth: 175 }}>
+            <Typography variant="caption" noWrap sx={{ color: conv.unread > 0 ? '#0A1210' : '#3A4540', fontSize: 12, fontWeight: conv.unread > 0 ? 600 : 400, maxWidth: 175 }}>
               {conv.lastMessage ?? 'Start a conversation'}
             </Typography>
             {conv.unread > 0 && (
               <Box sx={{ bgcolor: LI_BLUE, borderRadius: '50%', width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, ml: 0.5 }}>
-                <Typography sx={{ color: '#fff', fontSize: 10, fontWeight: 700, lineHeight: 1 }}>{conv.unread}</Typography>
+                <Typography sx={{ color: '#EBE6D4', fontSize: 10, fontWeight: 700, lineHeight: 1 }}>{conv.unread}</Typography>
               </Box>
             )}
           </Box>
@@ -216,10 +217,11 @@ const NewConvDialog: React.FC<{
   const [error, setError]           = useState<string | null>(null);
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(userSearch.trim()), 350);
+    const timer = setTimeout(() => setDebouncedSearch(userSearch.trim()), 200);
     return () => clearTimeout(timer);
   }, [userSearch]);
 
+  // Start matching from 2 characters (also list people when the field is empty).
   const shouldSearch = !open ? false : (debouncedSearch.length === 0 || debouncedSearch.length >= 2);
 
   const { data, loading } = useQuery(SEARCH_USERS_LIGHT, {
@@ -231,7 +233,27 @@ const NewConvDialog: React.FC<{
   });
 
   const apiUsers: Array<{ id: string; firstName: string; lastName: string; email: string; role?: string; profilePhotoSignedUrl?: string }> =
-    data?.users ?? [];
+    useMemo(() => {
+      const raw = data?.users ?? [];
+      const q = debouncedSearch.trim().toLowerCase();
+      if (!q) return raw;
+      const tokens = q.split(/\s+/).filter((t) => t.length >= 2);
+      const scored = raw
+        .map((u: any) => {
+          const full = `${u.firstName || ''} ${u.lastName || ''}`.trim().toLowerCase();
+          const blob = `${full} ${u.email || ''} ${u.role || ''}`.toLowerCase();
+          const tokenOk = tokens.length === 0
+            ? blob.includes(q)
+            : tokens.every((t) => blob.includes(t));
+          if (!tokenOk && !blob.includes(q)) return null;
+          const starts = full.startsWith(q) || (u.firstName || '').toLowerCase().startsWith(q);
+          return { u, score: starts ? 0 : 1 };
+        })
+        .filter(Boolean) as Array<{ u: any; score: number }>;
+      scored.sort((a, b) => a.score - b.score);
+      // Prefer client-ranked matches; if ranking empty but API returned rows, keep API rows
+      return scored.length > 0 ? scored.map((s) => s.u) : raw;
+    }, [data?.users, debouncedSearch]);
 
   const reset = () => { setType('direct'); setUserSearch(''); setGroupName(''); setMembers([]); setError(null); };
   const handleClose = () => { reset(); onClose(); };
@@ -324,9 +346,11 @@ const NewConvDialog: React.FC<{
         )}
 
         <TextField autoFocus fullWidth size="small"
-          placeholder={type === 'direct' ? 'Search people…' : 'Search members to add…'}
+          placeholder={type === 'direct' ? 'Search people (2+ letters)…' : 'Search members to add…'}
           value={userSearch} onChange={e => setUserSearch(e.target.value)}
-          InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ fontSize: 16, color: '#aaa' }} /></InputAdornment> }}
+          helperText={userSearch.trim().length === 1 ? 'Type at least 2 letters to search names' : ' '}
+          FormHelperTextProps={{ sx: { mx: 0, minHeight: 18 } }}
+          InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ fontSize: 16, color: '#A89F84' }} /></InputAdornment> }}
         />
 
         {type === 'group' && members.length > 0 && (
@@ -338,11 +362,11 @@ const NewConvDialog: React.FC<{
           </Box>
         )}
 
-        <Box sx={{ mt: 1.5, maxHeight: 260, overflowY: 'auto', borderRadius: 2, border: '1px solid #E0E0E0' }}>
+        <Box sx={{ mt: 1.5, maxHeight: 260, overflowY: 'auto', borderRadius: 2, border: '1px solid #DDD6C0' }}>
           {loading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={24} /></Box>
           ) : apiUsers.filter(u => String(u.id) !== myUserId).length === 0 ? (
-            <Typography variant="caption" color="#999" sx={{ display: 'block', textAlign: 'center', py: 3 }}>No users found</Typography>
+            <Typography variant="caption" color="#A89F84" sx={{ display: 'block', textAlign: 'center', py: 3 }}>No users found</Typography>
           ) : (
             <List disablePadding>
               {apiUsers.filter(u => String(u.id) !== myUserId).map(u => {
@@ -351,7 +375,7 @@ const NewConvDialog: React.FC<{
                   <ListItemButton key={u.id}
                     onClick={() => type === 'direct' ? startDirect(u) : toggleMember(u)}
                     selected={isMember}
-                    sx={{ py: 1, px: 1.5, '&.Mui-selected': { bgcolor: '#EAF0F8' } }}
+                    sx={{ py: 1, px: 1.5, '&.Mui-selected': { bgcolor: '#E8E2CE' } }}
                   >
                     <ListItemAvatar sx={{ minWidth: 44 }}>
                       <Avatar src={u.profilePhotoSignedUrl} sx={{ width: 34, height: 34, bgcolor: stringToColor(`${u.firstName} ${u.lastName}`), fontSize: 13 }}>
@@ -360,11 +384,11 @@ const NewConvDialog: React.FC<{
                     </ListItemAvatar>
                     <ListItemText
                       primary={<Typography variant="body2" fontWeight={600} fontSize={13}>{u.firstName} {u.lastName}</Typography>}
-                      secondary={<Typography variant="caption" color="#888" fontSize={11}>{u.role ?? u.email}</Typography>}
+                      secondary={<Typography variant="caption" color="#A89F84" fontSize={11}>{u.role ?? u.email}</Typography>}
                     />
                     {type === 'group' && isMember && (
                       <Box sx={{ width: 18, height: 18, bgcolor: LI_BLUE, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <CloseIcon sx={{ fontSize: 11, color: '#fff' }} />
+                        <CloseIcon sx={{ fontSize: 11, color: '#EBE6D4' }} />
                       </Box>
                     )}
                   </ListItemButton>
@@ -377,10 +401,10 @@ const NewConvDialog: React.FC<{
 
       {type === 'group' && (
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={handleClose} sx={{ textTransform: 'none', color: '#555' }}>Cancel</Button>
+          <Button onClick={handleClose} sx={{ textTransform: 'none', color: '#3A4540' }}>Cancel</Button>
           <Button variant="contained" onClick={startGroup}
             disabled={!groupName.trim() || members.length === 0}
-            sx={{ textTransform: 'none', fontWeight: 700, bgcolor: LI_BLUE, borderRadius: 5, px: 3, '&:hover': { bgcolor: '#004aad' } }}
+            sx={{ textTransform: 'none', fontWeight: 700, bgcolor: LI_BLUE, borderRadius: 5, px: 3, '&:hover': { bgcolor: '#16302A' } }}
           >
             Create group ({members.length})
           </Button>
@@ -416,6 +440,8 @@ const ChatPage: React.FC<ChatPageProps> = ({
   const [mobileView, setMobileView]       = useState<'sidebar' | 'chat'>('sidebar');
   const [wsConnected, setWsConnected]     = useState(false);
   const [peerOnline, setPeerOnline]       = useState<Record<string, boolean>>({});
+  /** Recent login (same 30m window as admin) — fills gap when peer isn't on a chat WS. */
+  const [peerRecentlyActive, setPeerRecentlyActive] = useState<Record<string, boolean>>({});
   const [dockMinimized, setDockMinimized] = useState(false);
   const [startingDmId, setStartingDmId]   = useState<string | null>(null);
   // Map of userId → "First Last" for resolving DM conversation labels
@@ -434,7 +460,7 @@ const ChatPage: React.FC<ChatPageProps> = ({
   const apollo = useApolloClient();
 
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 200);
     return () => clearTimeout(t);
   }, [search]);
 
@@ -448,11 +474,32 @@ const ChatPage: React.FC<ChatPageProps> = ({
 
   const peopleSearchActive = debouncedSearch.length >= 2 && filter === 'all' && !shouldRedirectToHomeDock;
   const { data: peopleData, loading: peopleLoading } = useQuery(SEARCH_USERS_LIGHT, {
-    variables: { search: debouncedSearch, page: 1, limit: 20 },
+    variables: { search: debouncedSearch, page: 1, limit: 30 },
     skip: !peopleSearchActive || !userId,
     fetchPolicy: 'network-only',
   });
-  const peopleResults = (peopleData?.users || []).filter((u: any) => String(u.id) !== userId);
+  const peopleResults = useMemo(() => {
+    const raw = (peopleData?.users || []).filter((u: any) => String(u.id) !== userId);
+    const q = debouncedSearch.trim().toLowerCase();
+    if (!q) return raw;
+    const tokens = q.split(/\s+/).filter((t) => t.length >= 2);
+    const scored = raw
+      .map((u: any) => {
+        const full = `${u.firstName || ''} ${u.lastName || ''}`.trim().toLowerCase();
+        const blob = `${full} ${u.email || ''} ${u.role || ''}`.toLowerCase();
+        const tokenOk = tokens.length === 0 ? blob.includes(q) : tokens.every((t) => blob.includes(t));
+        if (!tokenOk && !blob.includes(q)) return null;
+        const starts =
+          full.startsWith(q) ||
+          String(u.firstName || '').toLowerCase().startsWith(q) ||
+          String(u.lastName || '').toLowerCase().startsWith(q);
+        return { u, score: starts ? 0 : 1, full };
+      })
+      .filter(Boolean) as Array<{ u: any; score: number; full: string }>;
+    scored.sort((a, b) => a.score - b.score || a.full.localeCompare(b.full));
+    // Trust API if client filter empties a valid response (encoding edge cases)
+    return scored.length > 0 ? scored.map((s) => s.u) : raw;
+  }, [peopleData?.users, userId, debouncedSearch]);
 
   useEffect(() => {
     if (!roomsData?.getUserRooms) return;
@@ -526,10 +573,22 @@ const ChatPage: React.FC<ChatPageProps> = ({
       return [...loaded, ...pending];
     });
 
-    // Batch presence for DM peers (do not treat our own WS as "peer online")
+    // Presence = live chat WS OR recent login (aligned with admin "Online")
     const peerIds = Array.from(new Set(
       loaded.filter(c => c.type === 'direct' && c.peerId).map(c => c.peerId as string)
     ));
+    const recentFromRooms: Record<string, boolean> = {};
+    for (const r of roomsData.getUserRooms) {
+      if (r.roomType === 1) continue;
+      for (const p of r.participants || []) {
+        const pid = String(p.userId || '');
+        if (!pid || pid === userId) continue;
+        if (isRecentlyActive(p.lastLoginAt)) recentFromRooms[pid] = true;
+      }
+    }
+    if (Object.keys(recentFromRooms).length > 0) {
+      setPeerRecentlyActive(prev => ({ ...prev, ...recentFromRooms }));
+    }
     if (peerIds.length > 0) {
       apollo.query({
         query: GET_PRESENCE,
@@ -693,6 +752,11 @@ const ChatPage: React.FC<ChatPageProps> = ({
     });
   }, []);
 
+  const isPeerOnline = useCallback((peerId?: string | null) => {
+    if (!peerId) return false;
+    return !!(peerOnline[peerId] || peerRecentlyActive[peerId]);
+  }, [peerOnline, peerRecentlyActive]);
+
   // Desktop /chat → Home + dock (must run after all hooks)
   if (shouldRedirectToHomeDock) {
     const state = (location.state as { autoSelectRoomId?: string } | null) || {};
@@ -708,7 +772,8 @@ const ChatPage: React.FC<ChatPageProps> = ({
   const activeConv = conversations.find(c => c.id === activeId) ?? null;
   const activePeerId = activeConv?.peerId
     || activeConv?.participants.find(id => id !== userId);
-  const activePeerOnline = !!(activePeerId && peerOnline[activePeerId]);
+  const activePeerOnline = isPeerOnline(activePeerId);
+  const activePeerLive = !!(activePeerId && peerOnline[activePeerId]);
 
   const q = search.trim().toLowerCase();
   const filtered = conversations.filter(c => {
@@ -716,13 +781,18 @@ const ChatPage: React.FC<ChatPageProps> = ({
     if (!q) return matchFilter;
     const matchLabel = c.label.toLowerCase().includes(q);
     const matchMsg = (c.lastMessage || '').toLowerCase().includes(q);
-    return matchFilter && (matchLabel || matchMsg);
+    const peerName = c.peerId ? String(userNames[c.peerId] || '').toLowerCase() : '';
+    const matchPeer = !!peerName && peerName.includes(q);
+    return matchFilter && (matchLabel || matchMsg || matchPeer);
   });
 
+  // Show people matches; skip those already visible in the chats list above.
   const peopleToShow = peopleResults.filter((u: any) => {
     const id = String(u.id);
-    const alreadyListed = filtered.some(c => c.type === 'direct' && c.participants.includes(id));
-    return !alreadyListed;
+    const shownInChats = filtered.some(
+      (c) => c.type === 'direct' && (c.peerId === id || c.participants.includes(id))
+    );
+    return !shownInChats;
   });
 
   const isSearching = q.length > 0;
@@ -756,8 +826,8 @@ const ChatPage: React.FC<ChatPageProps> = ({
             bottom: 0,
             right: 16,
             zIndex: 1400,
-            bgcolor: '#1B1F23',
-            color: '#fff',
+            bgcolor: '#0A1210',
+            color: '#EBE6D4',
             borderRadius: '8px 8px 0 0',
             px: 2,
             py: 1.15,
@@ -772,13 +842,13 @@ const ChatPage: React.FC<ChatPageProps> = ({
             minWidth: 220,
             border: `1px solid ${LI_BORDER}`,
             borderBottom: 'none',
-            '&:hover': { bgcolor: '#000' },
+            '&:hover': { bgcolor: '#0A1210' },
           }}
         >
           <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: LI_BLUE, flexShrink: 0 }} />
           Messaging
           {conversations.some(c => c.unread > 0) && (
-            <Box sx={{ bgcolor: LI_BLUE, borderRadius: '50%', width: 18, height: 18, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', ml: 'auto' }}>
+            <Box sx={{ bgcolor: LI_BLUE, borderRadius: '50%', width: 18, height: 18, fontSize: 11, fontWeight: 700, color: '#EBE6D4', display: 'flex', alignItems: 'center', justifyContent: 'center', ml: 'auto' }}>
               {conversations.filter(c => c.unread > 0).length}
             </Box>
           )}
@@ -823,12 +893,12 @@ const ChatPage: React.FC<ChatPageProps> = ({
         height: '100%',
       }}>
         {/* Header */}
-        <Box sx={{ px: 2, pt: 1.75, pb: 1.25, ...MATTE_HEADER, boxShadow: 'none', color: 'inherit' }}>
+        <Box sx={{ px: 2, pt: 1.75, pb: 1.25, ...MATTE_SURFACE, boxShadow: 'none', borderRadius: 0, color: 'inherit' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.25 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               {!isDesktopDock && (
                 <Tooltip title="Back to Home">
-                  <IconButton size="small" onClick={closeChat} sx={{ color: '#666' }}>
+                  <IconButton size="small" onClick={closeChat} sx={{ color: '#3A4540' }}>
                     <ArrowBackIcon fontSize="small" />
                   </IconButton>
                 </Tooltip>
@@ -839,19 +909,19 @@ const ChatPage: React.FC<ChatPageProps> = ({
             </Box>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.15 }}>
               <Tooltip title="New message">
-                <IconButton size="small" onClick={() => setNewDlgOpen(true)} sx={{ color: '#666', '&:hover': { bgcolor: LI_BG, color: LI_BLUE } }}>
+                <IconButton size="small" onClick={() => setNewDlgOpen(true)} sx={{ color: '#3A4540', '&:hover': { bgcolor: LI_BG, color: LI_BLUE } }}>
                   <EditIcon sx={{ fontSize: 18 }} />
                 </IconButton>
               </Tooltip>
               {isDesktopDock && (
                 <>
                   <Tooltip title="Minimize">
-                    <IconButton size="small" onClick={() => setDockMinimized(true)} sx={{ color: '#666' }}>
+                    <IconButton size="small" onClick={() => setDockMinimized(true)} sx={{ color: '#3A4540' }}>
                       <MinimizeIcon sx={{ fontSize: 18 }} />
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="Close">
-                    <IconButton size="small" onClick={closeChat} sx={{ color: '#666' }}>
+                    <IconButton size="small" onClick={closeChat} sx={{ color: '#3A4540' }}>
                       <CloseIcon sx={{ fontSize: 18 }} />
                     </IconButton>
                   </Tooltip>
@@ -861,27 +931,32 @@ const ChatPage: React.FC<ChatPageProps> = ({
           </Box>
 
           <TextField
-            fullWidth size="small" placeholder="Search messages"
+            fullWidth size="small" placeholder="Search messages or people"
             value={search} onChange={e => setSearch(e.target.value)}
-            InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ fontSize: 18, color: '#8C8C8C' }} /></InputAdornment> }}
+            InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ fontSize: 18, color: '#A89F84' }} /></InputAdornment> }}
             sx={{
               '& .MuiOutlinedInput-root': {
                 borderRadius: 1.5, bgcolor: LI_BG, fontSize: 13,
                 '& fieldset': { border: `1px solid ${LI_BORDER}` },
-                '&:hover fieldset': { borderColor: '#B0B0B0' },
+                '&:hover fieldset': { borderColor: '#A89F84' },
                 '&.Mui-focused fieldset': { borderColor: LI_BLUE },
               },
             }}
           />
+          {search.trim().length === 1 && filter === 'all' && (
+            <Typography sx={{ mt: 0.75, fontSize: 11.5, color: '#A89F84' }}>
+              Type at least 2 letters to find people
+            </Typography>
+          )}
 
           <Box sx={{ display: 'flex', gap: 0.5, mt: 1.25 }}>
             {(['all', 'groups'] as const).map(f => (
               <Box key={f} onClick={() => setFilter(f)} sx={{
                 px: 1.5, py: 0.4, borderRadius: 5, cursor: 'pointer', fontSize: 12.5, fontWeight: 600, userSelect: 'none',
-                bgcolor: filter === f ? '#E8F0FE' : 'transparent',
-                color: filter === f ? LI_BLUE : '#666',
+                bgcolor: filter === f ? '#E8E2CE' : 'transparent',
+                color: filter === f ? LI_BLUE : '#3A4540',
                 border: `1px solid ${filter === f ? LI_BLUE : 'transparent'}`,
-                '&:hover': { bgcolor: filter === f ? '#E8F0FE' : LI_BG },
+                '&:hover': { bgcolor: filter === f ? '#E8E2CE' : LI_BG },
               }}>
                 {f === 'all' ? 'Focused' : 'Groups'}
               </Box>
@@ -900,7 +975,7 @@ const ChatPage: React.FC<ChatPageProps> = ({
               {filtered.length > 0 && (
                 <>
                   {isSearching && (
-                    <Typography sx={{ px: 2, pt: 1.5, pb: 0.5, fontSize: 11, fontWeight: 700, color: '#8C8C8C', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                    <Typography sx={{ px: 2, pt: 1.5, pb: 0.5, fontSize: 11, fontWeight: 700, color: '#A89F84', textTransform: 'uppercase', letterSpacing: 0.4 }}>
                       {filter === 'groups' ? 'Groups' : 'Chats & messages'}
                     </Typography>
                   )}
@@ -910,7 +985,7 @@ const ChatPage: React.FC<ChatPageProps> = ({
                         key={conv.id}
                         conv={conv}
                         active={conv.id === activeId}
-                        online={!!(conv.peerId && peerOnline[conv.peerId])}
+                        online={isPeerOnline(conv.peerId)}
                         onClick={() => openConversation(conv)}
                       />
                     ))}
@@ -920,7 +995,7 @@ const ChatPage: React.FC<ChatPageProps> = ({
 
               {peopleSearchActive && (
                 <>
-                  <Typography sx={{ px: 2, pt: 1.5, pb: 0.5, fontSize: 11, fontWeight: 700, color: '#8C8C8C', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                  <Typography sx={{ px: 2, pt: 1.5, pb: 0.5, fontSize: 11, fontWeight: 700, color: '#A89F84', textTransform: 'uppercase', letterSpacing: 0.4 }}>
                     People
                   </Typography>
                   {peopleLoading ? (
@@ -928,7 +1003,7 @@ const ChatPage: React.FC<ChatPageProps> = ({
                       <CircularProgress size={22} sx={{ color: LI_BLUE }} />
                     </Box>
                   ) : peopleToShow.length === 0 ? (
-                    <Typography variant="caption" color="#8C8C8C" sx={{ display: 'block', px: 2, py: 1.5 }}>
+                    <Typography variant="caption" color="#A89F84" sx={{ display: 'block', px: 2, py: 1.5 }}>
                       No people found
                     </Typography>
                   ) : (
@@ -959,12 +1034,12 @@ const ChatPage: React.FC<ChatPageProps> = ({
                                   </Typography>
                                 }
                                 secondary={
-                                  <Typography variant="caption" color="#666" fontSize={12} noWrap>
+                                  <Typography variant="caption" color="#3A4540" fontSize={12} noWrap>
                                     {busy ? 'Starting chat…' : (u.role || 'Message')}
                                   </Typography>
                                 }
                               />
-                              <PersonOutlineIcon sx={{ color: '#8C8C8C', fontSize: 18 }} />
+                              <PersonOutlineIcon sx={{ color: '#A89F84', fontSize: 18 }} />
                             </ListItemButton>
                             <Divider sx={{ ml: 8 }} />
                           </React.Fragment>
@@ -980,7 +1055,7 @@ const ChatPage: React.FC<ChatPageProps> = ({
                   <Typography variant="body2" fontWeight={700} color={LI_TEXT} mb={0.5}>
                     {isSearching ? 'No chats found' : 'No conversations yet'}
                   </Typography>
-                  <Typography variant="caption" color="#666" lineHeight={1.5}>
+                  <Typography variant="caption" color="#3A4540" lineHeight={1.5}>
                     {isSearching
                       ? 'Try another name, or type at least 2 letters to find people.'
                       : 'Search for people above, or use compose to start a group.'}
@@ -991,7 +1066,7 @@ const ChatPage: React.FC<ChatPageProps> = ({
               {isSearching && filtered.length === 0 && peopleSearchActive && peopleToShow.length === 0 && !peopleLoading && (
                 <Box sx={{ textAlign: 'center', mt: 4, px: 4 }}>
                   <Typography variant="body2" fontWeight={600} color={LI_TEXT} mb={0.5}>No results</Typography>
-                  <Typography variant="caption" color="#666">Try a different name or message keyword.</Typography>
+                  <Typography variant="caption" color="#3A4540">Try a different name or message keyword.</Typography>
                 </Box>
               )}
             </>
@@ -1011,11 +1086,11 @@ const ChatPage: React.FC<ChatPageProps> = ({
       }}>
         {activeConv ? (
           <>
-            <Box sx={{ px: 1.5, py: 1.25, display: 'flex', alignItems: 'center', justifyContent: 'space-between', ...MATTE_HEADER, boxShadow: 'none', color: 'inherit', flexShrink: 0 }}>
+            <Box sx={{ px: 1.5, py: 1.25, display: 'flex', alignItems: 'center', justifyContent: 'space-between', ...MATTE_SURFACE, boxShadow: 'none', borderRadius: 0, color: 'inherit', flexShrink: 0 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
                 <IconButton
                   size="small"
-                  sx={{ color: '#666' }}
+                  sx={{ color: '#3A4540' }}
                   onClick={() => setMobileView('sidebar')}
                 >
                   <ArrowBackIcon fontSize="small" />
@@ -1030,25 +1105,29 @@ const ChatPage: React.FC<ChatPageProps> = ({
                   {activeConv.type === 'direct' && (
                     <Box sx={{
                       position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: '50%',
-                      bgcolor: activePeerOnline ? '#057642' : '#8C8C8C', border: '2px solid #fff',
+                      bgcolor: activePeerOnline ? '#16302A' : '#A89F84', border: '2px solid #EBE6D4',
                     }} />
                   )}
                 </Box>
                 <Box sx={{ minWidth: 0 }}>
                   <Typography fontWeight={700} fontSize={14} color={LI_TEXT} noWrap>{activeConv.label}</Typography>
-                  <Typography fontSize={11} color="#666">
+                  <Typography fontSize={11} color="#3A4540">
                     {activeConv.type === 'group'
                       ? `${activeConv.participants.length} members`
-                      : activePeerOnline ? 'Active now' : 'Offline'}
+                      : activePeerLive
+                        ? 'Active now'
+                        : activePeerOnline
+                          ? 'Online'
+                          : 'Offline'}
                   </Typography>
                 </Box>
               </Box>
               <Box sx={{ display: 'flex', gap: 0.15, flexShrink: 0 }}>
                 <Tooltip title="Video call">
-                  <IconButton size="small" sx={{ color: '#666', '&:hover': { color: LI_BLUE } }}><VideoCallOutlinedIcon fontSize="small" /></IconButton>
+                  <IconButton size="small" sx={{ color: '#3A4540', '&:hover': { color: LI_BLUE } }}><VideoCallOutlinedIcon fontSize="small" /></IconButton>
                 </Tooltip>
                 <Tooltip title="Conversation info">
-                  <IconButton size="small" sx={{ color: '#666', '&:hover': { color: LI_BLUE } }}><InfoOutlinedIcon fontSize="small" /></IconButton>
+                  <IconButton size="small" sx={{ color: '#3A4540', '&:hover': { color: LI_BLUE } }}><InfoOutlinedIcon fontSize="small" /></IconButton>
                 </Tooltip>
               </Box>
             </Box>
@@ -1061,6 +1140,12 @@ const ChatPage: React.FC<ChatPageProps> = ({
                 onPeerPresenceChange={handlePeerPresenceChange}
                 userAvatars={userAvatars}
                 userNames={userNames}
+                mentionCandidates={activeConv.participants
+                  .filter((id) => id !== userId)
+                  .map((id) => ({
+                    id,
+                    name: userNames[id] || (id === activePeerId ? activeConv.label : id),
+                  }))}
                 peerAvatarUrl={activeConv.avatarUrl || (activePeerId ? userAvatars[activePeerId] : undefined)}
                 peerDisplayName={activeConv.label}
               />
@@ -1069,11 +1154,11 @@ const ChatPage: React.FC<ChatPageProps> = ({
         ) : (
           <Box sx={{ m: 'auto', textAlign: 'center', maxWidth: 360, px: 3 }}>
             <Typography variant="h6" fontWeight={700} color={LI_TEXT} mb={1} fontSize={18}>Your messages</Typography>
-            <Typography variant="body2" color="#666" lineHeight={1.6} mb={2.5}>
+            <Typography variant="body2" color="#3A4540" lineHeight={1.6} mb={2.5}>
               Select a conversation or start a new one to connect with other ZPC members.
             </Typography>
             <Button variant="contained" disableElevation startIcon={<EditIcon />} onClick={() => setNewDlgOpen(true)}
-              sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 5, px: 2.5, bgcolor: LI_BLUE, '&:hover': { bgcolor: '#004182' } }}
+              sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 5, px: 2.5, bgcolor: LI_BLUE, '&:hover': { bgcolor: '#0F221C' } }}
             >
               Compose message
             </Button>
@@ -1102,7 +1187,7 @@ const ChatPage: React.FC<ChatPageProps> = ({
         {/* Conversation opens to the LEFT of the inbox — LinkedIn pattern */}
         {showDockChat && activeConv && (
           <Box sx={{ ...panelChrome, width: DOCK_CHAT_W }}>
-            <Box sx={{ px: 1.5, py: 1.25, display: 'flex', alignItems: 'center', justifyContent: 'space-between', ...MATTE_HEADER, boxShadow: 'none', color: 'inherit', flexShrink: 0 }}>
+            <Box sx={{ px: 1.5, py: 1.25, display: 'flex', alignItems: 'center', justifyContent: 'space-between', ...MATTE_SURFACE, boxShadow: 'none', borderRadius: 0, color: 'inherit', flexShrink: 0 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
                 <Box sx={{ position: 'relative', flexShrink: 0 }}>
                   <Avatar
@@ -1114,27 +1199,31 @@ const ChatPage: React.FC<ChatPageProps> = ({
                   {activeConv.type === 'direct' && (
                     <Box sx={{
                       position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: '50%',
-                      bgcolor: activePeerOnline ? '#057642' : '#8C8C8C', border: '2px solid #fff',
+                      bgcolor: activePeerOnline ? '#16302A' : '#A89F84', border: '2px solid #EBE6D4',
                     }} />
                   )}
                 </Box>
                 <Box sx={{ minWidth: 0 }}>
                   <Typography fontWeight={700} fontSize={14} color={LI_TEXT} noWrap>{activeConv.label}</Typography>
-                  <Typography fontSize={11} color="#666">
+                  <Typography fontSize={11} color="#3A4540">
                     {activeConv.type === 'group'
                       ? `${activeConv.participants.length} members`
-                      : activePeerOnline ? 'Active now' : 'Offline'}
+                      : activePeerLive
+                        ? 'Active now'
+                        : activePeerOnline
+                          ? 'Online'
+                          : 'Offline'}
                   </Typography>
                 </Box>
               </Box>
               <Box sx={{ display: 'flex', gap: 0.15 }}>
                 <Tooltip title="Minimize">
-                  <IconButton size="small" onClick={() => setDockMinimized(true)} sx={{ color: '#666' }}>
+                  <IconButton size="small" onClick={() => setDockMinimized(true)} sx={{ color: '#3A4540' }}>
                     <MinimizeIcon sx={{ fontSize: 18 }} />
                   </IconButton>
                 </Tooltip>
                 <Tooltip title="Close conversation">
-                  <IconButton size="small" onClick={closeConversationPanel} sx={{ color: '#666' }}>
+                  <IconButton size="small" onClick={closeConversationPanel} sx={{ color: '#3A4540' }}>
                     <CloseIcon sx={{ fontSize: 18 }} />
                   </IconButton>
                 </Tooltip>
@@ -1148,6 +1237,12 @@ const ChatPage: React.FC<ChatPageProps> = ({
                 onPeerPresenceChange={handlePeerPresenceChange}
                 userAvatars={userAvatars}
                 userNames={userNames}
+                mentionCandidates={activeConv.participants
+                  .filter((id) => id !== userId)
+                  .map((id) => ({
+                    id,
+                    name: userNames[id] || (id === activePeerId ? activeConv.label : id),
+                  }))}
                 peerAvatarUrl={activeConv.avatarUrl || (activePeerId ? userAvatars[activePeerId] : undefined)}
                 peerDisplayName={activeConv.label}
               />

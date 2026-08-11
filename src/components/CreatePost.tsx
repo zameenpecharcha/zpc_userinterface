@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useLazyQuery } from '@apollo/client';
 import { SEARCH_USERS_LIGHT } from '../graphql/user';
 import { PUBLIC_PROPERTIES } from '../graphql/property';
@@ -21,6 +21,8 @@ import {
   ListItemButton,
   ListItemText,
   ListSubheader,
+  CircularProgress,
+  Alert,
 } from '@mui/material';
 // Removed Grid import to avoid dependency on Unstable_Grid2; using CSS grid instead
 import {
@@ -35,20 +37,21 @@ import {
   VideoFile as VideoIcon
 } from '@mui/icons-material';
 import LocationAutocomplete from './LocationAutocomplete';
-import { MATTE_SURFACE, MATTE_HEADER, MATTE_INSET } from '../theme/surfaces';
+import { MATTE_SURFACE, MATTE_INSET } from '../theme/surfaces';
 
 const interFont = {
-  fontFamily: 'Inter, Roboto, Arial, sans-serif',
+  fontFamily: "'Source Serif 4', 'Source Serif Pro', Georgia, serif",
 };
 
 interface CreatePostProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (postData: any) => void;
+  onSubmit: (postData: any) => void | Promise<void>;
   loading?: boolean;
+  error?: string | null;
 }
 
-const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loading = false }) => {
+const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loading = false, error = null }) => {
   const [selectedType, setSelectedType] = useState<string>('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -84,25 +87,25 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
     {
       id: 'buy-sell',
       title: 'Buy/Sell',
-      icon: <HomeIcon sx={{ fontSize: 32, color: '#2563EB' }} />,
+      icon: <HomeIcon sx={{ fontSize: 32, color: '#16302A' }} />,
       description: 'Buy or sell properties'
     },
     {
       id: 'suggestion',
       title: 'Suggestion',
-      icon: <LightbulbIcon sx={{ fontSize: 32, color: '#10B981' }} />,
+      icon: <LightbulbIcon sx={{ fontSize: 32, color: '#5F8670' }} />,
       description: 'Share your ideas'
     },
     {
       id: 'discussion',
       title: 'Discussion',
-      icon: <ForumIcon sx={{ fontSize: 32, color: '#F59E0B' }} />,
+      icon: <ForumIcon sx={{ fontSize: 32, color: '#A89F84' }} />,
       description: 'Start a conversation'
     },
     {
       id: 'flag-area',
       title: 'Flag an Area',
-      icon: <FlagIcon sx={{ fontSize: 32, color: '#EF4444' }} />,
+      icon: <FlagIcon sx={{ fontSize: 32, color: '#16302A' }} />,
       description: 'Report issues'
     }
   ];
@@ -215,7 +218,9 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
   };
 
   const handleSubmit = () => {
-    if (!selectedType || !title.trim() || !description.trim()) return;
+    if (!selectedType || !title.trim() || !description.trim() || loading) return;
+    // Drop focus so the button doesn't stay visually highlighted
+    (document.activeElement as HTMLElement | null)?.blur?.();
 
     const postData = {
       type: selectedType,
@@ -232,24 +237,34 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
     onSubmit(postData);
   };
 
+  const resetForm = useCallback(() => {
+    setSelectedType('');
+    setTitle('');
+    setDescription('');
+    setLocation('');
+    setLatitude(null);
+    setLongitude(null);
+    setVisibility('public');
+    setUploadedFiles([]);
+    mentionedUserIdsRef.current = new Set();
+    setMentionOpen(false);
+    setMentionSearch('');
+    setMentionStart(null);
+  }, []);
+
   const handleClose = () => {
     if (!loading) {
-      // Reset form
-      setSelectedType('');
-      setTitle('');
-      setDescription('');
-      setLocation('');
-      setLatitude(null);
-      setLongitude(null);
-      setVisibility('public');
-      setUploadedFiles([]);
-      mentionedUserIdsRef.current = new Set();
-      setMentionOpen(false);
-      setMentionSearch('');
-      setMentionStart(null);
+      resetForm();
       onClose();
     }
   };
+
+  // Reset when parent closes the modal after a successful create
+  useEffect(() => {
+    if (!open && !loading) {
+      resetForm();
+    }
+  }, [open, loading, resetForm]);
 
   const isFormValid = selectedType && title.trim() && description.trim();
 
@@ -280,7 +295,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
           alignItems: 'center', 
           justifyContent: 'space-between', 
           p: 3, 
-          ...MATTE_HEADER,
+          ...MATTE_SURFACE,
           boxShadow: 'none',
           borderRadius: '12px 12px 0 0',
         }}>
@@ -289,7 +304,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
               variant="h5" 
               sx={{ 
                 fontWeight: 700, 
-                color: '#111827',
+                color: '#0A1210',
                 mb: 0.5,
                 fontSize: '1.5rem'
               }}
@@ -298,7 +313,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
             </Typography>
             <Typography 
               sx={{ 
-                color: '#6B7280', 
+                color: '#3A4540', 
                 fontSize: '0.875rem',
                 fontWeight: 400
               }}
@@ -310,10 +325,10 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
             onClick={handleClose}
             disabled={loading}
             sx={{ 
-              color: '#6B7280',
+              color: '#3A4540',
               '&:hover': { 
-                bgcolor: '#F3F4F6',
-                color: '#374151'
+                bgcolor: '#E8E2CE',
+                color: '#3A4540'
               }
             }}
           >
@@ -328,7 +343,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
             <Typography 
               sx={{ 
                 fontWeight: 600, 
-                color: '#374151', 
+                color: '#3A4540', 
                 mb: 2,
                 fontSize: '0.875rem'
               }}
@@ -341,12 +356,12 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
                   <Card
                     sx={{
                       cursor: 'pointer',
-                      border: selectedType === type.id ? '2px solid #2563EB' : '1px solid rgba(90, 70, 50, 0.1)',
-                      bgcolor: selectedType === type.id ? 'rgba(37,99,235,0.08)' : 'rgba(255,255,255,0.45)',
+                      border: selectedType === type.id ? '2px solid #16302A' : '1px solid rgba(90, 70, 50, 0.1)',
+                      bgcolor: selectedType === type.id ? 'rgba(22,48,42,0.08)' : 'rgba(235,230,212,0.45)',
                       transition: 'all 0.2s ease-in-out',
                       '&:hover': {
-                        borderColor: '#2563EB',
-                        bgcolor: 'rgba(255,255,255,0.65)',
+                        borderColor: '#16302A',
+                        bgcolor: 'rgba(235,230,212,0.65)',
                         transform: 'translateY(-1px)',
                         boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
                       },
@@ -363,7 +378,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
                       <Typography 
                         sx={{ 
                           fontWeight: 600, 
-                          color: '#111827',
+                          color: '#0A1210',
                           fontSize: '0.875rem',
                           mb: 0.5
                         }}
@@ -372,7 +387,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
                       </Typography>
                       <Typography 
                         sx={{ 
-                          color: '#6B7280', 
+                          color: '#3A4540', 
                           fontSize: '0.75rem',
                           lineHeight: 1.3
                         }}
@@ -393,7 +408,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
             <Typography 
               sx={{ 
                 fontWeight: 600, 
-                color: '#374151', 
+                color: '#3A4540', 
                 mb: 1,
                 fontSize: '0.875rem'
               }}
@@ -408,15 +423,15 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
               sx={{
                 '& .MuiOutlinedInput-root': {
                   borderRadius: 2,
-                  bgcolor: '#F9FAFB',
+                  bgcolor: '#EBE6D4',
                   '& fieldset': {
-                    borderColor: '#E5E7EB',
+                    borderColor: '#DDD6C0',
                   },
                   '&:hover fieldset': {
-                    borderColor: '#D1D5DB',
+                    borderColor: '#DDD6C0',
                   },
                   '&.Mui-focused fieldset': {
-                    borderColor: '#2563EB',
+                    borderColor: '#16302A',
                   },
                 }
               }}
@@ -427,7 +442,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
             <Typography 
               sx={{ 
                 fontSize: '0.75rem', 
-                color: '#9CA3AF', 
+                color: '#A89F84', 
                 mt: 0.5,
                 textAlign: 'right'
               }}
@@ -440,7 +455,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
             <Typography 
               sx={{ 
                 fontWeight: 600, 
-                color: '#374151', 
+                color: '#3A4540', 
                 mb: 1,
                 fontSize: '0.875rem'
               }}
@@ -458,15 +473,15 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
               sx={{
                 '& .MuiOutlinedInput-root': {
                   borderRadius: 2,
-                  bgcolor: '#F9FAFB',
+                  bgcolor: '#EBE6D4',
                   '& fieldset': {
-                    borderColor: '#E5E7EB',
+                    borderColor: '#DDD6C0',
                   },
                   '&:hover fieldset': {
-                    borderColor: '#D1D5DB',
+                    borderColor: '#DDD6C0',
                   },
                   '&.Mui-focused fieldset': {
-                    borderColor: '#2563EB',
+                    borderColor: '#16302A',
                   },
                 }
               }}
@@ -528,7 +543,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
             <Typography 
               sx={{ 
                 fontSize: '0.75rem', 
-                color: '#9CA3AF', 
+                color: '#A89F84', 
                 mt: 0.5,
                 textAlign: 'right'
               }}
@@ -541,12 +556,12 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
             <Typography 
               sx={{ 
                 fontWeight: 600, 
-                color: '#374151', 
+                color: '#3A4540', 
                 mb: 1,
                 fontSize: '0.875rem'
               }}
             >
-              Location <span style={{ color: '#9CA3AF', fontWeight: 400 }}>(optional)</span>
+              Location <span style={{ color: '#A89F84', fontWeight: 400 }}>(optional)</span>
             </Typography>
             <LocationAutocomplete
               value={location}
@@ -557,7 +572,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
               <Typography 
                 sx={{ 
                   fontSize: '0.75rem', 
-                  color: '#10B981', 
+                  color: '#5F8670', 
                   mt: 0.5,
                   display: 'flex',
                   alignItems: 'center',
@@ -575,12 +590,12 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
             <Typography 
               sx={{ 
                 fontWeight: 600, 
-                color: '#374151', 
+                color: '#3A4540', 
                 mb: 1,
                 fontSize: '0.875rem'
               }}
             >
-              Media <span style={{ color: '#9CA3AF', fontWeight: 400 }}>(optional)</span>
+              Media <span style={{ color: '#A89F84', fontWeight: 400 }}>(optional)</span>
             </Typography>
             
             <Box
@@ -588,25 +603,25 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
               sx={{
-                border: dragOver ? '2px dashed #2563EB' : '2px dashed rgba(90, 70, 50, 0.2)',
+                border: dragOver ? '2px dashed #16302A' : '2px dashed rgba(90, 70, 50, 0.2)',
                 borderRadius: 3,
-                bgcolor: dragOver ? 'rgba(37,99,235,0.08)' : 'rgba(255,255,255,0.4)',
+                bgcolor: dragOver ? 'rgba(22,48,42,0.08)' : 'rgba(235,230,212,0.4)',
                 p: 4,
                 textAlign: 'center',
                 cursor: 'pointer',
                 transition: 'all 0.2s ease-in-out',
                 '&:hover': {
-                  borderColor: '#2563EB',
-                  bgcolor: 'rgba(255,255,255,0.6)'
+                  borderColor: '#16302A',
+                  bgcolor: 'rgba(235, 230, 212,0.6)'
                 }
               }}
               onClick={() => document.getElementById('file-upload')?.click()}
             >
-              <CloudUploadIcon sx={{ fontSize: 40, color: '#9CA3AF', mb: 1 }} />
-              <Typography sx={{ fontWeight: 600, color: '#374151', mb: 0.5 }}>
+              <CloudUploadIcon sx={{ fontSize: 40, color: '#A89F84', mb: 1 }} />
+              <Typography sx={{ fontWeight: 600, color: '#3A4540', mb: 0.5 }}>
                 Drag and drop files here, or click to select
               </Typography>
-              <Typography sx={{ fontSize: '0.75rem', color: '#6B7280' }}>
+              <Typography sx={{ fontSize: '0.75rem', color: '#3A4540' }}>
                 Supports images and videos up to 10MB
               </Typography>
               <input
@@ -622,7 +637,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
             {/* Show uploaded files */}
             {uploadedFiles.length > 0 && (
               <Box sx={{ mt: 2 }}>
-                <Typography sx={{ fontSize: '0.75rem', color: '#6B7280', mb: 1 }}>
+                <Typography sx={{ fontSize: '0.75rem', color: '#3A4540', mb: 1 }}>
                   Uploaded files ({uploadedFiles.length}/10):
                 </Typography>
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
@@ -647,7 +662,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
             <Typography 
               sx={{ 
                 fontWeight: 600, 
-                color: '#374151', 
+                color: '#3A4540', 
                 mb: 1,
                 fontSize: '0.875rem'
               }}
@@ -660,15 +675,15 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
                 onChange={(e) => setVisibility(e.target.value)}
                 sx={{
                   borderRadius: 2,
-                  bgcolor: '#F9FAFB',
+                  bgcolor: '#EBE6D4',
                   '& .MuiOutlinedInput-notchedOutline': {
-                    borderColor: '#E5E7EB',
+                    borderColor: '#DDD6C0',
                   },
                   '&:hover .MuiOutlinedInput-notchedOutline': {
-                    borderColor: '#D1D5DB',
+                    borderColor: '#DDD6C0',
                   },
                   '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                    borderColor: '#2563EB',
+                    borderColor: '#16302A',
                   },
                   fontSize: '0.875rem'
                 }}
@@ -680,6 +695,12 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
             </FormControl>
           </Box>
 
+          {error && (
+            <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
+              {error}
+            </Alert>
+          )}
+
           {/* Action Buttons */}
           <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
             <Button
@@ -687,16 +708,16 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
               onClick={handleClose}
               disabled={loading}
               sx={{
-                borderColor: '#E5E7EB',
-                color: '#6B7280',
+                borderColor: '#DDD6C0',
+                color: '#3A4540',
                 px: 3,
                 py: 1,
                 borderRadius: 2,
                 fontWeight: 600,
                 textTransform: 'none',
                 '&:hover': {
-                  borderColor: '#D1D5DB',
-                  bgcolor: '#F9FAFB'
+                  borderColor: '#DDD6C0',
+                  bgcolor: '#EBE6D4'
                 }
               }}
             >
@@ -706,25 +727,39 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
               variant="contained"
               onClick={handleSubmit}
               disabled={!isFormValid || loading}
+              disableElevation
+              startIcon={
+                loading ? (
+                  <CircularProgress size={18} thickness={5} sx={{ color: '#EBE6D4' }} />
+                ) : undefined
+              }
               sx={{
-                bgcolor: '#2563EB',
+                bgcolor: '#16302A',
+                color: '#EBE6D4',
                 px: 4,
                 py: 1,
                 borderRadius: 2,
                 fontWeight: 600,
                 textTransform: 'none',
-                boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+                boxShadow: 'none',
+                outline: 'none',
                 '&:hover': {
-                  bgcolor: '#1D4ED8',
-                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                  bgcolor: '#0F221C',
+                  boxShadow: 'none',
                 },
-                '&:disabled': {
-                  bgcolor: '#E5E7EB',
-                  color: '#9CA3AF'
-                }
+                '&:focus, &:focus-visible, &.Mui-focusVisible': {
+                  outline: 'none',
+                  boxShadow: 'none',
+                  bgcolor: '#16302A',
+                },
+                '&.Mui-disabled': {
+                  bgcolor: loading ? '#16302A' : '#DDD6C0',
+                  color: loading ? '#EBE6D4' : '#A89F84',
+                  opacity: loading ? 0.92 : 1,
+                },
               }}
             >
-              {loading ? 'Creating Post...' : 'Create Post'}
+              {loading ? 'Creating post…' : 'Create Post'}
             </Button>
           </Box>
         </Box>

@@ -11,6 +11,9 @@ export interface UserInfo {
   email: string;
   phone: string;
   profilePhoto?: string;
+  profilePhotoSignedUrl?: string;
+  coverPhotoSignedUrl?: string;
+  coverPhoto?: string;
   role?: string;
   address?: string;
   latitude?: number;
