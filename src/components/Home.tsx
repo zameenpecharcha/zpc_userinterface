@@ -632,7 +632,7 @@ const Post = memo(({
 const Home = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user: authUser, isAuthenticated } = useAuth();
+  const { user: authUser, isAuthenticated, clearAuth } = useAuth();
   const { data, loading, error, refetch } = useQuery(SEARCH_POSTS, {
     variables: { page: 1, limit: 10 },
     fetchPolicy: 'cache-and-network',
@@ -1898,10 +1898,8 @@ const Home = () => {
               )}
               <MenuItem
                 onClick={() => {
-                  localStorage.removeItem('user');
-                  localStorage.removeItem('userInfo');
-                  localStorage.removeItem('token');
-                  localStorage.removeItem('refreshToken');
+                  handleClose();
+                  clearAuth();
                   window.location.href = '/';
                 }}
               >
@@ -2443,6 +2441,31 @@ const Home = () => {
                 <span>{item.label}</span>
               </Box>
             ))}
+            <Box
+              onClick={() => {
+                setMobileMenuOpen(false);
+                clearAuth();
+                window.location.href = '/';
+              }}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1.75,
+                px: 1.5,
+                py: 1.35,
+                mt: 1.5,
+                borderRadius: 2.5,
+                cursor: 'pointer',
+                fontWeight: 600,
+                color: '#8B2E2E',
+                fontSize: 15,
+                borderTop: '1px solid rgba(22,48,42,0.12)',
+                pt: 2,
+                '&:active': { bgcolor: 'rgba(22,48,42,0.1)' },
+              }}
+            >
+              <span>Logout</span>
+            </Box>
           </Stack>
         </Box>
       </Drawer>

@@ -15,6 +15,7 @@ import GroupAddOutlinedIcon from '@mui/icons-material/GroupAddOutlined';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import CloseIcon from '@mui/icons-material/Close';
 import MinimizeIcon from '@mui/icons-material/Minimize';
+import LogoutIcon from '@mui/icons-material/Logout';
 import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useApolloClient, useQuery } from '@apollo/client';
@@ -421,12 +422,17 @@ const ChatPage: React.FC<ChatPageProps> = ({
   onClose,
   initialRoomId = null,
 }) => {
-  const { user }  = useAuth();
+  const { user, clearAuth } = useAuth();
   const navigate  = useNavigate();
   const location  = useLocation();
   const isWide = useMediaQuery('(min-width:901px)');
   // Dock on desktop when embedded on Home, or when somehow rendered wide in-page
   const isDesktopDock = embedded || isWide;
+
+  const handleLogout = useCallback(() => {
+    clearAuth();
+    window.location.href = '/';
+  }, [clearAuth]);
 
   const userId      = user ? String(user.id) : '';
   const shouldRedirectToHomeDock = !embedded && isWide;
@@ -913,8 +919,20 @@ const ChatPage: React.FC<ChatPageProps> = ({
                   <EditIcon sx={{ fontSize: 18 }} />
                 </IconButton>
               </Tooltip>
+              {!isDesktopDock && (
+                <Tooltip title="Logout">
+                  <IconButton size="small" onClick={handleLogout} sx={{ color: '#3A4540', '&:hover': { bgcolor: LI_BG, color: LI_BLUE } }}>
+                    <LogoutIcon sx={{ fontSize: 18 }} />
+                  </IconButton>
+                </Tooltip>
+              )}
               {isDesktopDock && (
                 <>
+                  <Tooltip title="Logout">
+                    <IconButton size="small" onClick={handleLogout} sx={{ color: '#3A4540', '&:hover': { bgcolor: LI_BG, color: LI_BLUE } }}>
+                      <LogoutIcon sx={{ fontSize: 18 }} />
+                    </IconButton>
+                  </Tooltip>
                   <Tooltip title="Minimize">
                     <IconButton size="small" onClick={() => setDockMinimized(true)} sx={{ color: '#3A4540' }}>
                       <MinimizeIcon sx={{ fontSize: 18 }} />
