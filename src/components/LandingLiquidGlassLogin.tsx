@@ -10,8 +10,7 @@ import {
 } from '@mui/material';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
-import GoogleSignInButton from './GoogleSignInButton';
-import FacebookSignInButton from './FacebookSignInButton';
+import SocialAuthIconsRow from './SocialAuthIconsRow';
 import '../styles/liquidGlass.css';
 
 const VIDEO_SRC = `${process.env.PUBLIC_URL || ''}/media/ZPC_And_caption_also_change_th.mp4`;
@@ -343,65 +342,13 @@ const LandingLiquidGlassLogin: React.FC<Props> = ({
                 <Box className="lg-divider" sx={{ my: 0.35 }}>
                   or
                 </Box>
-
-                {onGoogleCredential && (
-                  <Box
-                    className="liquid-glass"
-                    sx={{
-                      borderRadius: 999,
-                      overflow: 'hidden',
-                      px: 0.5,
-                      py: 0.35,
-                      display: 'flex',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <GoogleSignInButton
-                      disabled={busy}
-                      onCredential={onGoogleCredential}
-                    />
-                  </Box>
-                )}
-
-                {onFacebookAccessToken && (
-                  <Box
-                    className="liquid-glass"
-                    sx={{
-                      borderRadius: 999,
-                      overflow: 'hidden',
-                      px: 0.5,
-                      py: 0.35,
-                      display: 'flex',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <FacebookSignInButton
-                      disabled={busy}
-                      onAccessToken={onFacebookAccessToken}
-                    />
-                  </Box>
-                )}
-
-                {onMobileSignIn && (
-                  <Button
-                    type="button"
-                    disabled={busy}
-                    onClick={onMobileSignIn}
-                    className="liquid-glass lg-interactive lg-cta"
-                    fullWidth
-                    sx={{
-                      textTransform: 'none',
-                      color: 'rgba(255,255,255,0.92)',
-                      fontFamily: 'var(--font-display)',
-                      fontSize: 13,
-                      fontWeight: 600,
-                      borderRadius: 999,
-                      py: 1.1,
-                    }}
-                  >
-                    Continue with mobile number
-                  </Button>
-                )}
+                <SocialAuthIconsRow
+                  disabled={busy}
+                  tone="dark"
+                  onGoogleCredential={onGoogleCredential}
+                  onFacebookAccessToken={onFacebookAccessToken}
+                  onMobileSignIn={onMobileSignIn}
+                />
               </>
             )}
 

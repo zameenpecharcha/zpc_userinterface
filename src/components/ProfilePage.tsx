@@ -28,6 +28,8 @@ import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
 import FavoriteIcon from '@mui/icons-material/Favorite';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import ShareSymbol from './icons/ShareSymbol';
+import SharePostSheet from './SharePostSheet';
+import type { ShareablePost } from '../utils/sharePost';
 import StarIcon from '@mui/icons-material/Star';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import MessageIcon from '@mui/icons-material/Message';
@@ -237,6 +239,8 @@ interface ProfilePageProps {
     userId: string;
     currentUserId?: string;
     onOpenProfile?: (userId: string) => void;
+    /** Preferred when embedded in Home — opens chat dock without a brittle /home navigate */
+    onOpenChat?: (roomId: string) => void;
 }
 
 const GRAPHQL_QUERIES = {
@@ -494,26 +498,60 @@ const GRAPHQL_QUERIES = {
                 addedAt
                 commentedAt
                 editedAt
+                likeCount
                 profilePhoto
                 profilePhotoSignedUrl
                 replies {
-                id
-                postId
-                userId
-                userFirstName
-                userLastName
-                userRole
-                comment
-                parentCommentId
-                status
-                addedAt
-                commentedAt
-                editedAt
-                likeCount
-                profilePhoto
-                profilePhotoSignedUrl
+                    id
+                    postId
+                    userId
+                    userFirstName
+                    userLastName
+                    userRole
+                    comment
+                    parentCommentId
+                    status
+                    addedAt
+                    commentedAt
+                    editedAt
+                    likeCount
+                    profilePhoto
+                    profilePhotoSignedUrl
+                    replies {
+                        id
+                        postId
+                        userId
+                        userFirstName
+                        userLastName
+                        userRole
+                        comment
+                        parentCommentId
+                        status
+                        addedAt
+                        commentedAt
+                        editedAt
+                        likeCount
+                        profilePhoto
+                        profilePhotoSignedUrl
+                        replies {
+                            id
+                            postId
+                            userId
+                            userFirstName
+                            userLastName
+                            userRole
+                            comment
+                            parentCommentId
+                            status
+                            addedAt
+                            commentedAt
+                            editedAt
+                            likeCount
+                            profilePhoto
+                            profilePhotoSignedUrl
+                        }
+                    }
                 }
-                likeCount
             }
         }
     `,
@@ -779,7 +817,7 @@ const apiService = {
 
             console.log('Raw comments data:', data.postComments?.[0]); // Debug first comment
 
-            return (data.postComments || []).map((comment: any) => ({
+            const mapComment = (comment: any): any => ({
                 id: comment.id,
                 postId: comment.postId,
                 userId: comment.userId,
@@ -789,28 +827,16 @@ const apiService = {
                 comment: comment.comment,
                 parentCommentId: comment.parentCommentId,
                 status: comment.status,
-                addedAt: comment.addedAt, // Keep as string, will be converted in component
-                commentedAt: comment.commentedAt, // Keep as string, will be converted in component
+                addedAt: comment.addedAt,
+                commentedAt: comment.commentedAt,
+                editedAt: comment.editedAt,
                 likeCount: comment.likeCount || 0,
                 profilePhoto: comment.profilePhoto,
                 profilePhotoSignedUrl: comment.profilePhotoSignedUrl,
-                replies: (comment.replies || []).map((reply: any) => ({
-                    id: reply.id,
-                    postId: reply.postId,
-                    userId: reply.userId,
-                    userFirstName: reply.userFirstName,
-                    userLastName: reply.userLastName,
-                    userRole: reply.userRole,
-                    comment: reply.comment,
-                    parentCommentId: reply.parentCommentId,
-                    status: reply.status,
-                    addedAt: reply.addedAt, // Keep as string
-                    commentedAt: reply.commentedAt, // Keep as string
-                    likeCount: reply.likeCount || 0,
-                    profilePhoto: reply.profilePhoto,
-                    profilePhotoSignedUrl: reply.profilePhotoSignedUrl,
-                }))
-            }));
+                replies: (comment.replies || []).map(mapComment),
+            });
+
+            return (data.postComments || []).map(mapComment);
         } catch (error) {
             console.error('Error fetching post comments:', error);
             return [];
@@ -978,11 +1004,13 @@ const apiService = {
         return data.createComment;
     },
 };
-const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUserId, onOpenProfile }) => {
+const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUserId, onOpenProfile, onOpenChat }) => {
     const navigate = useNavigate();
-    const { updateUser } = useAuth();
+    const { updateUser, user: authUser } = useAuth();
     const isMobile = useMediaQuery('(max-width:900px)');
     const [createDmRoom] = useMutation(CREATE_DM_ROOM_MUTATION);
+    const [messagingInProgress, setMessagingInProgress] = useState(false);
+    const effectiveCurrentUserId = currentUserId || (authUser?.id != null ? String(authUser.id) : undefined);
     const [deletePostMutation] = useMutation(DELETE_POST);
     const [updatePostMutation] = useMutation(UPDATE_POST);
     const [user, setUser] = useState<UserProfile | null>(null);
@@ -999,6 +1027,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
     const [editTitle, setEditTitle] = useState('');
     const [editContent, setEditContent] = useState('');
     const [editSaving, setEditSaving] = useState(false);
+    const [sharePostTarget, setSharePostTarget] = useState<ShareablePost | null>(null);
 
     // Post likes and comments state
     const [likedPosts, setLikedPosts] = useState<{ [postId: string]: boolean }>({});
@@ -1518,21 +1547,17 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                     position="fixed"
                     elevation={0}
                     sx={{
-                        ...MATTE_SURFACE,
+                        ...MATTE_HEADER,
                         borderRadius: 0,
-                        borderLeft: 'none',
-                        borderRight: 'none',
-                        borderTop: 'none',
                         zIndex: 1201,
-                        color: '#16302A',
                     }}
                 >
-                    <Toolbar sx={{ justifyContent: 'space-between', px: { xs: 1, sm: 2 }, minHeight: { xs: 56, sm: 64 }, gap: 1 }}>
+                    <Toolbar sx={{ justifyContent: 'space-between', px: { xs: 1, sm: 2 }, minHeight: { xs: 56, sm: 64 }, gap: 1, bgcolor: 'transparent' }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.5, sm: 2 }, minWidth: 0 }}>
-                            <IconButton onClick={onGoBack} size={isMobile ? 'small' : 'medium'} sx={{ color: '#16302A' }}>
+                            <IconButton onClick={onGoBack} size={isMobile ? 'small' : 'medium'} sx={{ color: '#EBE6D4' }}>
                                 <ArrowBackIcon />
                             </IconButton>
-                            <Typography variant="h6" sx={{ fontWeight: 700, color: '#16302A', fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+                            <Typography variant="h6" sx={{ fontWeight: 700, color: '#EBE6D4', fontSize: { xs: '1rem', sm: '1.25rem' } }}>
                                 Profile
                             </Typography>
                         </Box>
@@ -1540,7 +1565,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                             variant="h5"
                             sx={{
                                 fontWeight: 900,
-                                color: '#16302A',
+                                color: '#EBE6D4',
                                 letterSpacing: 1,
                                 fontSize: { xs: 'clamp(0.85rem, 3.5vw, 1.1rem)', sm: '1.5rem' },
                                 whiteSpace: 'nowrap',
@@ -1578,21 +1603,17 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                 position="fixed"
                 elevation={0}
                 sx={{
-                    ...MATTE_SURFACE,
+                    ...MATTE_HEADER,
                     borderRadius: 0,
-                    borderLeft: 'none',
-                    borderRight: 'none',
-                    borderTop: 'none',
                     zIndex: 1201,
-                    color: '#16302A',
                 }}
             >
                 <Toolbar sx={{ justifyContent: 'space-between', px: { xs: 1, sm: 2 }, minHeight: { xs: 56, sm: 64 }, gap: 1, bgcolor: 'transparent' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.5, sm: 2 }, minWidth: 0 }}>
-                        <IconButton onClick={onGoBack} size={isMobile ? 'small' : 'medium'} sx={{ color: '#16302A' }}>
+                        <IconButton onClick={onGoBack} size={isMobile ? 'small' : 'medium'} sx={{ color: '#EBE6D4' }}>
                             <ArrowBackIcon />
                         </IconButton>
-                        <Typography variant="h6" sx={{ fontWeight: 700, color: '#16302A', fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+                        <Typography variant="h6" sx={{ fontWeight: 700, color: '#EBE6D4', fontSize: { xs: '1rem', sm: '1.25rem' } }}>
                             Profile
                         </Typography>
                     </Box>
@@ -1604,7 +1625,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                             variant="h5"
                             sx={{
                                 fontWeight: 800,
-                                color: '#16302A',
+                                color: '#EBE6D4',
                                 letterSpacing: 0.2,
                                 fontSize: { xs: 'clamp(0.85rem, 3.5vw, 1.1rem)', sm: '1.25rem' },
                                 whiteSpace: 'nowrap',
@@ -1810,25 +1831,44 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                             variant="outlined"
                                             startIcon={<MessageIcon />}
                                             size={isMobile ? 'small' : 'medium'}
+                                            disabled={messagingInProgress}
                                             onClick={async () => {
-                                                if (!currentUserId || !user) return;
+                                                const meId = effectiveCurrentUserId;
+                                                if (!meId) {
+                                                    setSnack({ open: true, message: 'Please log in again to send a message', severity: 'error' });
+                                                    return;
+                                                }
+                                                if (!userId) return;
+                                                setMessagingInProgress(true);
                                                 try {
                                                     const result = await createDmRoom({
                                                         variables: {
-                                                            createdBy: String(currentUserId),
-                                                            userA: String(currentUserId),
+                                                            createdBy: String(meId),
+                                                            userA: String(meId),
                                                             userB: String(userId),
                                                         },
                                                     });
-                                                    const roomId = result.data?.createDmRoom?.roomId;
+                                                    const roomId =
+                                                        result.data?.createDmRoom?.roomId ||
+                                                        (result.data?.createDmRoom as any)?.room_id;
                                                     if (!roomId) {
                                                         setSnack({ open: true, message: 'Failed to start conversation', severity: 'error' });
                                                         return;
                                                     }
-                                                    navigate('/home', { state: { openChat: true, autoSelectRoomId: roomId } });
+                                                    if (onOpenChat && !isMobile) {
+                                                        onOpenChat(String(roomId));
+                                                        return;
+                                                    }
+                                                    if (isMobile) {
+                                                        navigate('/chat', { state: { autoSelectRoomId: String(roomId) } });
+                                                        return;
+                                                    }
+                                                    navigate('/home', { state: { openChat: true, autoSelectRoomId: String(roomId) } });
                                                 } catch (err) {
                                                     console.error('Failed to create DM room', err);
                                                     setSnack({ open: true, message: 'Failed to start conversation', severity: 'error' });
+                                                } finally {
+                                                    setMessagingInProgress(false);
                                                 }
                                             }}
                                             sx={{
@@ -1840,7 +1880,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                                 flex: { xs: '1 1 auto', sm: '0 0 auto' },
                                             }}
                                         >
-                                            Message
+                                            {messagingInProgress ? 'Opening…' : 'Message'}
                                         </Button>
                                     </>
                                 )}
@@ -2228,6 +2268,14 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                         </Button>
                                         <IconButton
                                             aria-label="Share"
+                                            onClick={() =>
+                                                setSharePostTarget({
+                                                    id: post.id,
+                                                    title: (post as any).title,
+                                                    content: (post as any).content,
+                                                })
+                                            }
+                                            disabled={(post as any).allowShare === false}
                                             sx={{
                                                 color: '#64748B',
                                                 borderRadius: 2,
@@ -2588,7 +2636,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                                 replyText={replyText}
                                                 setReplyText={setReplyText}
                                                 replying={replying}
-                                                onReply={(text: string) => handleAddComment(commentsModalOpen.postId!, text, comment.id)}
+                                                onReply={(text: string, parentId: string) => handleAddComment(commentsModalOpen.postId!, text, parentId)}
                                                 onReactComment={handleReactComment}
                                                 onEditComment={handleEditComment}
                                                 onDeleteComment={handleDeleteComment}
@@ -2815,6 +2863,12 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                 </Button>
             </DialogActions>
         </Dialog>
+
+        <SharePostSheet
+            open={!!sharePostTarget}
+            post={sharePostTarget}
+            onClose={() => setSharePostTarget(null)}
+        />
     </>
     );
 };

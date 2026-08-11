@@ -19,19 +19,15 @@ import {
 import {
   ArrowBack,
   BusinessCenter,
-  Home,
-  MapOutlined,
   AccountCircle,
   CheckCircle,
 } from '@mui/icons-material';
 import ApartmentIcon from '@mui/icons-material/Apartment';
-import BalanceIcon from '@mui/icons-material/Balance';
 import { useAuth } from '../contexts/AuthContext';
 import { AuthService } from '../services/authService';
 import { useApolloClient } from '@apollo/client';
 import LocationAutocomplete from './LocationAutocomplete';
-import GoogleSignInButton from './GoogleSignInButton';
-import FacebookSignInButton from './FacebookSignInButton';
+import SocialAuthIconsRow from './SocialAuthIconsRow';
 import { COUNTRY_CODES } from '../constants/countryCodes';
 import { MagicCard } from './MagicCard';
 import { PAGE_ATMOSPHERE } from '../theme/surfaces';
@@ -42,37 +38,19 @@ const ACCENT_SOFT = 'rgba(143, 169, 152, 0.35)';
 
 const professionOptions = [
   {
-    id: 'builder',
-    label: 'Builder',
-    hint: 'Develop & list projects',
-    icon: ApartmentIcon,
-  },
-  {
     id: 'agent',
     label: 'Agent',
     hint: 'Sell & lease properties',
     icon: BusinessCenter,
   },
   {
-    id: 'buyer_renter',
-    label: 'Buy / Rent',
-    hint: 'Looking for a home',
-    icon: Home,
+    id: 'builder',
+    label: 'Builder',
+    hint: 'Develop & list projects',
+    icon: ApartmentIcon,
   },
   {
-    id: 'litigation_lawyer',
-    label: 'Lawyer',
-    hint: 'Property litigation',
-    icon: BalanceIcon,
-  },
-  {
-    id: 'land_surveyor',
-    label: 'Surveyor',
-    hint: 'Land & site surveys',
-    icon: MapOutlined,
-  },
-  {
-    id: 'general_user',
+    id: 'general',
     label: 'General',
     hint: 'Explore & discuss',
     icon: AccountCircle,
@@ -606,8 +584,8 @@ const Register = () => {
               <Box
                 sx={{
                   display: 'grid',
-                  gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
-                  gap: 1.25,
+                  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                  gap: { xs: 0.85, sm: 1.25 },
                   mb: 2.5,
                 }}
               >
@@ -633,10 +611,13 @@ const Register = () => {
                       sx={{
                         position: 'relative',
                         display: 'flex',
+                        flexDirection: 'column',
                         alignItems: 'center',
-                        gap: 1.25,
-                        px: 1.5,
-                        py: 1.35,
+                        textAlign: 'center',
+                        gap: 0.75,
+                        px: { xs: 0.75, sm: 1.25 },
+                        py: { xs: 1.15, sm: 1.35 },
+                        minWidth: 0,
                         borderRadius: '14px',
                         cursor: 'pointer',
                         border: selected
@@ -650,10 +631,21 @@ const Register = () => {
                         },
                       }}
                     >
+                      {selected && (
+                        <CheckCircle
+                          sx={{
+                            color: ACCENT,
+                            fontSize: 16,
+                            position: 'absolute',
+                            top: 6,
+                            right: 6,
+                          }}
+                        />
+                      )}
                       <Box
                         sx={{
-                          width: 40,
-                          height: 40,
+                          width: { xs: 34, sm: 40 },
+                          height: { xs: 34, sm: 40 },
                           borderRadius: '12px',
                           display: 'flex',
                           alignItems: 'center',
@@ -663,14 +655,14 @@ const Register = () => {
                           color: selected ? '#EBE6D4' : ACCENT,
                         }}
                       >
-                        <Icon sx={{ fontSize: 22 }} />
+                        <Icon sx={{ fontSize: { xs: 18, sm: 22 } }} />
                       </Box>
-                      <Box sx={{ minWidth: 0, flex: 1 }}>
+                      <Box sx={{ minWidth: 0, width: '100%' }}>
                         <Typography
                           sx={{
                             fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
                             fontWeight: 700,
-                            fontSize: 14,
+                            fontSize: { xs: 12.5, sm: 14 },
                             color: '#0A1210',
                             lineHeight: 1.2,
                           }}
@@ -680,18 +672,16 @@ const Register = () => {
                         <Typography
                           sx={{
                             fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
-                            fontSize: 11.5,
+                            fontSize: { xs: 10, sm: 11.5 },
                             fontWeight: 500,
                             color: '#3A4540',
-                            mt: 0.2,
+                            mt: 0.25,
+                            lineHeight: 1.25,
                           }}
                         >
                           {profession.hint}
                         </Typography>
                       </Box>
-                      {selected && (
-                        <CheckCircle sx={{ color: ACCENT, fontSize: 20, flexShrink: 0 }} />
-                      )}
                     </Box>
                   );
                 })}
@@ -763,38 +753,13 @@ const Register = () => {
               </Divider>
 
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
-                <GoogleSignInButton
-                  text="continue_with"
+                <SocialAuthIconsRow
                   disabled={socialAuthDisabled}
-                  onCredential={handleGoogleCredential}
+                  tone="light"
+                  onGoogleCredential={handleGoogleCredential}
+                  onFacebookAccessToken={handleFacebookAccessToken}
+                  onMobileSignIn={() => setMobileSignInOpen(true)}
                 />
-                <FacebookSignInButton
-                  label="Continue with Facebook"
-                  disabled={socialAuthDisabled}
-                  onAccessToken={handleFacebookAccessToken}
-                />
-                <Button
-                  fullWidth
-                  variant="outlined"
-                  disabled={socialAuthDisabled}
-                  onClick={() => setMobileSignInOpen(true)}
-                  sx={{
-                    textTransform: 'none',
-                    py: 1.25,
-                    borderRadius: '12px',
-                    fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
-                    fontWeight: 600,
-                    borderColor: 'rgba(22, 48, 42, 0.35)',
-                    color: ACCENT,
-                    bgcolor: 'rgba(235,230,212,0.5)',
-                    '&:hover': {
-                      borderColor: ACCENT,
-                      bgcolor: 'rgba(235,230,212,0.85)',
-                    },
-                  }}
-                >
-                  Continue with mobile number
-                </Button>
               </Box>
 
               <Box sx={{ textAlign: 'center', mt: 2 }}>

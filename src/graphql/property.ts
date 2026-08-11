@@ -13,6 +13,7 @@ export const PROPERTY_FIELDS = gql`
     creatorRole
     builderName
     projectName
+    reraId
     propertyType
     listingType
     price

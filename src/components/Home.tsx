@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback, memo, useEffect, useRef } from 'react';
 import { gql, useQuery, useMutation, useApolloClient } from '@apollo/client';
-import { SEARCH_POSTS, CREATE_POST, TRENDING_POSTS, DELETE_POST, UPDATE_POST, UPDATE_COMMENT, DELETE_COMMENT, UNLIKE_COMMENT, GET_POST_COMMENTS, CREATE_COMMENT, LIKE_COMMENT, LIKE_POST, UNLIKE_POST, SHARE_POST, REPORT_POST, PIN_POST, UNPIN_POST } from '../graphql/posts';
-import { GET_SUGGESTED_USERS, FOLLOW_USER, GET_USER_NOTIFICATIONS, MARK_NOTIFICATION_READ, GET_USER_PROFILE } from '../graphql/user';
+import { SEARCH_POSTS, CREATE_POST, TRENDING_POSTS, DELETE_POST, UPDATE_POST, UPDATE_COMMENT, DELETE_COMMENT, UNLIKE_COMMENT, GET_POST_COMMENTS, CREATE_COMMENT, LIKE_COMMENT, LIKE_POST, UNLIKE_POST, REPORT_POST, PIN_POST, UNPIN_POST, GET_POST_LIKES } from '../graphql/posts';
+import { GET_SUGGESTED_USERS, FOLLOW_USER, GET_USER_NOTIFICATIONS, MARK_NOTIFICATION_READ, GET_USER_PROFILE, GET_USER_FOLLOWERS, GET_USER_FOLLOWING } from '../graphql/user';
 import CreatePost from './CreatePost';
 import { PostService } from '../services/postService';
 import { useAuth } from '../contexts/AuthContext';
@@ -37,6 +37,11 @@ import {
   Divider,
   TextField,
   Alert,
+  Popover,
+  List,
+  ListItemButton,
+  ListItemAvatar,
+  ListItemText,
 } from '@mui/material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import HomeIcon from '@mui/icons-material/Home';
@@ -50,21 +55,21 @@ import WhatshotIcon from '@mui/icons-material/Whatshot';
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import ShareSymbol from './icons/ShareSymbol';
+import SharePostSheet from './SharePostSheet';
+import type { ShareablePost } from '../utils/sharePost';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
-import PhotoCameraOutlinedIcon from '@mui/icons-material/PhotoCameraOutlined';
-import VideocamOutlinedIcon from '@mui/icons-material/VideocamOutlined';
-import ArticleOutlinedIcon from '@mui/icons-material/ArticleOutlined';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import StarRoundedIcon from '@mui/icons-material/StarRounded';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import ProfilePage from './ProfilePage';
+import TabEnter from './motion/TabEnter';
 import ChatPage from './ChatPage';
-import { MATTE_SURFACE, MATTE_INSET, MATTE_PANEL, PAGE_ATMOSPHERE } from '../theme/surfaces';
+import { MATTE_SURFACE, MATTE_HEADER, MATTE_INSET, MATTE_PANEL, PAGE_ATMOSPHERE } from '../theme/surfaces';
 import AdminBackground from './admin/AdminBackground';
 import { ZpcLogoMark } from './brand/ZpcLogo';
 import PostMediaCarousel from './PostMediaCarousel';
-import { isAdminRole } from '../utils/roles';
+import { canManageProperties as roleCanManageProperties, isAdminRole } from '../utils/roles';
 
 const GRAPHQL_URL = process.env.REACT_APP_GRAPHQL_URL || 'http://localhost:8080/api/v1/graphql';
 const API_GATEWAY_URL = (process.env.REACT_APP_API_GATEWAY_URL || 'http://localhost:8080').replace(/\/$/, '');
@@ -162,12 +167,14 @@ interface PostProps {
   onOpenProfile: (userId: string) => void;
   onEditPost?: (post: PostProps['post']) => void;
   onDeletePost?: (postId: number | string) => void;
-  onSharePost?: (postId: number | string) => void | Promise<void>;
+  onSharePost?: (post: ShareablePost) => void | Promise<void>;
   onReportPost?: (post: PostProps['post']) => void | Promise<void>;
   onPinPost?: (postId: number | string, pin: boolean) => void | Promise<void>;
   /** Live profile photo for the signed-in user (overrides stale post enrichment). */
   viewerProfilePhoto?: string | null;
   currentUserId?: number | string | null;
+  /** User IDs the viewer follows or is followed by — used to filter likers on others' posts. */
+  networkUserIds?: Set<string>;
   likedPosts: { [postId: string]: boolean };
   likeCounts: { [postId: string]: number };
   commentCounts: { [postId: string]: number };
@@ -223,6 +230,7 @@ const Post = memo(({
   onPinPost,
   viewerProfilePhoto = null,
   currentUserId,
+  networkUserIds,
   likedPosts,
   likeCounts,
   commentCounts,
@@ -243,8 +251,22 @@ const Post = memo(({
   setReplyText,
   setReplyingCommentId,
 }: PostProps) => {
+  const client = useApolloClient();
+  const isNarrow = useMediaQuery('(max-width:900px)');
   const [isAnimating, setIsAnimating] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
+  const [likersAnchor, setLikersAnchor] = useState<null | HTMLElement>(null);
+  const [likersDialogOpen, setLikersDialogOpen] = useState(false);
+  const [likers, setLikers] = useState<Array<{
+    userId: string;
+    firstName?: string;
+    lastName?: string;
+    userRole?: string;
+    profilePhotoSignedUrl?: string;
+    profilePhoto?: string;
+  }>>([]);
+  const [likersLoading, setLikersLoading] = useState(false);
+  const [likersTotal, setLikersTotal] = useState(0);
   const isOwner = currentUserId != null && String(currentUserId) === String(post.userId);
   const authorName = `${post.userFirstName || ''} ${post.userLastName || ''}`.trim();
   const photoUrl = (() => {
@@ -272,6 +294,37 @@ const Post = memo(({
     post.price != null && Number(post.price) > 0 ? `₹${post.price}` : '',
   ].filter(Boolean);
 
+  const loadLikers = useCallback(async () => {
+    if (!post.id) return;
+    setLikersLoading(true);
+    try {
+      const { data } = await client.query({
+        query: GET_POST_LIKES,
+        variables: { postId: String(post.id), page: 1, limit: 50 },
+        fetchPolicy: 'network-only',
+      });
+      const raw: typeof likers = data?.postLikes?.likes || [];
+      const total = Number(data?.postLikes?.totalCount || 0);
+      const isOwnPost =
+        currentUserId != null && String(currentUserId) === String(post.userId);
+      if (isOwnPost) {
+        setLikers(raw);
+        setLikersTotal(total);
+      } else {
+        const network = networkUserIds || new Set<string>();
+        const visible = raw.filter((u) => network.has(String(u.userId)));
+        setLikers(visible);
+        setLikersTotal(visible.length);
+      }
+    } catch (err) {
+      console.warn('postLikes failed', err);
+      setLikers([]);
+      setLikersTotal(0);
+    } finally {
+      setLikersLoading(false);
+    }
+  }, [client, post.id, post.userId, currentUserId, networkUserIds]);
+
   const handleLikeClick = useCallback(() => {
     setIsAnimating(true);
     setTimeout(() => {
@@ -279,6 +332,83 @@ const Post = memo(({
     }, 600);
     onLikeToggle(post.id);
   }, [post.id, onLikeToggle]);
+
+  const openLikersDesktop = useCallback(
+    (el: HTMLElement) => {
+      if (isNarrow || likeCount <= 0) return;
+      setLikersAnchor(el);
+      void loadLikers();
+    },
+    [isNarrow, likeCount, loadLikers],
+  );
+
+  const openLikersMobile = useCallback(() => {
+    if (!isNarrow || likeCount <= 0) return;
+    setLikersDialogOpen(true);
+    void loadLikers();
+  }, [isNarrow, likeCount, loadLikers]);
+
+  const isOwnPost =
+    currentUserId != null && String(currentUserId) === String(post.userId);
+
+  const likerListContent = (
+    <Box sx={{ minWidth: 260, maxWidth: 320 }}>
+      {likersLoading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 2.5 }}>
+          <CircularProgress size={22} />
+        </Box>
+      ) : likers.length === 0 ? (
+        <Typography sx={{ px: 2, py: 2, fontSize: 13, color: '#5C675F' }}>
+          {isOwnPost
+            ? 'No likes yet'
+            : 'No one from your network liked this'}
+        </Typography>
+      ) : (
+        <List dense disablePadding sx={{ maxHeight: 320, overflowY: 'auto' }}>
+          {likers.map((u) => {
+            const name = `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'ZPC member';
+            const avatar = u.profilePhotoSignedUrl || u.profilePhoto || '';
+            return (
+              <ListItemButton
+                key={u.userId}
+                onClick={() => {
+                  setLikersAnchor(null);
+                  setLikersDialogOpen(false);
+                  onOpenProfile(String(u.userId));
+                }}
+                sx={{ py: 1, px: 1.5 }}
+              >
+                <ListItemAvatar sx={{ minWidth: 44 }}>
+                  <Avatar
+                    src={avatar || undefined}
+                    sx={{ width: 34, height: 34, bgcolor: stringToColor(name), fontSize: 13 }}
+                  >
+                    {nameInitials(name)}
+                  </Avatar>
+                </ListItemAvatar>
+                <ListItemText
+                  primary={name}
+                  secondary={u.userRole ? String(u.userRole).replace(/_/g, ' ') : undefined}
+                  primaryTypographyProps={{ fontSize: 14, fontWeight: 600, color: '#0A1210' }}
+                  secondaryTypographyProps={{ fontSize: 12, color: '#5C675F' }}
+                />
+              </ListItemButton>
+            );
+          })}
+        </List>
+      )}
+      {!likersLoading && isOwnPost && likersTotal > likers.length ? (
+        <Typography sx={{ px: 2, pb: 1.25, fontSize: 11.5, color: '#5C675F' }}>
+          Showing {likers.length} of {likersTotal}
+        </Typography>
+      ) : null}
+      {!likersLoading && !isOwnPost && likeCount > likers.length ? (
+        <Typography sx={{ px: 2, pb: 1.25, fontSize: 11.5, color: '#5C675F' }}>
+          Showing people from your network only
+        </Typography>
+      ) : null}
+    </Box>
+  );
 
   const actionBtnSx = {
     flex: 1,
@@ -466,16 +596,42 @@ const Post = memo(({
             pb: 0.35,
           }}
         >
-          <Typography sx={{ fontSize: 12.5, color: '#5C675F', fontWeight: 500 }}>
-            {likeCount > 0 ? (
-              <>
-                <Box component="span" sx={{ mr: 0.5 }} aria-hidden>{liked ? '❤️' : '🤍'}</Box>
-                {likeCount}
-              </>
-            ) : (
-              ' '
-            )}
-          </Typography>
+          {likeCount > 0 ? (
+            <Typography
+              component="button"
+              type="button"
+              onMouseEnter={(e) => openLikersDesktop(e.currentTarget)}
+              onMouseLeave={() => {
+                // Delay so user can move into the popover
+                window.setTimeout(() => {
+                  if (!document.querySelector('[data-likers-popover]:hover')) {
+                    setLikersAnchor(null);
+                  }
+                }, 120);
+              }}
+              onClick={openLikersMobile}
+              sx={{
+                fontSize: 12.5,
+                color: '#5C675F',
+                fontWeight: 500,
+                cursor: 'pointer',
+                border: 'none',
+                background: 'none',
+                p: 0,
+                m: 0,
+                font: 'inherit',
+                display: 'inline-flex',
+                alignItems: 'center',
+                '&:hover': { color: '#16302A', textDecoration: 'underline' },
+              }}
+              aria-label={`${likeCount} likes — view who liked`}
+            >
+              <Box component="span" sx={{ mr: 0.5 }} aria-hidden>{liked ? '❤️' : '🤍'}</Box>
+              {likeCount} {likeCount === 1 ? 'like' : 'likes'}
+            </Typography>
+          ) : (
+            <Typography sx={{ fontSize: 12.5, color: '#5C675F', fontWeight: 500 }}> </Typography>
+          )}
           {commentCount > 0 ? (
             <Typography
               onClick={() => onCommentClick(post.id)}
@@ -492,6 +648,50 @@ const Post = memo(({
           ) : null}
         </Box>
       )}
+
+      <Popover
+        open={Boolean(likersAnchor) && !isNarrow}
+        anchorEl={likersAnchor}
+        onClose={() => setLikersAnchor(null)}
+        disableRestoreFocus
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+        PaperProps={{
+          'data-likers-popover': true,
+          onMouseLeave: () => setLikersAnchor(null),
+          sx: {
+            mt: 0.5,
+            borderRadius: 2,
+            ...MATTE_SURFACE,
+            boxShadow: '0 8px 28px rgba(10,18,16,0.14)',
+          },
+        } as any}
+      >
+        <Typography sx={{ px: 1.75, pt: 1.35, pb: 0.5, fontSize: 12.5, fontWeight: 700, color: '#16302A' }}>
+          {isOwnPost ? 'Liked by' : 'Liked by people you know'}
+        </Typography>
+        {likerListContent}
+      </Popover>
+
+      <Dialog
+        open={likersDialogOpen && isNarrow}
+        onClose={() => setLikersDialogOpen(false)}
+        fullWidth
+        maxWidth="xs"
+        PaperProps={{ sx: { borderRadius: 2, ...MATTE_SURFACE } }}
+      >
+        <DialogTitle sx={{ fontSize: 16, fontWeight: 700, color: '#16302A', pb: 0.5 }}>
+          {isOwnPost ? 'Liked by' : 'Liked by people you know'}
+        </DialogTitle>
+        <DialogContent sx={{ px: 0.5, pt: 0.5 }}>
+          {likerListContent}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setLikersDialogOpen(false)} sx={{ textTransform: 'none' }}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Box
         sx={{
@@ -547,7 +747,13 @@ const Post = memo(({
           sx={actionBtnSx}
           aria-label="Share"
           disabled={(post as any).allowShare === false || !onSharePost}
-          onClick={() => onSharePost?.(post.id)}
+          onClick={() =>
+            onSharePost?.({
+              id: post.id,
+              title: (post as any).title,
+              content: (post as any).content,
+            })
+          }
         >
           Share
         </Button>
@@ -611,7 +817,7 @@ const Post = memo(({
                   setReplyText={setReplyText || (() => {})}
                   setReplyingCommentId={setReplyingCommentId || (() => {})}
                   replying={false}
-                  onReply={(text: string) => onAddComment?.(post.id, text, comment.id)}
+                  onReply={(text: string, parentId: string) => onAddComment?.(post.id, text, parentId)}
                   onReactComment={onReactComment || (() => {})}
                   onEditComment={onEditComment || (() => {})}
                   onDeleteComment={onDeleteComment || (() => {})}
@@ -724,6 +930,33 @@ const Home = () => {
   // Closest live proxy for “who engaged with your profile” until a views API exists.
   const profileViewsApprox = ownFollowers + ownRatings.length;
 
+  const { data: followersData } = useQuery(GET_USER_FOLLOWERS, {
+    variables: { userId: String(activeUserId || '') },
+    skip: !activeUserId,
+    fetchPolicy: 'cache-and-network',
+    errorPolicy: 'ignore',
+  });
+  const { data: followingData } = useQuery(GET_USER_FOLLOWING, {
+    variables: { userId: String(activeUserId || '') },
+    skip: !activeUserId,
+    fetchPolicy: 'cache-and-network',
+    errorPolicy: 'ignore',
+  });
+  const networkUserIds = useMemo(() => {
+    const ids = new Set<string>();
+    const me = activeUserId != null ? String(activeUserId) : '';
+    if (me) ids.add(me);
+    (followersData?.userFollowers || []).forEach((f: any) => {
+      const id = String(f.followerId || '');
+      if (id && id !== me) ids.add(id);
+    });
+    (followingData?.userFollowing || []).forEach((f: any) => {
+      const id = String(f.followingId || '');
+      if (id && id !== me) ids.add(id);
+    });
+    return ids;
+  }, [activeUserId, followersData?.userFollowers, followingData?.userFollowing]);
+
   const { data: notifData, refetch: refetchNotifs } = useQuery(GET_USER_NOTIFICATIONS, {
     variables: { userId: String(activeUserId || ''), page: 1, limit: 20 },
     skip: !activeUserId,
@@ -786,6 +1019,31 @@ const Home = () => {
     window.history.replaceState({}, '');
   }, [location.state, isMobile, navigate]);
 
+  // Deep-link from shared URL: /home?post=<id>
+  useEffect(() => {
+    const params = new URLSearchParams(location.search || '');
+    const postId = params.get('post');
+    if (!postId) return;
+    setCurrentPage('home');
+    setSelectedProfileId(null);
+    if (!data?.searchPosts?.length) return;
+
+    const t = window.setTimeout(() => {
+      const el = document.getElementById(`post-${postId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.style.outline = '2px solid #5F8670';
+        el.style.outlineOffset = '4px';
+        window.setTimeout(() => {
+          el.style.outline = '';
+          el.style.outlineOffset = '';
+        }, 2500);
+      }
+      navigate('/home', { replace: true });
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [location.search, navigate, data?.searchPosts]);
+
   // GraphQL mutations
   const [createComment] = useMutation(CREATE_COMMENT);
   const [likeComment] = useMutation(LIKE_COMMENT);
@@ -797,7 +1055,6 @@ const Home = () => {
   const [createPostMutation] = useMutation(CREATE_POST);
   const [updatePostMutation] = useMutation(UPDATE_POST);
   const [deletePostMutation] = useMutation(DELETE_POST);
-  const [sharePostMutation] = useMutation(SHARE_POST);
   const [reportPostMutation] = useMutation(REPORT_POST);
   const [pinPostMutation] = useMutation(PIN_POST);
   const [unpinPostMutation] = useMutation(UNPIN_POST);
@@ -808,6 +1065,7 @@ const Home = () => {
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
   const [editSaving, setEditSaving] = useState(false);
+  const [sharePostTarget, setSharePostTarget] = useState<ShareablePost | null>(null);
 
   // Function to fetch fresh user data from backend
   const fetchAndUpdateUserData = useCallback(async () => {
@@ -1053,18 +1311,19 @@ const Home = () => {
     }
   }, []);
 
-  // Helper function to check if user has property management permissions
+  // Agent & Builder only — Admin/General cannot create or manage listings
   const canManageProperties = useCallback(() => {
     const user = authUser || currentUser || storedUser;
-    if (!user) {
-      return false;
-    }
-    if (!user.role || user.role.trim() === '') {
-      return false;
-    }
-    const userRole = user.role.toLowerCase().trim();
-    return userRole === 'builder' || userRole === 'admin';
+    return roleCanManageProperties(user?.role);
   }, [authUser, currentUser, storedUser]);
+
+  const propertyNav = useMemo(
+    () =>
+      canManageProperties()
+        ? leftNav
+        : leftNav.filter((item) => item.label !== 'Properties'),
+    [canManageProperties]
+  );
 
   const canAccessAdmin = useCallback(() => {
     const user = authUser || currentUser || storedUser;
@@ -1136,7 +1395,7 @@ const Home = () => {
 
       const { data, errors } = await createPostMutation({
         variables: {
-          userId: parseInt(String(user.id), 10),
+          userId: String(user.id),
           title: postData.title,
           content: postData.content,
           visibility: postData.visibility || 'public',
@@ -1149,7 +1408,7 @@ const Home = () => {
           media:
             uploadedMedia.length > 0
               ? uploadedMedia.map((media, index) => ({
-                  mediaType: media.contentType.startsWith('video/') ? 'video' : 'image',
+                  mediaType: media.contentType.startsWith('video/') ? 'VIDEO' : 'IMAGE',
                   mediaOrder: index + 1,
                   filePath: media.url,
                   fileName: media.name,
@@ -1237,31 +1496,14 @@ const Home = () => {
     }
   }, [deletePostMutation, refetch]);
 
-  const handleSharePost = useCallback(async (postId: number | string) => {
-    if (!activeUserId) {
-      window.alert('Please sign in to share posts.');
-      return;
-    }
-    try {
-      const { data: result } = await sharePostMutation({
-        variables: {
-          postId: String(postId),
-          sharedBy: String(activeUserId),
-          shareType: 'SHARE',
-          visibility: 'PUBLIC',
-        },
-      });
-      if (result?.sharePost?.success) {
-        window.alert('Post shared to your activity.');
-        await refetch();
-      } else {
-        window.alert(result?.sharePost?.message || 'Could not share post');
-      }
-    } catch (err) {
-      console.error('Error sharing post:', err);
-      window.alert('Could not share post');
-    }
-  }, [activeUserId, sharePostMutation, refetch]);
+  const handleSharePost = useCallback((post: ShareablePost) => {
+    if ((post as any)?.allowShare === false) return;
+    setSharePostTarget({
+      id: post.id,
+      title: post.title,
+      content: post.content,
+    });
+  }, []);
 
   const handleReportPost = useCallback(async (post: any) => {
     if (!activeUserId) {
@@ -1607,15 +1849,20 @@ const Home = () => {
     }
 
     return (
-      <>
+      <TabEnter tabKey={`profile-${selectedProfileId}`}>
         <ProfilePage
           onGoBack={handleGoHome}
           userId={String(selectedProfileId)}
           currentUserId={authUserId != null ? String(authUserId) : undefined}
           onOpenProfile={handleOpenProfile}
+          onOpenChat={(roomId) => {
+            setChatRoomId(String(roomId));
+            setChatOpen(true);
+          }}
         />
         {!isMobile && chatOpen && (
           <ChatPage
+            key={chatRoomId || 'chat-dock'}
             embedded
             initialRoomId={chatRoomId}
             onClose={() => {
@@ -1624,7 +1871,7 @@ const Home = () => {
             }}
           />
         )}
-      </>
+      </TabEnter>
     );
   }
 
@@ -1639,18 +1886,14 @@ const Home = () => {
       }}
     >
       <AdminBackground />
-      {/* LinkedIn-style top bar — ZPC cream glass */}
+      {/* LinkedIn-style top bar — forest green frosted glass */}
       <AppBar
         position="fixed"
         elevation={0}
         sx={{
-          ...MATTE_SURFACE,
+          ...MATTE_HEADER,
           borderRadius: 0,
-          borderLeft: 'none',
-          borderRight: 'none',
-          borderTop: 'none',
           zIndex: 1201,
-          color: '#16302A',
         }}
       >
         <Toolbar
@@ -1664,11 +1907,12 @@ const Home = () => {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
+            bgcolor: 'transparent',
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0, flex: { xs: 1, md: '0 0 auto' } }}>
             {isMobile && (
-              <IconButton edge="start" aria-label="Open menu" onClick={() => setMobileMenuOpen(true)} size="small" sx={{ color: '#16302A' }}>
+              <IconButton edge="start" aria-label="Open menu" onClick={() => setMobileMenuOpen(true)} size="small" sx={{ color: '#EBE6D4' }}>
                 <MenuIcon />
               </IconButton>
             )}
@@ -1681,15 +1925,15 @@ const Home = () => {
                   display: 'flex',
                   alignItems: 'center',
                   gap: 0.75,
-                  bgcolor: 'rgba(22,48,42,0.06)',
+                  bgcolor: 'rgba(235,230,212,0.12)',
                   px: 1.25,
                   py: 0.55,
                   borderRadius: 1,
                   width: 280,
-                  border: '1px solid rgba(22,48,42,0.1)',
+                  border: '1px solid rgba(235,230,212,0.28)',
                 }}
               >
-                <SearchIcon sx={{ color: '#5C675F', fontSize: 18 }} />
+                <SearchIcon sx={{ color: 'rgba(235,230,212,0.75)', fontSize: 18 }} />
                 <InputBase
                   placeholder="Search people, properties, posts"
                   fullWidth
@@ -1701,7 +1945,13 @@ const Home = () => {
                       navigate(q ? `/search?q=${encodeURIComponent(q)}` : '/search');
                     }
                   }}
-                  sx={{ fontSize: 14, color: '#16302A', ...interFont, '& input': { py: 0.25 } }}
+                  sx={{
+                    fontSize: 14,
+                    color: '#EBE6D4',
+                    ...interFont,
+                    '& input': { py: 0.25 },
+                    '& input::placeholder': { color: 'rgba(235,230,212,0.55)', opacity: 1 },
+                  }}
                 />
               </Box>
             )}
@@ -1709,7 +1959,7 @@ const Home = () => {
 
           {!isMobile && (
             <Box sx={{ display: 'flex', alignItems: 'stretch', gap: 0.15, flex: 1, justifyContent: 'center', maxWidth: 720, minWidth: 0 }}>
-              {leftNav.map((item) => {
+              {propertyNav.map((item) => {
                 const active = item.label === 'Home';
                 return (
                   <Box
@@ -1734,9 +1984,9 @@ const Home = () => {
                       py: 0.55,
                       px: 0.35,
                       cursor: 'pointer',
-                      color: active ? '#16302A' : '#5C675F',
-                      borderBottom: active ? '2px solid #16302A' : '2px solid transparent',
-                      '&:hover': { color: '#16302A', bgcolor: 'rgba(22,48,42,0.04)' },
+                      color: active ? '#EBE6D4' : 'rgba(235,230,212,0.72)',
+                      borderBottom: active ? '2px solid #EBE6D4' : '2px solid transparent',
+                      '&:hover': { color: '#EBE6D4', bgcolor: 'rgba(235,230,212,0.1)' },
                       '& .MuiSvgIcon-root': { fontSize: 22 },
                     }}
                   >
@@ -1768,7 +2018,7 @@ const Home = () => {
                   size="small"
                   aria-label="Messages"
                   onClick={() => setChatOpen(true)}
-                  sx={{ color: '#16302A' }}
+                  sx={{ color: '#EBE6D4' }}
                 >
                   <MessageIcon sx={{ fontSize: 24 }} />
                 </IconButton>
@@ -1776,7 +2026,7 @@ const Home = () => {
                   size="small"
                   aria-label="Notifications"
                   onClick={(e) => setNotifAnchor(e.currentTarget)}
-                  sx={{ color: '#16302A' }}
+                  sx={{ color: '#EBE6D4' }}
                 >
                   <Badge badgeContent={unreadCount} color="error" max={9}>
                     <NotificationsIcon sx={{ fontSize: 24 }} />
@@ -1789,7 +2039,7 @@ const Home = () => {
                     setFindFriendsOpen(true);
                     refetchSuggested();
                   }}
-                  sx={{ color: '#16302A' }}
+                  sx={{ color: '#EBE6D4' }}
                 >
                   <PersonAddIcon sx={{ fontSize: 24 }} />
                 </IconButton>
@@ -1797,10 +2047,10 @@ const Home = () => {
             )}
             {isMobile && (
               <>
-                <IconButton size="small" onClick={() => navigate('/chat')} sx={{ color: '#16302A' }}>
+                <IconButton size="small" onClick={() => navigate('/chat')} sx={{ color: '#EBE6D4' }}>
                   <MessageIcon />
                 </IconButton>
-                <IconButton size="small" onClick={(e) => setNotifAnchor(e.currentTarget)} sx={{ color: '#16302A' }}>
+                <IconButton size="small" onClick={(e) => setNotifAnchor(e.currentTarget)} sx={{ color: '#EBE6D4' }}>
                   <Badge badgeContent={unreadCount} color="error" max={9}>
                     <NotificationsIcon />
                   </Badge>
@@ -1812,11 +2062,11 @@ const Home = () => {
                     setFindFriendsOpen(true);
                     refetchSuggested();
                   }}
-                  sx={{ color: '#16302A' }}
+                  sx={{ color: '#EBE6D4' }}
                 >
                   <PersonAddIcon />
                 </IconButton>
-                <IconButton size="small" onClick={() => setMobileDiscoverOpen(true)} sx={{ color: '#16302A' }}>
+                <IconButton size="small" onClick={() => setMobileDiscoverOpen(true)} sx={{ color: '#EBE6D4' }}>
                   <WhatshotIcon />
                 </IconButton>
               </>
@@ -1831,11 +2081,11 @@ const Home = () => {
                 px: 1,
                 py: 0.35,
                 borderRadius: 1,
-                '&:hover': { bgcolor: 'rgba(22,48,42,0.05)' },
+                '&:hover': { bgcolor: 'rgba(235,230,212,0.1)' },
               }}
             >
               <Avatar src={currentUserData?.profileImage || ''} sx={{ width: 28, height: 28 }} />
-              <Box sx={{ display: 'flex', alignItems: 'center', color: '#5C675F', mt: 0.15 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', color: 'rgba(235,230,212,0.78)', mt: 0.15 }}>
                 <Typography sx={{ fontSize: 11, fontWeight: 600, display: { xs: 'none', sm: 'block' } }}>Me</Typography>
                 <ArrowDropDownIcon sx={{ fontSize: 16 }} />
               </Box>
@@ -1875,6 +2125,19 @@ const Home = () => {
                       }
                     }
                     setNotifAnchor(null);
+                    // Open author profile for follower-post / mention notifications when metadata has authorId
+                    try {
+                      const meta = typeof n.metadata === 'string' && n.metadata
+                        ? JSON.parse(n.metadata)
+                        : (n as any).metadata || {};
+                      const authorId = meta?.authorId || meta?.userId;
+                      const t = String(n.type || '').toLowerCase();
+                      if (authorId && (t.includes('follower_post') || t.includes('post') || t.includes('mention'))) {
+                        handleOpenProfile(String(authorId));
+                      }
+                    } catch {
+                      /* ignore bad metadata */
+                    }
                   }}
                 />
               </Box>
@@ -2184,46 +2447,9 @@ const Home = () => {
                 }}
               >
                 <Typography sx={{ fontSize: 14.5, fontWeight: 500, ...interFont }}>
-                  Start a post
+                  Share a post
                 </Typography>
               </Box>
-            </Box>
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-around',
-                mt: 1,
-                pt: 0.5,
-              }}
-            >
-              {[
-                { label: 'Video', icon: <VideocamOutlinedIcon sx={{ color: '#5F8670' }} />, color: '#5F8670' },
-                { label: 'Photo', icon: <PhotoCameraOutlinedIcon sx={{ color: '#3A6B8C' }} />, color: '#3A6B8C' },
-                { label: 'Write article', icon: <ArticleOutlinedIcon sx={{ color: '#A67C52' }} />, color: '#A67C52' },
-              ].map((action) => (
-                <Button
-                  key={action.label}
-                  onClick={() => {
-                    setCpError(null);
-                    setCreateOpen(true);
-                  }}
-                  startIcon={action.icon}
-                  sx={{
-                    textTransform: 'none',
-                    color: '#3A4540',
-                    fontWeight: 650,
-                    fontSize: 13,
-                    borderRadius: 1,
-                    px: 1.25,
-                    py: 0.85,
-                    flex: 1,
-                    '&:hover': { bgcolor: 'rgba(22,48,42,0.06)' },
-                  }}
-                >
-                  {action.label}
-                </Button>
-              ))}
             </Box>
           </Box>
 
@@ -2264,6 +2490,7 @@ const Home = () => {
                   onPinPost={handlePinPost}
                   viewerProfilePhoto={currentUserData?.profileImage || null}
                   currentUserId={activeUserId}
+                  networkUserIds={networkUserIds}
                   likedPosts={likedPosts}
                   likeCounts={likeCounts}
                   commentCounts={commentCounts}
@@ -2409,7 +2636,7 @@ const Home = () => {
           </Box>
           <Typography sx={{ fontSize: 13, color: '#16302A', mb: 2 }}>Menu</Typography>
           <Stack spacing={0.5}>
-            {leftNav.map((item, idx) => (
+            {propertyNav.map((item, idx) => (
               <Box
                 key={idx}
                 onClick={() => {
@@ -2773,6 +3000,7 @@ const Home = () => {
       {/* LinkedIn-style messaging dock on desktop Home */}
       {!isMobile && chatOpen && (
         <ChatPage
+          key={chatRoomId || 'chat-dock'}
           embedded
           initialRoomId={chatRoomId}
           onClose={() => {
@@ -2781,6 +3009,12 @@ const Home = () => {
           }}
         />
       )}
+
+      <SharePostSheet
+        open={!!sharePostTarget}
+        post={sharePostTarget}
+        onClose={() => setSharePostTarget(null)}
+      />
     </Box>
   );
 };

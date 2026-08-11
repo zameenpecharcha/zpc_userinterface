@@ -86,7 +86,9 @@ const CommentComposer: React.FC<CommentComposerProps> = ({
       setMentionIndex(0);
       if (mentionTimerRef.current) clearTimeout(mentionTimerRef.current);
       mentionTimerRef.current = setTimeout(() => {
-        searchUsers({ variables: { search: active.query.trim() || '', page: 1, limit: 8 } });
+        const term = active.query.trim();
+        if (term.length < 2) return;
+        searchUsers({ variables: { search: term, page: 1, limit: 8 }, errorPolicy: 'all' });
       }, 200);
     } else {
       setMentionOpen(false);

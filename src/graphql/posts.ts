@@ -125,6 +125,37 @@ export const SEARCH_POSTS = gql`
   }
 `;
 
+/** Lightweight search cards — no media / geo to avoid S3 presign cost */
+export const SEARCH_POSTS_LIGHT = gql`
+  query SearchPostsLight(
+    $page: Int = 1
+    $limit: Int = 10
+    $query: String
+    $location: String
+    $propertyType: String
+  ) {
+    searchPosts(
+      page: $page
+      limit: $limit
+      query: $query
+      location: $location
+      propertyType: $propertyType
+    ) {
+      id
+      userId
+      userFirstName
+      userLastName
+      title
+      content
+      location
+      propertyType
+      createdAt
+      likeCount
+      commentCount
+    }
+  }
+`;
+
 export const TRENDING_POSTS = gql`
   query TrendingPosts($limit: Int = 5) {
     trendingPosts(limit: $limit) {
@@ -151,6 +182,7 @@ export const GET_POST_COMMENTS = gql`
       addedAt
       commentedAt
       editedAt
+      likeCount
       profilePhoto
       profilePhotoSignedUrl
       replies {
@@ -169,8 +201,58 @@ export const GET_POST_COMMENTS = gql`
         likeCount
         profilePhoto
         profilePhotoSignedUrl
+        replies {
+          id
+          postId
+          userId
+          userFirstName
+          userLastName
+          userRole
+          comment
+          parentCommentId
+          status
+          addedAt
+          commentedAt
+          editedAt
+          likeCount
+          profilePhoto
+          profilePhotoSignedUrl
+          replies {
+            id
+            postId
+            userId
+            userFirstName
+            userLastName
+            userRole
+            comment
+            parentCommentId
+            status
+            addedAt
+            commentedAt
+            editedAt
+            likeCount
+            profilePhoto
+            profilePhotoSignedUrl
+            replies {
+              id
+              postId
+              userId
+              userFirstName
+              userLastName
+              userRole
+              comment
+              parentCommentId
+              status
+              addedAt
+              commentedAt
+              editedAt
+              likeCount
+              profilePhoto
+              profilePhotoSignedUrl
+            }
+          }
+        }
       }
-      likeCount
     }
   }
 `;
@@ -461,6 +543,26 @@ export const REPORT_POST = gql`
         id
         reportCode
         status
+      }
+    }
+  }
+`;
+
+export const GET_POST_LIKES = gql`
+  query PostLikes($postId: String!, $page: Int, $limit: Int) {
+    postLikes(postId: $postId, page: $page, limit: $limit) {
+      totalCount
+      page
+      totalPages
+      likes {
+        userId
+        firstName
+        lastName
+        userRole
+        reactionType
+        likedAt
+        profilePhoto
+        profilePhotoSignedUrl
       }
     }
   }

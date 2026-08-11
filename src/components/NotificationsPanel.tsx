@@ -4,12 +4,13 @@ import { AnimatedList } from './AnimatedList';
 import { formatRelativeTime } from '../utils/datetime';
 
 export type AppNotification = {
-  id: number;
+  id: number | string;
   title?: string;
   message?: string;
   type?: string;
   read?: boolean;
   createdAt?: string | number | Date;
+  metadata?: string | null;
 };
 
 type Props = {
@@ -21,6 +22,7 @@ function styleForType(type?: string): { icon: string; color: string } {
   const t = (type || '').toLowerCase();
   if (t.includes('mention')) return { icon: '@', color: '#16302A' };
   if (t.includes('like') || t.includes('react')) return { icon: '❤️', color: '#16302A' };
+  if (t.includes('follower_post') || t === 'new_post') return { icon: '📝', color: '#5F8670' };
   if (t.includes('follow')) return { icon: '👤', color: '#A89F84' };
   if (t.includes('comment') || t.includes('reply')) return { icon: '💬', color: '#5F8670' };
   if (t.includes('message') || t.includes('chat')) return { icon: '✉️', color: '#5F8670' };

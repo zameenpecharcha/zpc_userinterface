@@ -19,7 +19,10 @@ export enum ListingType {
 
 export enum PropertyStatus {
   DRAFT = 'DRAFT',
+  PENDING_VERIFICATION = 'PENDING_VERIFICATION',
+  UNDER_REVIEW = 'UNDER_REVIEW',
   PUBLISHED = 'PUBLISHED',
+  REJECTED = 'REJECTED',
   SOLD = 'SOLD',
   RENTED = 'RENTED',
   INACTIVE = 'INACTIVE',
@@ -45,6 +48,7 @@ export interface Property {
   creatorRole?: string;
   builderName?: string;
   projectName?: string;
+  reraId?: string;
   propertyType: string;
   listingType: string;
   price: number;
@@ -85,6 +89,7 @@ export interface CreatePropertyInput {
   description?: string;
   builderName?: string;
   projectName?: string;
+  reraId?: string;
   propertyType?: string;
   listingType?: string;
   price?: number;

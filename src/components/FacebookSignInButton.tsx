@@ -1,10 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Button } from '@mui/material';
+import { Button, IconButton, Tooltip, Typography } from '@mui/material';
+import FacebookIcon from '@mui/icons-material/Facebook';
 
 interface FacebookSignInButtonProps {
   onAccessToken: (accessToken: string) => void;
   disabled?: boolean;
   label?: string;
+  /** Full-width labeled button vs compact circular icon. */
+  variant?: 'full' | 'icon';
 }
 
 declare global {
@@ -72,11 +75,13 @@ const FacebookSignInButton: React.FC<FacebookSignInButtonProps> = ({
   onAccessToken,
   disabled = false,
   label = 'Continue with Facebook',
+  variant = 'full',
 }) => {
   const onAccessTokenRef = useRef(onAccessToken);
   const [ready, setReady] = useState(false);
   const [scriptError, setScriptError] = useState('');
   const appId = process.env.REACT_APP_FACEBOOK_APP_ID;
+  const isIcon = variant === 'icon';
 
   useEffect(() => {
     onAccessTokenRef.current = onAccessToken;
@@ -119,10 +124,70 @@ const FacebookSignInButton: React.FC<FacebookSignInButtonProps> = ({
   };
 
   if (!appId) {
+    if (isIcon) {
+      return (
+        <Tooltip title="Configure Facebook App ID">
+          <span>
+            <IconButton disabled sx={{ width: 48, height: 48, bgcolor: '#1877F2', color: '#fff' }}>
+              <FacebookIcon />
+            </IconButton>
+          </span>
+        </Tooltip>
+      );
+    }
     return (
       <Button fullWidth variant="outlined" disabled sx={{ textTransform: 'none', py: 1.25 }}>
         Configure Facebook App ID
       </Button>
+    );
+  }
+
+  if (scriptError && isIcon) {
+    return (
+      <Tooltip title={scriptError}>
+        <span>
+          <IconButton
+            disabled={disabled || !ready}
+            onClick={handleClick}
+            sx={{
+              width: 48,
+              height: 48,
+              bgcolor: '#1877F2',
+              color: '#fff',
+              opacity: 0.7,
+              '&:hover': { bgcolor: '#166FE5' },
+            }}
+            aria-label="Continue with Facebook"
+          >
+            <FacebookIcon />
+          </IconButton>
+        </span>
+      </Tooltip>
+    );
+  }
+
+  if (isIcon) {
+    return (
+      <Tooltip title="Continue with Facebook">
+        <span>
+          <IconButton
+            disabled={disabled || !ready}
+            onClick={handleClick}
+            aria-label="Continue with Facebook"
+            sx={{
+              width: 48,
+              height: 48,
+              bgcolor: '#1877F2',
+              color: '#fff',
+              boxShadow: '0 2px 8px rgba(24,119,242,0.35)',
+              '&:hover': { bgcolor: '#166FE5' },
+              '&.Mui-disabled': { bgcolor: '#1877F2', color: '#fff', opacity: 0.55 },
+            }}
+          >
+            <FacebookIcon sx={{ fontSize: 26 }} />
+          </IconButton>
+        </span>
+      </Tooltip>
     );
   }
 

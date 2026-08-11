@@ -87,6 +87,7 @@ const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
   const fetchSuggestionsImmediate = async (input: string) => {
     if (!input.trim()) {
       setSuggestions([]);
+      setLoading(false);
       return;
     }
 
@@ -94,18 +95,18 @@ const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
     setSearchError(null);
 
     try {
-      console.log('Fetching suggestions for:', input); // Debug log
-
-      const { data, errors } = await client.query({
+      const queryPromise = client.query({
         query: OLA_AUTOCOMPLETE_QUERY,
         variables: { input },
-        fetchPolicy: 'no-cache', // Disable caching completely
+        fetchPolicy: 'no-cache',
       });
-
-      console.log('GraphQL Response:', { data, errors }); // Debug log
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Location search timed out')), 8000);
+      });
+      const { data, errors } = await Promise.race([queryPromise, timeoutPromise]);
 
       if (errors) {
-        throw new Error(errors.map(e => e.message).join(', '));
+        throw new Error(errors.map((e: { message: string }) => e.message).join(', '));
       }
 
       if (data?.olaAutocomplete) {

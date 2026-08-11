@@ -38,6 +38,115 @@ export function extractMentionedUserIds(content: string, extraIds: string[] = []
   return Array.from(ids);
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Expand pretty "@Name" mentions back to `@[id:Name]` / `@[p:id:Name]`
+ * using maps collected when the user picked suggestions.
+ */
+export function expandPrettyMentions(
+  content: string,
+  userNameToId: Map<string, string> | Record<string, string>,
+  propertyNameToId: Map<string, string> | Record<string, string> = {},
+): string {
+  let out = content || '';
+  const users =
+    userNameToId instanceof Map
+      ? Array.from(userNameToId.entries())
+      : Object.entries(userNameToId);
+  const props =
+    propertyNameToId instanceof Map
+      ? Array.from(propertyNameToId.entries())
+      : Object.entries(propertyNameToId);
+
+  const apply = (entries: [string, string][], asProperty: boolean) => {
+    entries
+      .filter(([name, id]) => name && id)
+      .sort((a, b) => b[0].length - a[0].length)
+      .forEach(([name, id]) => {
+        const safe = escapeRegExp(name);
+        const re = new RegExp(`@${safe}(?![\\w])`, 'g');
+        const token = asProperty ? `@[p:${id}:${name}]` : `@[${id}:${name}]`;
+        out = out.replace(re, token);
+      });
+  };
+
+  apply(users, false);
+  apply(props, true);
+  return out;
+}
+
+/** Approximate caret (x,y) inside a textarea relative to the textarea itself. */
+export function getTextareaCaretOffset(
+  element: HTMLTextAreaElement | HTMLInputElement,
+  position: number,
+): { top: number; left: number; height: number } {
+  if (!(element instanceof HTMLTextAreaElement)) {
+    return { top: element.offsetHeight, left: 12, height: 20 };
+  }
+
+  const div = document.createElement('div');
+  const style = window.getComputedStyle(element);
+  const props = [
+    'direction',
+    'boxSizing',
+    'width',
+    'height',
+    'overflowX',
+    'overflowY',
+    'borderTopWidth',
+    'borderRightWidth',
+    'borderBottomWidth',
+    'borderLeftWidth',
+    'paddingTop',
+    'paddingRight',
+    'paddingBottom',
+    'paddingLeft',
+    'fontStyle',
+    'fontVariant',
+    'fontWeight',
+    'fontStretch',
+    'fontSize',
+    'fontSizeAdjust',
+    'lineHeight',
+    'fontFamily',
+    'textAlign',
+    'textTransform',
+    'textIndent',
+    'textDecoration',
+    'letterSpacing',
+    'wordSpacing',
+    'tabSize',
+    'whiteSpace',
+    'wordBreak',
+    'wordWrap',
+  ] as const;
+
+  div.style.position = 'absolute';
+  div.style.visibility = 'hidden';
+  div.style.whiteSpace = 'pre-wrap';
+  div.style.wordWrap = 'break-word';
+  props.forEach((prop) => {
+    (div.style as any)[prop] = (style as any)[prop];
+  });
+  div.style.overflow = 'hidden';
+
+  div.textContent = element.value.slice(0, position);
+  const span = document.createElement('span');
+  span.textContent = element.value.slice(position) || '.';
+  div.appendChild(span);
+
+  document.body.appendChild(div);
+  const top = span.offsetTop - element.scrollTop;
+  const left = span.offsetLeft - element.scrollLeft;
+  const height = span.offsetHeight || parseInt(style.lineHeight, 10) || 20;
+  document.body.removeChild(div);
+
+  return { top, left, height };
+}
+
 export function renderMentionContent(
   content: string,
   opts: {

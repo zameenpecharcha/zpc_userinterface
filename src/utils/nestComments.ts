@@ -1,37 +1,49 @@
 /**
- * Ensures replies sit under their parent for one-level display.
- * Handles both nested API payloads and flat lists with parentCommentId.
+ * Builds a nested comment tree from flat lists and/or server-nested replies.
+ * Preserves multi-level reply chains (reply → reply → …).
  */
 export function nestComments(comments: any[] | null | undefined): any[] {
   if (!comments?.length) return [];
 
   const nodes = new Map<string, any>();
-  comments.forEach((raw) => {
+
+  const ensureNode = (raw: any) => {
     const id = String(raw.id);
     const existing = nodes.get(id);
-    const fromServer = Array.isArray(raw.replies) ? raw.replies : [];
-    nodes.set(id, {
-      ...raw,
-      replies: existing?.replies?.length ? existing.replies : fromServer.slice(),
-    });
-  });
+    if (existing) {
+      nodes.set(id, {
+        ...existing,
+        ...raw,
+        replies: existing.replies?.length ? existing.replies : [],
+      });
+      return nodes.get(id)!;
+    }
+    const node = { ...raw, replies: [] as any[] };
+    nodes.set(id, node);
+    return node;
+  };
 
-  // Index nested reply ids already present on parents
-  const claimed = new Set<string>();
-  Array.from(nodes.values()).forEach((node) => {
-    const nested: any[] = [];
-    (node.replies || []).forEach((reply: any) => {
-      const rid = String(reply.id);
-      claimed.add(rid);
-      if (!nodes.has(rid)) {
-        nodes.set(rid, { ...reply, replies: [] });
+  const ingest = (raw: any) => {
+    const node = ensureNode(raw);
+    const nested = Array.isArray(raw.replies) ? raw.replies : [];
+    nested.forEach((reply: any) => {
+      const child = ingest(reply);
+      if (!(node.replies || []).some((r: any) => String(r.id) === String(child.id))) {
+        node.replies = (node.replies || []).concat([child]);
       }
-      nested.push(nodes.get(rid));
     });
-    node.replies = nested;
+    return node;
+  };
+
+  comments.forEach(ingest);
+
+  const claimed = new Set<string>();
+  const roots: any[] = [];
+
+  Array.from(nodes.values()).forEach((node) => {
+    (node.replies || []).forEach((reply: any) => claimed.add(String(reply.id)));
   });
 
-  const roots: any[] = [];
   comments.forEach((raw) => {
     const id = String(raw.id);
     if (claimed.has(id)) return;
@@ -48,22 +60,12 @@ export function nestComments(comments: any[] | null | undefined): any[] {
         parent.replies = (parent.replies || []).concat([node]);
       }
       claimed.add(id);
+    } else if (!parentId) {
+      roots.push(node);
     } else {
+      // Orphaned reply (parent missing from page) — still show as root-ish entry
       roots.push(node);
     }
-  });
-
-  // One-level threads: hoist any reply-of-reply onto the root comment
-  roots.forEach((root) => {
-    const flat: any[] = [];
-    const walk = (items: any[]) => {
-      (items || []).forEach((item) => {
-        flat.push({ ...item, replies: [] });
-        if (item.replies?.length) walk(item.replies);
-      });
-    };
-    walk(root.replies || []);
-    root.replies = flat;
   });
 
   return roots;

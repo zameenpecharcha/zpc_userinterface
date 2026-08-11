@@ -2,8 +2,8 @@ import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   Box, Typography, TextField, IconButton, Avatar, InputAdornment,
   Divider, List, ListItemButton, ListItemAvatar, ListItemText,
-  Badge, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions,
-  Button, ToggleButton, ToggleButtonGroup, Chip, CircularProgress,
+  Badge, Tooltip, Dialog, DialogTitle, DialogContent,
+  Button, CircularProgress,
   useMediaQuery,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
@@ -11,7 +11,6 @@ import EditIcon from '@mui/icons-material/Edit';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import VideoCallOutlinedIcon from '@mui/icons-material/VideoCallOutlined';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
-import GroupAddOutlinedIcon from '@mui/icons-material/GroupAddOutlined';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import CloseIcon from '@mui/icons-material/Close';
 import MinimizeIcon from '@mui/icons-material/Minimize';
@@ -20,7 +19,7 @@ import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useApolloClient, useQuery } from '@apollo/client';
 import { SEARCH_USERS_LIGHT, GET_USER_PROFILE } from '../graphql/user';
-import { CREATE_DM_ROOM_MUTATION, CREATE_GROUP_ROOM_MUTATION, GET_USER_ROOMS, GET_PRESENCE } from '../graphql/chat';
+import { CREATE_DM_ROOM_MUTATION, GET_USER_ROOMS, GET_PRESENCE } from '../graphql/chat';
 import Chat from './Chat';
 import { MATTE_SURFACE, PAGE_ATMOSPHERE } from '../theme/surfaces';
 import { isRecentlyActive } from '../utils/datetime';
@@ -100,12 +99,17 @@ const displayNameFromParticipants = (
     otherId: other.userId ? String(other.userId) : undefined,
   };
 };
-const fmtTime = (ms?: number) => {
-  if (!ms) return '';
-  const d = new Date(ms);
+const fmtTime = (ms?: number | string | null) => {
+  if (ms == null || ms === '') return '';
+  const n = typeof ms === 'string' ? Number(ms) : ms;
+  // Hide empty / epoch / Go zero-time (year 0001) / garbage timestamps
+  if (!Number.isFinite(n) || n < 946684800000) return ''; // before 2000-01-01
+  const d = new Date(n);
+  if (Number.isNaN(d.getTime())) return '';
   const now = new Date();
-  if (d.toDateString() === now.toDateString())
+  if (d.toDateString() === now.toDateString()) {
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
   return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
 };
 
@@ -143,13 +147,9 @@ const ConvItem: React.FC<{
           overlap="circular"
           anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
           badgeContent={
-            conv.type === 'group'
-              ? <Box sx={{ width: 14, height: 14, bgcolor: '#EBE6D4', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <GroupAddOutlinedIcon sx={{ fontSize: 10, color: LI_BLUE }} />
-                </Box>
-              : online
-                ? <Box sx={{ width: 12, height: 12, bgcolor: '#16302A', borderRadius: '50%', border: '2px solid #EBE6D4' }} />
-                : null
+            online
+              ? <Box sx={{ width: 12, height: 12, bgcolor: '#16302A', borderRadius: '50%', border: '2px solid #EBE6D4' }} />
+              : null
           }
         >
           <Avatar
@@ -210,11 +210,8 @@ const NewConvDialog: React.FC<{
   myUserId: string;
 }> = ({ open, onClose, onStart, myUserId }) => {
   const apollo = useApolloClient();
-  const [type, setType]             = useState<ConvType>('direct');
   const [userSearch, setUserSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [groupName, setGroupName]   = useState('');
-  const [members, setMembers]       = useState<Array<{ id: string; label: string }>>([]);
   const [error, setError]           = useState<string | null>(null);
 
   useEffect(() => {
@@ -256,7 +253,7 @@ const NewConvDialog: React.FC<{
       return scored.length > 0 ? scored.map((s) => s.u) : raw;
     }, [data?.users, debouncedSearch]);
 
-  const reset = () => { setType('direct'); setUserSearch(''); setGroupName(''); setMembers([]); setError(null); };
+  const reset = () => { setUserSearch(''); setError(null); };
   const handleClose = () => { reset(); onClose(); };
 
   const startDirect = async (u: { id: string; firstName: string; lastName: string }) => {
@@ -289,36 +286,6 @@ const NewConvDialog: React.FC<{
     }
   };
 
-  const toggleMember = (u: { id: string; firstName: string; lastName: string }) => {
-    const id = u.id;
-    const label = `${u.firstName} ${u.lastName}`.trim();
-    setMembers(prev => prev.some(m => m.id === id) ? prev.filter(m => m.id !== id) : [...prev, { id, label }]);
-  };
-
-  const startGroup = async () => {
-    const name = groupName.trim();
-    if (!name || members.length === 0) return;
-    const memberIds = [myUserId, ...members.map(m => m.id)];
-    setError(null);
-    try {
-      const result = await apollo.mutate({
-        mutation: CREATE_GROUP_ROOM_MUTATION,
-        variables: { createdBy: myUserId, name, memberIds },
-        fetchPolicy: 'network-only',
-      });
-      const roomId = result.data?.createGroupRoom?.roomId;
-      if (!roomId) {
-        setError('Failed to create group. Please try again.');
-        return;
-      }
-      onStart({ id: roomId, type: 'group', label: name, participants: memberIds, unread: 0 });
-      handleClose();
-    } catch (err) {
-      console.error('Failed to create group room', err);
-      setError('Failed to create group. Please try again.');
-    }
-  };
-
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 3, ...MATTE_SURFACE } }}>
       <DialogTitle sx={{ pb: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -332,36 +299,14 @@ const NewConvDialog: React.FC<{
             {error}
           </Typography>
         )}
-        <ToggleButtonGroup value={type} exclusive onChange={(_, v) => v && setType(v)} size="small" fullWidth sx={{ mb: 2 }}>
-          <ToggleButton value="direct" sx={{ textTransform: 'none', fontWeight: 600, gap: 0.5 }}>
-            <PersonOutlineIcon fontSize="small" /> Direct message
-          </ToggleButton>
-          <ToggleButton value="group" sx={{ textTransform: 'none', fontWeight: 600, gap: 0.5 }}>
-            <GroupAddOutlinedIcon fontSize="small" /> Group chat
-          </ToggleButton>
-        </ToggleButtonGroup>
-
-        {type === 'group' && (
-          <TextField fullWidth size="small" label="Group name" placeholder="e.g. ZPC Team"
-            value={groupName} onChange={e => setGroupName(e.target.value)} sx={{ mb: 1.5 }} />
-        )}
 
         <TextField autoFocus fullWidth size="small"
-          placeholder={type === 'direct' ? 'Search people (2+ letters)…' : 'Search members to add…'}
+          placeholder="Search people (2+ letters)…"
           value={userSearch} onChange={e => setUserSearch(e.target.value)}
           helperText={userSearch.trim().length === 1 ? 'Type at least 2 letters to search names' : ' '}
           FormHelperTextProps={{ sx: { mx: 0, minHeight: 18 } }}
           InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ fontSize: 16, color: '#A89F84' }} /></InputAdornment> }}
         />
-
-        {type === 'group' && members.length > 0 && (
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 1 }}>
-            {members.map(m => (
-              <Chip key={m.id} label={m.label} size="small"
-                onDelete={() => setMembers(prev => prev.filter(x => x.id !== m.id))} sx={{ fontSize: 12 }} />
-            ))}
-          </Box>
-        )}
 
         <Box sx={{ mt: 1.5, maxHeight: 260, overflowY: 'auto', borderRadius: 2, border: '1px solid #DDD6C0' }}>
           {loading ? (
@@ -370,13 +315,10 @@ const NewConvDialog: React.FC<{
             <Typography variant="caption" color="#A89F84" sx={{ display: 'block', textAlign: 'center', py: 3 }}>No users found</Typography>
           ) : (
             <List disablePadding>
-              {apiUsers.filter(u => String(u.id) !== myUserId).map(u => {
-                const isMember = members.some(m => m.id === String(u.id));
-                return (
+              {apiUsers.filter(u => String(u.id) !== myUserId).map(u => (
                   <ListItemButton key={u.id}
-                    onClick={() => type === 'direct' ? startDirect(u) : toggleMember(u)}
-                    selected={isMember}
-                    sx={{ py: 1, px: 1.5, '&.Mui-selected': { bgcolor: '#E8E2CE' } }}
+                    onClick={() => startDirect(u)}
+                    sx={{ py: 1, px: 1.5 }}
                   >
                     <ListItemAvatar sx={{ minWidth: 44 }}>
                       <Avatar src={u.profilePhotoSignedUrl} sx={{ width: 34, height: 34, bgcolor: stringToColor(`${u.firstName} ${u.lastName}`), fontSize: 13 }}>
@@ -387,30 +329,12 @@ const NewConvDialog: React.FC<{
                       primary={<Typography variant="body2" fontWeight={600} fontSize={13}>{u.firstName} {u.lastName}</Typography>}
                       secondary={<Typography variant="caption" color="#A89F84" fontSize={11}>{u.role ?? u.email}</Typography>}
                     />
-                    {type === 'group' && isMember && (
-                      <Box sx={{ width: 18, height: 18, bgcolor: LI_BLUE, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <CloseIcon sx={{ fontSize: 11, color: '#EBE6D4' }} />
-                      </Box>
-                    )}
                   </ListItemButton>
-                );
-              })}
+              ))}
             </List>
           )}
         </Box>
       </DialogContent>
-
-      {type === 'group' && (
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={handleClose} sx={{ textTransform: 'none', color: '#3A4540' }}>Cancel</Button>
-          <Button variant="contained" onClick={startGroup}
-            disabled={!groupName.trim() || members.length === 0}
-            sx={{ textTransform: 'none', fontWeight: 700, bgcolor: LI_BLUE, borderRadius: 5, px: 3, '&:hover': { bgcolor: '#16302A' } }}
-          >
-            Create group ({members.length})
-          </Button>
-        </DialogActions>
-      )}
     </Dialog>
   );
 };
@@ -441,7 +365,6 @@ const ChatPage: React.FC<ChatPageProps> = ({
   const [activeId, setActiveId]           = useState<string | null>(null);
   const [search, setSearch]               = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [filter, setFilter]               = useState<'all' | 'groups'>('all');
   const [newDlgOpen, setNewDlgOpen]       = useState(false);
   const [mobileView, setMobileView]       = useState<'sidebar' | 'chat'>('sidebar');
   const [wsConnected, setWsConnected]     = useState(false);
@@ -450,6 +373,7 @@ const ChatPage: React.FC<ChatPageProps> = ({
   const [peerRecentlyActive, setPeerRecentlyActive] = useState<Record<string, boolean>>({});
   const [dockMinimized, setDockMinimized] = useState(false);
   const [startingDmId, setStartingDmId]   = useState<string | null>(null);
+  const [dmError, setDmError]             = useState<string | null>(null);
   // Map of userId → "First Last" for resolving DM conversation labels
   const [userNames, setUserNames]         = useState<Record<string, string>>(() => {
     const cache = readPeerCache();
@@ -478,7 +402,7 @@ const ChatPage: React.FC<ChatPageProps> = ({
     pollInterval: 20000,
   });
 
-  const peopleSearchActive = debouncedSearch.length >= 2 && filter === 'all' && !shouldRedirectToHomeDock;
+  const peopleSearchActive = debouncedSearch.length >= 2 && !shouldRedirectToHomeDock;
   const { data: peopleData, loading: peopleLoading } = useQuery(SEARCH_USERS_LIGHT, {
     variables: { search: debouncedSearch, page: 1, limit: 30 },
     skip: !peopleSearchActive || !userId,
@@ -560,7 +484,8 @@ const ChatPage: React.FC<ChatPageProps> = ({
         participants: memberIds,
         peerId: isGroup ? undefined : otherId,
         lastMessage: r.lastMessage || undefined,
-        lastTime: r.lastMessageAt || undefined,
+        // No preview text ⇒ no real messages yet — don't show a fake "Jan 1" date
+        lastTime: r.lastMessage ? (Number(r.lastMessageAt) || undefined) : undefined,
         unread: r.hasUnread ? 1 : 0,
       };
     });
@@ -711,16 +636,18 @@ const ChatPage: React.FC<ChatPageProps> = ({
 
   const startDmWithUser = useCallback(async (u: { id: string; firstName: string; lastName: string }) => {
     if (!userId) return;
-    const otherId = u.id;
+    const otherId = String(u.id);
     const existing = conversations.find(c =>
       c.type === 'direct' && c.participants.includes(otherId) && c.participants.includes(userId)
     );
     if (existing) {
       openConversation(existing);
       setSearch('');
+      setDockMinimized(false);
       return;
     }
     setStartingDmId(otherId);
+    setDmError(null);
     try {
       const result = await apollo.mutate({
         mutation: CREATE_DM_ROOM_MUTATION,
@@ -728,14 +655,19 @@ const ChatPage: React.FC<ChatPageProps> = ({
         fetchPolicy: 'network-only',
       });
       const roomId = result.data?.createDmRoom?.roomId;
-      if (!roomId) return;
+      if (!roomId) {
+        setDmError('Could not start chat. Please try again.');
+        console.error('Failed to start DM from search: empty roomId', result);
+        return;
+      }
       const label = `${u.firstName} ${u.lastName}`.trim();
       setUserNames(prev => ({ ...prev, [otherId]: label }));
       const cache = readPeerCache();
       cache[otherId] = { name: label, avatarUrl: cache[otherId]?.avatarUrl };
       writePeerCache(cache);
+      setDockMinimized(false);
       handleNewConv({
-        id: roomId,
+        id: String(roomId),
         type: 'direct',
         label,
         labelReady: true,
@@ -744,12 +676,17 @@ const ChatPage: React.FC<ChatPageProps> = ({
         avatarUrl: userAvatars[otherId] || cache[otherId]?.avatarUrl,
         unread: 0,
       });
-    } catch (err) {
+      setSearch('');
+    } catch (err: any) {
       console.error('Failed to start DM from search', err);
+      const msg = String(err?.message || err || '');
+      setDmError(msg.includes('chat_rooms') || msg.includes('does not exist')
+        ? 'Messaging database is not ready. Please retry in a moment.'
+        : 'Could not start chat. Please try again.');
     } finally {
       setStartingDmId(null);
     }
-  }, [userId, conversations, apollo, handleNewConv, openConversation]);
+  }, [userId, conversations, apollo, handleNewConv, openConversation, userAvatars]);
 
   const handlePeerPresenceChange = useCallback((peerUserId: string, isOnline: boolean) => {
     setPeerOnline(prev => {
@@ -782,14 +719,15 @@ const ChatPage: React.FC<ChatPageProps> = ({
   const activePeerLive = !!(activePeerId && peerOnline[activePeerId]);
 
   const q = search.trim().toLowerCase();
+  // Groups disabled for now — only show direct conversations
   const filtered = conversations.filter(c => {
-    const matchFilter = filter === 'all' || c.type === 'group';
-    if (!q) return matchFilter;
+    if (c.type === 'group') return false;
+    if (!q) return true;
     const matchLabel = c.label.toLowerCase().includes(q);
     const matchMsg = (c.lastMessage || '').toLowerCase().includes(q);
     const peerName = c.peerId ? String(userNames[c.peerId] || '').toLowerCase() : '';
     const matchPeer = !!peerName && peerName.includes(q);
-    return matchFilter && (matchLabel || matchMsg || matchPeer);
+    return matchLabel || matchMsg || matchPeer;
   });
 
   // Show people matches; skip those already visible in the chats list above.
@@ -961,25 +899,11 @@ const ChatPage: React.FC<ChatPageProps> = ({
               },
             }}
           />
-          {search.trim().length === 1 && filter === 'all' && (
+          {search.trim().length === 1 && (
             <Typography sx={{ mt: 0.75, fontSize: 11.5, color: '#A89F84' }}>
               Type at least 2 letters to find people
             </Typography>
           )}
-
-          <Box sx={{ display: 'flex', gap: 0.5, mt: 1.25 }}>
-            {(['all', 'groups'] as const).map(f => (
-              <Box key={f} onClick={() => setFilter(f)} sx={{
-                px: 1.5, py: 0.4, borderRadius: 5, cursor: 'pointer', fontSize: 12.5, fontWeight: 600, userSelect: 'none',
-                bgcolor: filter === f ? '#E8E2CE' : 'transparent',
-                color: filter === f ? LI_BLUE : '#3A4540',
-                border: `1px solid ${filter === f ? LI_BLUE : 'transparent'}`,
-                '&:hover': { bgcolor: filter === f ? '#E8E2CE' : LI_BG },
-              }}>
-                {f === 'all' ? 'Focused' : 'Groups'}
-              </Box>
-            ))}
-          </Box>
         </Box>
 
         {/* List */}
@@ -994,7 +918,7 @@ const ChatPage: React.FC<ChatPageProps> = ({
                 <>
                   {isSearching && (
                     <Typography sx={{ px: 2, pt: 1.5, pb: 0.5, fontSize: 11, fontWeight: 700, color: '#A89F84', textTransform: 'uppercase', letterSpacing: 0.4 }}>
-                      {filter === 'groups' ? 'Groups' : 'Chats & messages'}
+                      Chats & messages
                     </Typography>
                   )}
                   <List disablePadding>
@@ -1016,6 +940,11 @@ const ChatPage: React.FC<ChatPageProps> = ({
                   <Typography sx={{ px: 2, pt: 1.5, pb: 0.5, fontSize: 11, fontWeight: 700, color: '#A89F84', textTransform: 'uppercase', letterSpacing: 0.4 }}>
                     People
                   </Typography>
+                  {dmError && (
+                    <Typography sx={{ px: 2, pb: 1, fontSize: 12, color: '#B91C1C' }}>
+                      {dmError}
+                    </Typography>
+                  )}
                   {peopleLoading ? (
                     <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
                       <CircularProgress size={22} sx={{ color: LI_BLUE }} />
@@ -1076,7 +1005,7 @@ const ChatPage: React.FC<ChatPageProps> = ({
                   <Typography variant="caption" color="#3A4540" lineHeight={1.5}>
                     {isSearching
                       ? 'Try another name, or type at least 2 letters to find people.'
-                      : 'Search for people above, or use compose to start a group.'}
+                      : 'Search for people above, or use compose to start a chat.'}
                   </Typography>
                 </Box>
               )}
