@@ -221,6 +221,15 @@ export const MARK_NOTIFICATION_READ = gql`
   }
 `;
 
+export const CLEAR_NOTIFICATIONS = gql`
+  mutation ClearNotifications($userId: String!) {
+    clearNotifications(userId: $userId) {
+      success
+      message
+    }
+  }
+`;
+
 export const UPDATE_PROFILE_PHOTO = gql`
   mutation UpdateProfilePhoto(
     $userId: String!

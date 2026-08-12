@@ -42,6 +42,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { MATTE_SURFACE, PAGE_ATMOSPHERE } from '../theme/surfaces';
 import { ZPC_COLORS, ZPC_FONTS } from '../theme/zpcTheme';
 import ShareSymbol from './icons/ShareSymbol';
+import { ZpcNavLogo } from './brand/ZpcNavLogo';
+import HeaderLogoutButton from './HeaderLogoutButton';
 
 const COVER_FALLBACK =
   'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=1400&h=420&fit=crop';
@@ -201,19 +203,27 @@ const PropertyPage: React.FC = () => {
           sx={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'saturate(0.85)' }}
         />
         <Box sx={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(10,18,16,0.25) 0%, rgba(10,18,16,0.05) 50%, rgba(241,245,244,1) 100%)' }} />
-        <IconButton
-          onClick={() => navigate(-1)}
-          sx={{ position: 'absolute', top: 12, left: 12, bgcolor: 'rgba(255,255,255,0.88)', '&:hover': { bgcolor: '#fff' } }}
-        >
-          <ArrowBackIcon />
-        </IconButton>
-        <Box sx={{ position: 'absolute', top: 12, right: 12, display: 'flex', gap: 0.75 }}>
+        <Box sx={{ position: 'absolute', top: 10, left: 10, display: 'flex', alignItems: 'center', gap: 0.75 }}>
+          <Box sx={{ bgcolor: 'rgba(10,18,16,0.55)', borderRadius: 2, px: 0.35, py: 0.2, lineHeight: 0 }}>
+            <ZpcNavLogo size={36} animateStroke={false} />
+          </Box>
+          <IconButton
+            onClick={() => navigate(-1)}
+            sx={{ bgcolor: 'rgba(255,255,255,0.88)', '&:hover': { bgcolor: '#fff' } }}
+          >
+            <ArrowBackIcon />
+          </IconButton>
+        </Box>
+        <Box sx={{ position: 'absolute', top: 12, right: 12, display: 'flex', gap: 0.75, alignItems: 'center' }}>
           <IconButton onClick={() => navigator.clipboard.writeText(window.location.href)} sx={{ bgcolor: 'rgba(255,255,255,0.88)' }}>
             <ShareSymbol />
           </IconButton>
           <IconButton onClick={handleSaveToggle} sx={{ bgcolor: 'rgba(255,255,255,0.88)' }}>
             {saved ? <FavoriteIcon sx={{ color: '#EF4444' }} /> : <FavoriteBorderIcon />}
           </IconButton>
+          <Box sx={{ bgcolor: 'rgba(255,255,255,0.88)', borderRadius: '50%' }}>
+            <HeaderLogoutButton ink="dark" size="small" />
+          </Box>
         </Box>
       </Box>
 

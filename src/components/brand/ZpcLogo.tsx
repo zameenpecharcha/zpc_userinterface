@@ -25,26 +25,29 @@ export const ZpcLogoMark: React.FC<MarkProps> = ({
 }) => {
   const uid = useId().replace(/:/g, '');
   const glowId = `zpcGlow-${uid}`;
-  const viewH = showTagline ? 330 : 300;
   /** Frame + house stroke — white as requested. */
   const borderColor = '#FFFFFF';
   const inkFill = ink === 'dark' ? '#16302A' : '#EBE6D4';
   /** Outer frame — padded so peak, ZPC, and chat-tail stroke sit inside. */
   const frame = { x: 18, y: 12, width: 244, height: 270 };
+  // Nav / compact: crop empty viewBox margins so hover rings hug the mark
+  const viewBox = showTagline
+    ? '0 0 280 330'
+    : `${frame.x} ${frame.y} ${frame.width} ${frame.height}`;
 
   return (
     <Box
       component="svg"
       className={className}
       xmlns="http://www.w3.org/2000/svg"
-      viewBox={`0 0 280 ${viewH}`}
+      viewBox={viewBox}
       role="img"
       aria-label="ZPC — chat drives every deal"
       sx={{
         width: size,
         height: 'auto',
         display: 'block',
-        overflow: 'visible',
+        overflow: showTagline ? 'visible' : 'hidden',
         '@media (prefers-reduced-motion: reduce)': {
           '& .zpc-border-anim': { animation: 'none' },
         },

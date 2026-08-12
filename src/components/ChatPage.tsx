@@ -22,6 +22,7 @@ import { SEARCH_USERS_LIGHT, GET_USER_PROFILE } from '../graphql/user';
 import { CREATE_DM_ROOM_MUTATION, GET_USER_ROOMS, GET_PRESENCE } from '../graphql/chat';
 import Chat from './Chat';
 import { MATTE_SURFACE, PAGE_ATMOSPHERE } from '../theme/surfaces';
+import { ZpcNavLogo } from './brand/ZpcNavLogo';
 import { isRecentlyActive } from '../utils/datetime';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -840,6 +841,7 @@ const ChatPage: React.FC<ChatPageProps> = ({
         <Box sx={{ px: 2, pt: 1.75, pb: 1.25, ...MATTE_SURFACE, boxShadow: 'none', borderRadius: 0, color: 'inherit' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.25 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <ZpcNavLogo size={32} animateStroke={false} ink="dark" onLightBg />
               {!isDesktopDock && (
                 <Tooltip title="Back to Home">
                   <IconButton size="small" onClick={closeChat} sx={{ color: '#3A4540' }}>

@@ -34,8 +34,9 @@ import { PUBLIC_PROPERTIES } from '../graphql/property';
 import TabEnter from './motion/TabEnter';
 import { MATTE_PANEL, MATTE_SURFACE, MATTE_HEADER, PAGE_ATMOSPHERE } from '../theme/surfaces';
 import AdminBackground from './admin/AdminBackground';
-import { ZpcLogoMark } from './brand/ZpcLogo';
-import { nameInitials, stringToColor } from '../utils/mentions';
+import { ZpcNavLogo } from './brand/ZpcNavLogo';
+import HeaderLogoutButton from './HeaderLogoutButton';
+import { nameInitials, stringToColor, collapseMentionTokens } from '../utils/mentions';
 import { parseSearchQuery } from '../utils/searchQuery';
 
 const interFont = { fontFamily: "'DM Sans', 'Source Sans 3', system-ui, sans-serif" };
@@ -500,7 +501,7 @@ const SearchPage: React.FC = () => {
               {p.location ? ` · ${p.location}` : ''}
             </Typography>
             <Typography sx={{ fontWeight: 750, color: '#16302A', fontSize: 15, ...displayFont }}>
-              {p.title || (p.content || '').slice(0, 80) || 'Post'}
+              {p.title || collapseMentionTokens(p.content || '').slice(0, 80) || 'Post'}
             </Typography>
             {p.content && (
               <Typography
@@ -514,7 +515,7 @@ const SearchPage: React.FC = () => {
                   overflow: 'hidden',
                 }}
               >
-                {p.content}
+                {collapseMentionTokens(p.content)}
               </Typography>
             )}
           </Box>
@@ -550,10 +551,10 @@ const SearchPage: React.FC = () => {
         }}
       >
         <Toolbar sx={{ gap: 1, maxWidth: 920, width: '100%', mx: 'auto', px: { xs: 1, sm: 2 }, bgcolor: 'transparent' }}>
+          <ZpcNavLogo size={isMobile ? 34 : 40} animateStroke={false} />
           <IconButton onClick={() => navigate('/home')} sx={{ color: '#EBE6D4' }} aria-label="Back">
             <ArrowBackIcon />
           </IconButton>
-          {!isMobile && <ZpcLogoMark size={40} showTagline={false} animateStroke={false} />}
           <Box
             sx={{
               flex: 1,
@@ -611,6 +612,7 @@ const SearchPage: React.FC = () => {
           >
             Search
           </Button>
+          <HeaderLogoutButton ink="light" size={isMobile ? 'small' : 'medium'} />
         </Toolbar>
 
         <Box sx={{ maxWidth: 920, width: '100%', mx: 'auto', px: { xs: 1, sm: 2 } }}>

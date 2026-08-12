@@ -78,6 +78,27 @@ export function expandPrettyMentions(
   return out;
 }
 
+/** Show `@Name` in composers; keep ids only in the stored/sent token form. */
+export function collapseMentionTokens(content: string): string {
+  return String(content || '').replace(MENTION_PATTERN, (_full, _p, _id, name) => `@${name}`);
+}
+
+/** Rebuild name→id maps from stored `@[id:Name]` tokens (e.g. when editing). */
+export function mentionMapsFromTokens(content: string): {
+  userNameToId: Map<string, string>;
+  propertyNameToId: Map<string, string>;
+} {
+  const userNameToId = new Map<string, string>();
+  const propertyNameToId = new Map<string, string>();
+  const regex = new RegExp(MENTION_PATTERN);
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(content || '')) !== null) {
+    if (match[1] === 'p') propertyNameToId.set(match[3], match[2]);
+    else userNameToId.set(match[3], match[2]);
+  }
+  return { userNameToId, propertyNameToId };
+}
+
 /** Approximate caret (x,y) inside a textarea relative to the textarea itself. */
 export function getTextareaCaretOffset(
   element: HTMLTextAreaElement | HTMLInputElement,

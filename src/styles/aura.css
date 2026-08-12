@@ -1,0 +1,100 @@
+@property --aura-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes zpc-aura-spin {
+  to {
+    --aura-angle: 360deg;
+  }
+}
+
+.zpc-nav-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  line-height: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  -webkit-tap-highlight-color: transparent;
+  position: relative;
+}
+
+.zpc-logo-aura {
+  position: relative;
+  display: block;
+  line-height: 0;
+  width: fit-content;
+  height: fit-content;
+}
+
+.zpc-logo-aura > svg,
+.zpc-logo-aura .zpc-logo-mark {
+  display: block;
+  position: relative;
+  z-index: 1;
+}
+
+/* Ring is the same box as the SVG — not a separate blob */
+.zpc-logo-aura-ring {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0;
+  box-sizing: border-box;
+  /* Match logo frame rx=18 on a 244×270 mark */
+  border-radius: 7.4% / 6.7%;
+  padding: 2px;
+  background: repeating-conic-gradient(
+    from var(--aura-angle),
+    transparent 0%,
+    transparent 38%,
+    #c8f5a8 50%
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+}
+
+.zpc-nav-logo:hover .zpc-logo-aura-ring,
+.zpc-nav-logo:focus-visible .zpc-logo-aura-ring,
+.zpc-nav-logo:active .zpc-logo-aura-ring {
+  opacity: 1;
+  animation: zpc-aura-spin 4s linear infinite;
+}
+
+/* Phones have no hover — keep a light spinning ring so the mark is not static */
+@media (hover: none) {
+  .zpc-nav-logo .zpc-logo-aura-ring {
+    opacity: 0.9;
+    animation: zpc-aura-spin 4s linear infinite;
+  }
+}
+
+.zpc-nav-logo--on-light .zpc-logo-aura-ring {
+  background: repeating-conic-gradient(
+    from var(--aura-angle),
+    transparent 0%,
+    transparent 38%,
+    #2d6a4f 50%
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zpc-nav-logo:hover .zpc-logo-aura-ring,
+  .zpc-nav-logo:focus-visible .zpc-logo-aura-ring,
+  .zpc-nav-logo:active .zpc-logo-aura-ring,
+  .zpc-nav-logo .zpc-logo-aura-ring {
+    animation-duration: 16s;
+  }
+}

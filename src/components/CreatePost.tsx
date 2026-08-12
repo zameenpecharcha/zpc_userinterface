@@ -13,7 +13,6 @@ import {
   Select,
   MenuItem,
   FormControl,
-  Chip,
   IconButton,
   Divider,
   Paper,
@@ -63,6 +62,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
   const [longitude, setLongitude] = useState<number | null>(null);
   const [visibility, setVisibility] = useState('public');
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  const [mediaPreviews, setMediaPreviews] = useState<string[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionSearch, setMentionSearch] = useState('');
@@ -88,25 +88,25 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
     {
       id: 'buy-sell',
       title: 'Buy/Sell',
-      icon: <HomeIcon sx={{ fontSize: 32, color: '#16302A' }} />,
+      icon: <HomeIcon sx={{ fontSize: 'inherit', color: '#16302A' }} />,
       description: 'Buy or sell properties'
     },
     {
       id: 'suggestion',
       title: 'Suggestion',
-      icon: <LightbulbIcon sx={{ fontSize: 32, color: '#5F8670' }} />,
+      icon: <LightbulbIcon sx={{ fontSize: 'inherit', color: '#5F8670' }} />,
       description: 'Share your ideas'
     },
     {
       id: 'discussion',
       title: 'Discussion',
-      icon: <ForumIcon sx={{ fontSize: 32, color: '#A89F84' }} />,
+      icon: <ForumIcon sx={{ fontSize: 'inherit', color: '#A89F84' }} />,
       description: 'Start a conversation'
     },
     {
       id: 'flag-area',
       title: 'Flag an Area',
-      icon: <FlagIcon sx={{ fontSize: 32, color: '#16302A' }} />,
+      icon: <FlagIcon sx={{ fontSize: 'inherit', color: '#16302A' }} />,
       description: 'Report issues'
     }
   ];
@@ -143,6 +143,15 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
   const removeFile = (index: number) => {
     setUploadedFiles(prev => prev.filter((_, i) => i !== index));
   };
+
+  // Object URLs so users can preview images/videos before posting
+  useEffect(() => {
+    const urls = uploadedFiles.map((file) => URL.createObjectURL(file));
+    setMediaPreviews(urls);
+    return () => {
+      urls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [uploadedFiles]);
 
   const handleLocationSelect = (locationData: { address: string; latitude: number; longitude: number }) => {
     // Truncate location to up to 2 commas
@@ -377,9 +386,15 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
             >
               Post Type
             </Typography>
-            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 2 }}>
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+                gap: { xs: 1, sm: 1.5 },
+              }}
+            >
               {postTypes.map((type) => (
-                <Box key={type.id}>
+                <Box key={type.id} sx={{ minWidth: 0 }}>
                   <Card
                     sx={{
                       cursor: 'pointer',
@@ -398,16 +413,19 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
                   >
                     <CardContent sx={{ 
                       textAlign: 'center', 
-                      p: 2,
-                      '&:last-child': { pb: 2 }
+                      p: { xs: 1.25, sm: 1.75 },
+                      '&:last-child': { pb: { xs: 1.25, sm: 1.75 } }
                     }}>
-                      <Box sx={{ mb: 1 }}>{type.icon}</Box>
+                      <Box sx={{ mb: { xs: 0.5, sm: 1 }, '& .MuiSvgIcon-root': { fontSize: { xs: 26, sm: 32 } } }}>
+                        {type.icon}
+                      </Box>
                       <Typography 
                         sx={{ 
                           fontWeight: 600, 
                           color: '#0A1210',
-                          fontSize: '0.875rem',
-                          mb: 0.5
+                          fontSize: { xs: '0.72rem', sm: '0.875rem' },
+                          mb: 0.35,
+                          lineHeight: 1.2,
                         }}
                       >
                         {type.title}
@@ -415,8 +433,9 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
                       <Typography 
                         sx={{ 
                           color: '#3A4540', 
-                          fontSize: '0.75rem',
-                          lineHeight: 1.3
+                          fontSize: { xs: '0.65rem', sm: '0.75rem' },
+                          lineHeight: 1.25,
+                          display: { xs: 'none', sm: 'block' },
                         }}
                       >
                         {type.description}
@@ -678,24 +697,119 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
               />
             </Box>
 
-            {/* Show uploaded files */}
+            {/* Show uploaded media previews */}
             {uploadedFiles.length > 0 && (
               <Box sx={{ mt: 2 }}>
                 <Typography sx={{ fontSize: '0.75rem', color: '#3A4540', mb: 1 }}>
-                  Uploaded files ({uploadedFiles.length}/10):
+                  Uploaded ({uploadedFiles.length}/10) — tap × to remove
                 </Typography>
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                  {uploadedFiles.map((file, index) => (
-                    <Chip
-                      key={index}
-                      label={file.name}
-                      onDelete={() => removeFile(index)}
-                      icon={file.type.startsWith('image/') ? <ImageIcon /> : <VideoIcon />}
-                      variant="outlined"
-                      size="small"
-                      sx={{ maxWidth: 200 }}
-                    />
-                  ))}
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))',
+                    gap: 1.25,
+                  }}
+                >
+                  {uploadedFiles.map((file, index) => {
+                    const preview = mediaPreviews[index];
+                    const isVideo = file.type.startsWith('video/');
+                    return (
+                      <Box
+                        key={`${file.name}-${file.size}-${file.lastModified}-${index}`}
+                        sx={{
+                          position: 'relative',
+                          borderRadius: 2,
+                          overflow: 'hidden',
+                          aspectRatio: '1',
+                          bgcolor: 'rgba(22,48,42,0.06)',
+                          border: '1px solid rgba(90,70,50,0.16)',
+                        }}
+                      >
+                        {preview && !isVideo ? (
+                          <Box
+                            component="img"
+                            src={preview}
+                            alt={file.name}
+                            sx={{
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'cover',
+                              display: 'block',
+                            }}
+                          />
+                        ) : preview && isVideo ? (
+                          <Box
+                            component="video"
+                            src={preview}
+                            muted
+                            playsInline
+                            preload="metadata"
+                            sx={{
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'cover',
+                              display: 'block',
+                            }}
+                          />
+                        ) : (
+                          <Box
+                            sx={{
+                              width: '100%',
+                              height: '100%',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: '#A89F84',
+                            }}
+                          >
+                            {isVideo ? <VideoIcon /> : <ImageIcon />}
+                          </Box>
+                        )}
+                        {isVideo && (
+                          <Box
+                            sx={{
+                              position: 'absolute',
+                              left: 6,
+                              bottom: 6,
+                              px: 0.75,
+                              py: 0.15,
+                              borderRadius: 1,
+                              bgcolor: 'rgba(10,18,16,0.7)',
+                              color: '#fff',
+                              fontSize: 10,
+                              fontWeight: 700,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 0.35,
+                            }}
+                          >
+                            <VideoIcon sx={{ fontSize: 12 }} />
+                            Video
+                          </Box>
+                        )}
+                        <IconButton
+                          size="small"
+                          aria-label={`Remove ${file.name}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeFile(index);
+                          }}
+                          sx={{
+                            position: 'absolute',
+                            top: 4,
+                            right: 4,
+                            width: 26,
+                            height: 26,
+                            bgcolor: 'rgba(10,18,16,0.72)',
+                            color: '#fff',
+                            '&:hover': { bgcolor: 'rgba(10,18,16,0.9)' },
+                          }}
+                        >
+                          <CloseIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </Box>
+                    );
+                  })}
                 </Box>
               </Box>
             )}

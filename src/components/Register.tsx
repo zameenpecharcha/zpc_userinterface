@@ -31,7 +31,7 @@ import SocialAuthIconsRow from './SocialAuthIconsRow';
 import { COUNTRY_CODES } from '../constants/countryCodes';
 import { MagicCard } from './MagicCard';
 import { PAGE_ATMOSPHERE } from '../theme/surfaces';
-import { ZpcLogoMark } from './brand/ZpcLogo';
+import { ZpcNavLogo } from './brand/ZpcNavLogo';
 
 const ACCENT = '#16302A';
 const ACCENT_SOFT = 'rgba(143, 169, 152, 0.35)';
@@ -433,6 +433,7 @@ const Register = () => {
             onClick={handleSendMobileOTP}
             disabled={mobileLoading || !mobileData.phone.trim()}
             variant="contained"
+            startIcon={mobileLoading ? <CircularProgress size={16} sx={{ color: '#EBE6D4' }} /> : undefined}
             sx={{
               textTransform: 'none',
               fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
@@ -442,13 +443,14 @@ const Register = () => {
               '&:hover': { bgcolor: '#0F221C' },
             }}
           >
-            {mobileLoading ? 'Sending...' : 'Send OTP'}
+            {mobileLoading ? 'Sending OTP…' : 'Send OTP'}
           </Button>
         ) : (
           <Button
             onClick={handleVerifyMobileOTP}
             disabled={mobileLoading || !mobileData.otp.trim()}
             variant="contained"
+            startIcon={mobileLoading ? <CircularProgress size={16} sx={{ color: '#EBE6D4' }} /> : undefined}
             sx={{
               textTransform: 'none',
               fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
@@ -458,7 +460,7 @@ const Register = () => {
               '&:hover': { bgcolor: '#0F221C' },
             }}
           >
-            {mobileLoading ? 'Verifying...' : 'Verify OTP'}
+            {mobileLoading ? 'Verifying…' : 'Verify OTP'}
           </Button>
         )}
       </DialogActions>
@@ -523,7 +525,7 @@ const Register = () => {
         </Box>
 
         <Box sx={{ mb: 1.25, display: 'flex', justifyContent: 'center' }}>
-          <ZpcLogoMark size={148} showTagline animateStroke />
+          <ZpcNavLogo size={148} showTagline animateStroke ink="dark" to="/" title="ZPC" onLightBg />
         </Box>
         <Typography
           sx={{
@@ -755,6 +757,9 @@ const Register = () => {
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
                 <SocialAuthIconsRow
                   disabled={socialAuthDisabled}
+                  googleLoading={googleSigningIn}
+                  facebookLoading={facebookSigningIn}
+                  mobileLoading={mobileLoading}
                   tone="light"
                   onGoogleCredential={handleGoogleCredential}
                   onFacebookAccessToken={handleFacebookAccessToken}

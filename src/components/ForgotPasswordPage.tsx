@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { gql, useMutation } from '@apollo/client';
 import { Box, Button, Container, TextField, Typography, Link, Alert } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
+import { ZpcNavLogo } from './brand/ZpcNavLogo';
 
 const RESET_PASSWORD_MUTATION = gql`
   mutation ResetPassword($email: String!, $otpCode: String!, $newPassword: String!, $confirmPassword: String!) {
@@ -118,6 +119,9 @@ const ForgotPasswordPage = () => {
   return (
     <Container maxWidth="sm">
       <Box sx={{ mt: 10, textAlign: 'center' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+          <ZpcNavLogo size={72} showTagline={false} ink="dark" to="/" title="ZPC" onLightBg />
+        </Box>
         <Typography variant="h4" sx={{ mb: 2, color: '#5F8670', fontWeight: 700 }}>Forgot Password</Typography>
         <Typography sx={{ mb: 4, color: '#3A4540' }}>
           Enter your email or phone number and we'll send you a verification code to reset your password.

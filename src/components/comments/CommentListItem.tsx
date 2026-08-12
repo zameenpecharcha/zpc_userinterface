@@ -1,10 +1,9 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Avatar,
   Box,
   Button,
   IconButton,
-  InputBase,
   Menu,
   MenuItem,
   Typography,
@@ -12,13 +11,20 @@ import {
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
 import SubdirectoryArrowRightIcon from '@mui/icons-material/SubdirectoryArrowRight';
-import { renderMentionContent, nameInitials, stringToColor } from '../../utils/mentions';
+import {
+  renderMentionContent,
+  nameInitials,
+  stringToColor,
+  collapseMentionTokens,
+  mentionMapsFromTokens,
+} from '../../utils/mentions';
 import { formatDateTime } from '../../utils/datetime';
 import { MATTE_INSET } from '../../theme/surfaces';
 import {
   COMMENT_REACTION_EMOJIS,
   normalizeReactionEmoji,
 } from './commentReactions';
+import CommentComposer from './CommentComposer';
 
 /** Indent caps so deep threads stay readable on mobile. */
 const MAX_INDENT_DEPTH = 4;
@@ -82,7 +88,7 @@ const CommentBubble: React.FC<{
 }) => {
   const [menuAnchor, setMenuAnchor] = useState<{ el: HTMLElement; x: number; y: number } | null>(null);
   const [editing, setEditing] = useState(false);
-  const [editText, setEditText] = useState(item.comment || '');
+  const [editText, setEditText] = useState(() => collapseMentionTokens(item.comment || ''));
   const [saving, setSaving] = useState(false);
   const [animating, setAnimating] = useState(false);
 
@@ -92,25 +98,11 @@ const CommentBubble: React.FC<{
   const likeCount = commentLikeCounts[item.id] !== undefined
     ? commentLikeCounts[item.id]
     : (item.likeCount || 0);
+  const prettyStored = collapseMentionTokens(item.comment || '');
 
   const openMenu = (e: React.MouseEvent<HTMLElement>) => {
     e.stopPropagation();
     setMenuAnchor({ el: e.currentTarget, x: e.clientX, y: e.clientY });
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editText.trim() || editText.trim() === item.comment) {
-      setEditing(false);
-      setEditText(item.comment || '');
-      return;
-    }
-    setSaving(true);
-    try {
-      await onEditComment(item.id, editText.trim());
-      setEditing(false);
-    } finally {
-      setSaving(false);
-    }
   };
 
   const handleReact = async (emoji: string) => {
@@ -169,44 +161,39 @@ const CommentBubble: React.FC<{
 
           {editing ? (
             <Box sx={{ mt: 0.75 }}>
-              <InputBase
+              <CommentComposer
                 value={editText}
-                onChange={(e) => setEditText(e.target.value)}
+                onValueChange={setEditText}
+                seedUserNameToId={mentionMapsFromTokens(item.comment || '').userNameToId}
                 autoFocus
-                multiline
+                actions="button"
+                submitLabel="Save"
+                showEmoji
+                matte
+                placeholder="Edit comment… Type @ to mention"
+                submittingExternal={saving}
                 minRows={1}
                 maxRows={4}
-                sx={{
-                  width: '100%',
-                  bgcolor: '#EBE6D4',
-                  border: '1.5px solid #DDD6C0',
-                  borderRadius: 2,
-                  px: 1.25,
-                  py: 0.75,
-                  fontSize: 14,
-                  fontWeight: 500,
+                onCancel={() => {
+                  setEditing(false);
+                  setEditText(prettyStored);
+                }}
+                onSubmit={async (expanded) => {
+                  const pretty = collapseMentionTokens(expanded).trim();
+                  if (!pretty || pretty === prettyStored) {
+                    setEditing(false);
+                    setEditText(prettyStored);
+                    return;
+                  }
+                  setSaving(true);
+                  try {
+                    await onEditComment(item.id, expanded);
+                    setEditing(false);
+                  } finally {
+                    setSaving(false);
+                  }
                 }}
               />
-              <Box sx={{ display: 'flex', gap: 0.75, mt: 0.75 }}>
-                <Button
-                  size="small"
-                  variant="contained"
-                  disableElevation
-                  disabled={saving || !editText.trim()}
-                  onClick={handleSaveEdit}
-                  sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 999, px: 1.5, bgcolor: '#16302A' }}
-                >
-                  {saving ? 'Saving…' : 'Save'}
-                </Button>
-                <Button
-                  size="small"
-                  disabled={saving}
-                  onClick={() => { setEditing(false); setEditText(item.comment || ''); }}
-                  sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 999, color: '#3A4540' }}
-                >
-                  Cancel
-                </Button>
-              </Box>
             </Box>
           ) : (
             <Typography sx={{ fontSize: isReply ? 13 : 14.5, color: '#0A1210', mt: 0.5, fontWeight: 500, lineHeight: 1.45, wordBreak: 'break-word' }}>
@@ -330,7 +317,7 @@ const CommentBubble: React.FC<{
             <MenuItem
               onClick={() => {
                 setMenuAnchor(null);
-                setEditText(item.comment || '');
+                setEditText(collapseMentionTokens(item.comment || ''));
                 setEditing(true);
               }}
               sx={{ fontWeight: 600, fontSize: 14 }}
@@ -387,11 +374,6 @@ const CommentListItem: React.FC<CommentListItemProps> = ({
   const hiddenCount = branchOpen
     ? Math.max(0, replies.length - INITIAL_VISIBLE_REPLIES)
     : replies.length;
-
-  const handleSendReply = useCallback(async () => {
-    if (!replyText.trim()) return;
-    await onReply(replyText, String(comment.id));
-  }, [onReply, replyText, comment.id]);
 
   const isComposingHere = String(replyingCommentId) === String(comment.id);
 
@@ -530,62 +512,27 @@ const CommentListItem: React.FC<CommentListItemProps> = ({
                 aria-hidden
                 sx={{ mt: 1.15, flexShrink: 0, fontSize: 18, color: '#7A847C' }}
               />
-              <Box
-                sx={{
-                  flex: 1,
-                  minWidth: 0,
-                  display: 'flex',
-                  flexDirection: { xs: 'column', sm: 'row' },
-                  gap: 1,
-                  alignItems: { xs: 'stretch', sm: 'center' },
-                }}
-              >
-                <InputBase
-                  value={replyText}
-                  onChange={(e) => setReplyText(e.target.value)}
-                  placeholder="Write a reply..."
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <CommentComposer
                   autoFocus
-                  sx={{
-                    bgcolor: '#EBE6D4',
-                    px: 1.5,
-                    py: 1,
-                    borderRadius: 999,
-                    fontSize: 14,
-                    fontWeight: 600,
-                    flex: 1,
-                    minWidth: 0,
-                    border: '1.5px solid #DDD6C0',
-                  }}
-                  multiline
+                  actions="button"
+                  showEmoji
+                  matte
+                  placeholder="Write a reply… Type @ to mention"
+                  submittingExternal={!!replying}
                   minRows={1}
                   maxRows={3}
+                  onCancel={() => {
+                    setReplyingCommentId(null);
+                    setReplyText('');
+                  }}
+                  onSubmit={async (expanded) => {
+                    if (!expanded.trim()) return;
+                    await onReply(expanded, String(comment.id));
+                    setReplyingCommentId(null);
+                    setReplyText('');
+                  }}
                 />
-                <Box sx={{ display: 'flex', gap: 0.75 }}>
-                  <Button
-                    variant="contained"
-                    disableElevation
-                    sx={{
-                      bgcolor: '#16302A',
-                      fontWeight: 800,
-                      borderRadius: 999,
-                      px: 2,
-                      py: 0.85,
-                      minWidth: 0,
-                      textTransform: 'none',
-                      '&:hover': { bgcolor: '#0F221C' },
-                    }}
-                    onClick={handleSendReply}
-                    disabled={replying || !replyText.trim()}
-                  >
-                    Send
-                  </Button>
-                  <Button
-                    sx={{ color: '#3A4540', fontWeight: 700, borderRadius: 999, px: 1.5, textTransform: 'none' }}
-                    onClick={() => { setReplyingCommentId(null); setReplyText(''); }}
-                  >
-                    Cancel
-                  </Button>
-                </Box>
               </Box>
             </Box>
           )}

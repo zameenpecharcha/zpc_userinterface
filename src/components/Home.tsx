@@ -1,11 +1,11 @@
 import React, { useState, useMemo, useCallback, memo, useEffect, useRef } from 'react';
 import { gql, useQuery, useMutation, useApolloClient } from '@apollo/client';
-import { SEARCH_POSTS, CREATE_POST, TRENDING_POSTS, DELETE_POST, UPDATE_POST, UPDATE_COMMENT, DELETE_COMMENT, UNLIKE_COMMENT, GET_POST_COMMENTS, CREATE_COMMENT, LIKE_COMMENT, LIKE_POST, UNLIKE_POST, REPORT_POST, PIN_POST, UNPIN_POST, GET_POST_LIKES } from '../graphql/posts';
-import { GET_SUGGESTED_USERS, FOLLOW_USER, GET_USER_NOTIFICATIONS, MARK_NOTIFICATION_READ, GET_USER_PROFILE, GET_USER_FOLLOWERS, GET_USER_FOLLOWING } from '../graphql/user';
+import { SEARCH_POSTS, CREATE_POST, TRENDING_POSTS, DELETE_POST, UPDATE_POST, UPDATE_COMMENT, DELETE_COMMENT, UNLIKE_COMMENT, GET_POST_COMMENTS, CREATE_COMMENT, LIKE_COMMENT, LIKE_POST, UNLIKE_POST, REPORT_POST, PIN_POST, UNPIN_POST } from '../graphql/posts';
+import { GET_SUGGESTED_USERS, FOLLOW_USER, GET_USER_NOTIFICATIONS, MARK_NOTIFICATION_READ, CLEAR_NOTIFICATIONS, GET_USER_PROFILE, GET_USER_FOLLOWERS, GET_USER_FOLLOWING } from '../graphql/user';
 import CreatePost from './CreatePost';
 import { PostService } from '../services/postService';
 import { useAuth } from '../contexts/AuthContext';
-import { renderMentionContent, nameInitials, stringToColor } from '../utils/mentions';
+import { renderMentionContent, nameInitials, stringToColor, collapseMentionTokens, expandPrettyMentions, mentionMapsFromTokens } from '../utils/mentions';
 import { formatDateTime, formatRelativeTime } from '../utils/datetime';
 import CommentListItem from './comments/CommentListItem';
 import CommentComposer from './comments/CommentComposer';
@@ -58,6 +58,7 @@ import ShareSymbol from './icons/ShareSymbol';
 import SharePostSheet from './SharePostSheet';
 import type { ShareablePost } from '../utils/sharePost';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
+import PushPinOutlinedIcon from '@mui/icons-material/PushPinOutlined';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import StarRoundedIcon from '@mui/icons-material/StarRounded';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
@@ -67,8 +68,10 @@ import TabEnter from './motion/TabEnter';
 import ChatPage from './ChatPage';
 import { MATTE_SURFACE, MATTE_HEADER, MATTE_INSET, MATTE_PANEL, PAGE_ATMOSPHERE } from '../theme/surfaces';
 import AdminBackground from './admin/AdminBackground';
-import { ZpcLogoMark } from './brand/ZpcLogo';
+import { ZpcNavLogo } from './brand/ZpcNavLogo';
+import HeaderLogoutButton from './HeaderLogoutButton';
 import PostMediaCarousel from './PostMediaCarousel';
+import PostLikeCount from './PostLikeCount';
 import { canManageProperties as roleCanManageProperties, isAdminRole } from '../utils/roles';
 
 const GRAPHQL_URL = process.env.REACT_APP_GRAPHQL_URL || 'http://localhost:8080/api/v1/graphql';
@@ -130,6 +133,95 @@ const leftNav = [
 
 const CARD_RADIUS = 2; // LinkedIn-like modest corners, ZPC cream glass fills
 
+function HomeRatingsPanel({
+  profileViewsApprox,
+  ownAvgRating,
+  ownRatingsCount,
+  ownFollowers,
+  ownFollowing,
+  onProfileClick,
+  compact = false,
+}: {
+  profileViewsApprox: number;
+  ownAvgRating: number;
+  ownRatingsCount: number;
+  ownFollowers: number;
+  ownFollowing: number;
+  onProfileClick: () => void;
+  compact?: boolean;
+}) {
+  const rowSx = {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    py: compact ? 0.55 : 0.85,
+    px: 0.5,
+    borderRadius: 1,
+    cursor: 'pointer',
+    '&:hover': { bgcolor: 'rgba(22,48,42,0.06)' },
+  } as const;
+
+  return (
+    <Box sx={{ ...MATTE_PANEL, borderRadius: CARD_RADIUS, p: compact ? 1 : 1.25 }}>
+      <Typography sx={{ fontSize: 12, fontWeight: 750, color: '#16302A', mb: compact ? 0.65 : 1, ...interFont }}>
+        Ratings & profile
+      </Typography>
+
+      <Box onClick={onProfileClick} sx={rowSx}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <VisibilityOutlinedIcon sx={{ fontSize: 18, color: '#5C675F' }} />
+          <Typography sx={{ fontSize: 13, color: '#3A4540', fontWeight: 500 }}>Profile views</Typography>
+        </Box>
+        <Typography sx={{ fontSize: 13, fontWeight: 750, color: '#16302A' }}>{profileViewsApprox}</Typography>
+      </Box>
+
+      <Box onClick={onProfileClick} sx={rowSx}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <StarRoundedIcon sx={{ fontSize: 18, color: '#B8860B' }} />
+          <Typography sx={{ fontSize: 13, color: '#3A4540', fontWeight: 500 }}>Rating</Typography>
+        </Box>
+        <Typography sx={{ fontSize: 13, fontWeight: 750, color: '#16302A' }}>
+          {ownRatingsCount > 0 ? `${ownAvgRating.toFixed(1)} ★` : '—'}
+        </Typography>
+      </Box>
+
+      <Divider sx={{ my: compact ? 0.5 : 0.75, borderColor: 'rgba(22,48,42,0.1)' }} />
+
+      <Box onClick={onProfileClick} sx={{ ...rowSx, py: compact ? 0.45 : 0.65 }}>
+        <Typography sx={{ fontSize: 12.5, color: '#5C675F' }}>Reviews</Typography>
+        <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: '#16302A' }}>{ownRatingsCount}</Typography>
+      </Box>
+      <Box onClick={onProfileClick} sx={{ ...rowSx, py: compact ? 0.45 : 0.65 }}>
+        <Typography sx={{ fontSize: 12.5, color: '#5C675F' }}>Followers</Typography>
+        <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: '#16302A' }}>{ownFollowers}</Typography>
+      </Box>
+      <Box onClick={onProfileClick} sx={{ ...rowSx, py: compact ? 0.45 : 0.65 }}>
+        <Typography sx={{ fontSize: 12.5, color: '#5C675F' }}>Following</Typography>
+        <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: '#16302A' }}>{ownFollowing}</Typography>
+      </Box>
+
+      <Button
+        fullWidth
+        onClick={onProfileClick}
+        sx={{
+          mt: compact ? 0.75 : 1,
+          textTransform: 'none',
+          fontWeight: 700,
+          fontSize: 13,
+          color: '#16302A',
+          border: '1px solid rgba(22,48,42,0.18)',
+          bgcolor: 'rgba(235,230,212,0.45)',
+          borderRadius: 1,
+          py: 0.7,
+          '&:hover': { bgcolor: 'rgba(235,230,212,0.8)' },
+        }}
+      >
+        View my profile
+      </Button>
+    </Box>
+  );
+}
+
 /** Soft matte card surface (not flat white). */
 const MATTE_POST_SX = MATTE_SURFACE;
 
@@ -164,7 +256,7 @@ interface PostProps {
   };
   onLikeToggle: (postId: number | string) => void;
   onCommentClick: (postId: number | string) => void;
-  onOpenProfile: (userId: string) => void;
+  onOpenProfile: (userId: string, focusPostId?: string | number) => void;
   onEditPost?: (post: PostProps['post']) => void;
   onDeletePost?: (postId: number | string) => void;
   onSharePost?: (post: ShareablePost) => void | Promise<void>;
@@ -251,22 +343,9 @@ const Post = memo(({
   setReplyText,
   setReplyingCommentId,
 }: PostProps) => {
-  const client = useApolloClient();
-  const isNarrow = useMediaQuery('(max-width:900px)');
   const [isAnimating, setIsAnimating] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
-  const [likersAnchor, setLikersAnchor] = useState<null | HTMLElement>(null);
-  const [likersDialogOpen, setLikersDialogOpen] = useState(false);
-  const [likers, setLikers] = useState<Array<{
-    userId: string;
-    firstName?: string;
-    lastName?: string;
-    userRole?: string;
-    profilePhotoSignedUrl?: string;
-    profilePhoto?: string;
-  }>>([]);
-  const [likersLoading, setLikersLoading] = useState(false);
-  const [likersTotal, setLikersTotal] = useState(0);
+  const commentsPanelRef = useRef<HTMLDivElement | null>(null);
   const isOwner = currentUserId != null && String(currentUserId) === String(post.userId);
   const authorName = `${post.userFirstName || ''} ${post.userLastName || ''}`.trim();
   const photoUrl = (() => {
@@ -288,42 +367,19 @@ const Post = memo(({
     !!title &&
     (body.toLowerCase().startsWith(title.toLowerCase()) || title.toLowerCase() === body.toLowerCase());
 
+  // GraphQL `propertyType` is actually post content type (TEXT/IMAGE/VIDEO/…).
+  // Only show real listing-style labels, never the raw media/content type.
+  const POST_CONTENT_TYPES = new Set(['TEXT', 'IMAGE', 'VIDEO', 'POLL', 'REVIEW', 'PROPERTY']);
+  const rawPropertyType = (post.propertyType || '').trim();
+  const listingLabel =
+    rawPropertyType && !POST_CONTENT_TYPES.has(rawPropertyType.toUpperCase())
+      ? rawPropertyType
+      : '';
   const metaBits = [
     post.location ? String(post.location) : '',
-    post.propertyType ? String(post.propertyType) : '',
+    listingLabel,
     post.price != null && Number(post.price) > 0 ? `₹${post.price}` : '',
   ].filter(Boolean);
-
-  const loadLikers = useCallback(async () => {
-    if (!post.id) return;
-    setLikersLoading(true);
-    try {
-      const { data } = await client.query({
-        query: GET_POST_LIKES,
-        variables: { postId: String(post.id), page: 1, limit: 50 },
-        fetchPolicy: 'network-only',
-      });
-      const raw: typeof likers = data?.postLikes?.likes || [];
-      const total = Number(data?.postLikes?.totalCount || 0);
-      const isOwnPost =
-        currentUserId != null && String(currentUserId) === String(post.userId);
-      if (isOwnPost) {
-        setLikers(raw);
-        setLikersTotal(total);
-      } else {
-        const network = networkUserIds || new Set<string>();
-        const visible = raw.filter((u) => network.has(String(u.userId)));
-        setLikers(visible);
-        setLikersTotal(visible.length);
-      }
-    } catch (err) {
-      console.warn('postLikes failed', err);
-      setLikers([]);
-      setLikersTotal(0);
-    } finally {
-      setLikersLoading(false);
-    }
-  }, [client, post.id, post.userId, currentUserId, networkUserIds]);
 
   const handleLikeClick = useCallback(() => {
     setIsAnimating(true);
@@ -333,82 +389,50 @@ const Post = memo(({
     onLikeToggle(post.id);
   }, [post.id, onLikeToggle]);
 
-  const openLikersDesktop = useCallback(
-    (el: HTMLElement) => {
-      if (isNarrow || likeCount <= 0) return;
-      setLikersAnchor(el);
-      void loadLikers();
-    },
-    [isNarrow, likeCount, loadLikers],
-  );
+  // Auto-collapse comments when the panel is scrolled out of view for a while
+  // (keeps open while the user is still typing / focused inside it).
+  useEffect(() => {
+    if (!commentsOpen) return undefined;
+    const panel = commentsPanelRef.current;
+    if (!panel) return undefined;
 
-  const openLikersMobile = useCallback(() => {
-    if (!isNarrow || likeCount <= 0) return;
-    setLikersDialogOpen(true);
-    void loadLikers();
-  }, [isNarrow, likeCount, loadLikers]);
+    const COLLAPSE_AFTER_MS = 12000;
+    let hideTimer: number | null = null;
 
-  const isOwnPost =
-    currentUserId != null && String(currentUserId) === String(post.userId);
+    const clearHide = () => {
+      if (hideTimer != null) {
+        window.clearTimeout(hideTimer);
+        hideTimer = null;
+      }
+    };
 
-  const likerListContent = (
-    <Box sx={{ minWidth: 260, maxWidth: 320 }}>
-      {likersLoading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 2.5 }}>
-          <CircularProgress size={22} />
-        </Box>
-      ) : likers.length === 0 ? (
-        <Typography sx={{ px: 2, py: 2, fontSize: 13, color: '#5C675F' }}>
-          {isOwnPost
-            ? 'No likes yet'
-            : 'No one from your network liked this'}
-        </Typography>
-      ) : (
-        <List dense disablePadding sx={{ maxHeight: 320, overflowY: 'auto' }}>
-          {likers.map((u) => {
-            const name = `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'ZPC member';
-            const avatar = u.profilePhotoSignedUrl || u.profilePhoto || '';
-            return (
-              <ListItemButton
-                key={u.userId}
-                onClick={() => {
-                  setLikersAnchor(null);
-                  setLikersDialogOpen(false);
-                  onOpenProfile(String(u.userId));
-                }}
-                sx={{ py: 1, px: 1.5 }}
-              >
-                <ListItemAvatar sx={{ minWidth: 44 }}>
-                  <Avatar
-                    src={avatar || undefined}
-                    sx={{ width: 34, height: 34, bgcolor: stringToColor(name), fontSize: 13 }}
-                  >
-                    {nameInitials(name)}
-                  </Avatar>
-                </ListItemAvatar>
-                <ListItemText
-                  primary={name}
-                  secondary={u.userRole ? String(u.userRole).replace(/_/g, ' ') : undefined}
-                  primaryTypographyProps={{ fontSize: 14, fontWeight: 600, color: '#0A1210' }}
-                  secondaryTypographyProps={{ fontSize: 12, color: '#5C675F' }}
-                />
-              </ListItemButton>
-            );
-          })}
-        </List>
-      )}
-      {!likersLoading && isOwnPost && likersTotal > likers.length ? (
-        <Typography sx={{ px: 2, pb: 1.25, fontSize: 11.5, color: '#5C675F' }}>
-          Showing {likers.length} of {likersTotal}
-        </Typography>
-      ) : null}
-      {!likersLoading && !isOwnPost && likeCount > likers.length ? (
-        <Typography sx={{ px: 2, pb: 1.25, fontSize: 11.5, color: '#5C675F' }}>
-          Showing people from your network only
-        </Typography>
-      ) : null}
-    </Box>
-  );
+    const scheduleHide = () => {
+      clearHide();
+      hideTimer = window.setTimeout(() => {
+        const root = commentsPanelRef.current;
+        if (root && root.contains(document.activeElement)) {
+          // Still interacting (composer / reply) — check again later
+          scheduleHide();
+          return;
+        }
+        onCommentClick(post.id);
+      }, COLLAPSE_AFTER_MS);
+    };
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) clearHide();
+        else scheduleHide();
+      },
+      { threshold: 0.12, rootMargin: '0px' }
+    );
+    observer.observe(panel);
+
+    return () => {
+      observer.disconnect();
+      clearHide();
+    };
+  }, [commentsOpen, post.id, onCommentClick]);
 
   const actionBtnSx = {
     flex: 1,
@@ -485,10 +509,43 @@ const Post = memo(({
               {(post.userRole || '').replace(/_/g, ' ')}
             </Typography>
           ) : null}
-          <Typography sx={{ fontSize: 12, color: '#7A847C', fontWeight: 500, mt: 0.15, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <Typography sx={{ fontSize: 12, color: '#7A847C', fontWeight: 500, mt: 0.15, display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
             <Box component="span">{relativeWhen}</Box>
             <Box component="span" sx={{ opacity: 0.7 }}>·</Box>
             <Box component="span" sx={{ fontSize: 13 }} aria-hidden>🌐</Box>
+            {!!(post as any).isPinned && (
+              <>
+                <Box component="span" sx={{ opacity: 0.7 }}>·</Box>
+                <Box
+                  component="button"
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    onOpenProfile(String(post.userId), post.id);
+                  }}
+                  sx={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 0.35,
+                    color: '#0F766E',
+                    fontWeight: 700,
+                    fontSize: 11.5,
+                    border: 'none',
+                    background: 'none',
+                    p: 0,
+                    m: 0,
+                    cursor: 'pointer',
+                    font: 'inherit',
+                    '&:hover': { textDecoration: 'underline' },
+                  }}
+                  aria-label="Open pinned post on profile"
+                >
+                  <PushPinOutlinedIcon sx={{ fontSize: 13 }} />
+                  Pinned
+                </Box>
+              </>
+            )}
           </Typography>
         </Box>
         {(isOwner || onReportPost || onPinPost) && (
@@ -496,7 +553,22 @@ const Post = memo(({
             <IconButton size="small" onClick={(e) => setMenuAnchor(e.currentTarget)} aria-label="Post options" sx={{ color: '#3A4540' }}>
               <MoreVertIcon />
             </IconButton>
-            <Menu anchorEl={menuAnchor} open={Boolean(menuAnchor)} onClose={() => setMenuAnchor(null)}>
+            <Menu
+              anchorEl={menuAnchor}
+              open={Boolean(menuAnchor)}
+              onClose={() => setMenuAnchor(null)}
+              disableScrollLock
+              keepMounted={false}
+              slotProps={{
+                paper: {
+                  sx: {
+                    borderRadius: 2,
+                    minWidth: 180,
+                    boxShadow: '0 8px 24px rgba(15,23,42,0.16)',
+                  },
+                },
+              }}
+            >
               {isOwner && (
                 <MenuItem onClick={() => { setMenuAnchor(null); onEditPost?.(post); }}>Edit</MenuItem>
               )}
@@ -597,38 +669,14 @@ const Post = memo(({
           }}
         >
           {likeCount > 0 ? (
-            <Typography
-              component="button"
-              type="button"
-              onMouseEnter={(e) => openLikersDesktop(e.currentTarget)}
-              onMouseLeave={() => {
-                // Delay so user can move into the popover
-                window.setTimeout(() => {
-                  if (!document.querySelector('[data-likers-popover]:hover')) {
-                    setLikersAnchor(null);
-                  }
-                }, 120);
-              }}
-              onClick={openLikersMobile}
-              sx={{
-                fontSize: 12.5,
-                color: '#5C675F',
-                fontWeight: 500,
-                cursor: 'pointer',
-                border: 'none',
-                background: 'none',
-                p: 0,
-                m: 0,
-                font: 'inherit',
-                display: 'inline-flex',
-                alignItems: 'center',
-                '&:hover': { color: '#16302A', textDecoration: 'underline' },
-              }}
-              aria-label={`${likeCount} likes — view who liked`}
-            >
-              <Box component="span" sx={{ mr: 0.5 }} aria-hidden>{liked ? '❤️' : '🤍'}</Box>
-              {likeCount} {likeCount === 1 ? 'like' : 'likes'}
-            </Typography>
+            <PostLikeCount
+              postId={post.id}
+              postUserId={post.userId}
+              likeCount={likeCount}
+              liked={liked}
+              currentUserId={currentUserId != null ? String(currentUserId) : null}
+              onOpenProfile={onOpenProfile}
+            />
           ) : (
             <Typography sx={{ fontSize: 12.5, color: '#5C675F', fontWeight: 500 }}> </Typography>
           )}
@@ -648,50 +696,6 @@ const Post = memo(({
           ) : null}
         </Box>
       )}
-
-      <Popover
-        open={Boolean(likersAnchor) && !isNarrow}
-        anchorEl={likersAnchor}
-        onClose={() => setLikersAnchor(null)}
-        disableRestoreFocus
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
-        PaperProps={{
-          'data-likers-popover': true,
-          onMouseLeave: () => setLikersAnchor(null),
-          sx: {
-            mt: 0.5,
-            borderRadius: 2,
-            ...MATTE_SURFACE,
-            boxShadow: '0 8px 28px rgba(10,18,16,0.14)',
-          },
-        } as any}
-      >
-        <Typography sx={{ px: 1.75, pt: 1.35, pb: 0.5, fontSize: 12.5, fontWeight: 700, color: '#16302A' }}>
-          {isOwnPost ? 'Liked by' : 'Liked by people you know'}
-        </Typography>
-        {likerListContent}
-      </Popover>
-
-      <Dialog
-        open={likersDialogOpen && isNarrow}
-        onClose={() => setLikersDialogOpen(false)}
-        fullWidth
-        maxWidth="xs"
-        PaperProps={{ sx: { borderRadius: 2, ...MATTE_SURFACE } }}
-      >
-        <DialogTitle sx={{ fontSize: 16, fontWeight: 700, color: '#16302A', pb: 0.5 }}>
-          {isOwnPost ? 'Liked by' : 'Liked by people you know'}
-        </DialogTitle>
-        <DialogContent sx={{ px: 0.5, pt: 0.5 }}>
-          {likerListContent}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setLikersDialogOpen(false)} sx={{ textTransform: 'none' }}>
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
 
       <Box
         sx={{
@@ -761,6 +765,7 @@ const Post = memo(({
 
       {commentsOpen && (
         <Box
+          ref={commentsPanelRef}
           sx={{
             px: 1.5,
             pt: 1,
@@ -964,6 +969,7 @@ const Home = () => {
     pollInterval: 15000,
   });
   const [markNotificationRead] = useMutation(MARK_NOTIFICATION_READ);
+  const [clearNotifications, { loading: clearingNotifs }] = useMutation(CLEAR_NOTIFICATIONS);
   const [notifAnchor, setNotifAnchor] = useState<null | HTMLElement>(null);
   const notifications = notifData?.userNotifications?.notifications || [];
   const unreadCount = notifications.filter((n: any) => !n.read).length;
@@ -979,6 +985,7 @@ const Home = () => {
   useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
   // The user whose profile we are viewing from the feed
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
+  const [profileFocusPostId, setProfileFocusPostId] = useState<string | null>(null);
 
   const isMobile = useMediaQuery('(max-width:900px)');
 
@@ -994,6 +1001,7 @@ const Home = () => {
 
     if (state.openProfileId) {
       setSelectedProfileId(String(state.openProfileId));
+      setProfileFocusPostId(state.focusPostId != null ? String(state.focusPostId) : null);
       setCurrentPage('profile');
       navigate('/home', { replace: true, state: {} });
       return;
@@ -1275,13 +1283,15 @@ const Home = () => {
     handleClose();
   }, [handleClose, currentUser?.id]);
 
-  const handleGoHome = useCallback(() => {
-    setCurrentPage('home');
+  const handleOpenProfile = useCallback((uid: string | number, focusPostId?: string | number) => {
+    setSelectedProfileId(String(uid));
+    setProfileFocusPostId(focusPostId != null ? String(focusPostId) : null);
+    setCurrentPage('profile');
   }, []);
 
-  const handleOpenProfile = useCallback((uid: string | number) => {
-    setSelectedProfileId(String(uid));
-    setCurrentPage('profile');
+  const handleGoHome = useCallback(() => {
+    setCurrentPage('home');
+    setProfileFocusPostId(null);
   }, []);
 
   const handleFollowSuggested = useCallback(async (followingId: string | number) => {
@@ -1452,18 +1462,24 @@ const Home = () => {
   const handleEditPost = useCallback((post: any) => {
     setEditPost(post);
     setEditTitle(post.title || '');
-    setEditContent(post.content || '');
+    setEditContent(collapseMentionTokens(post.content || ''));
   }, []);
 
   const handleSaveEditPost = useCallback(async () => {
     if (!editPost?.id) return;
     setEditSaving(true);
     try {
+      const maps = mentionMapsFromTokens(editPost.content || '');
+      const expandedContent = expandPrettyMentions(
+        editContent.trim(),
+        maps.userNameToId,
+        maps.propertyNameToId,
+      );
       const { data: result } = await updatePostMutation({
         variables: {
           postId: String(editPost.id),
           title: editTitle.trim(),
-          content: editContent.trim(),
+          content: expandedContent,
         },
       });
       if (result?.updatePost?.success) {
@@ -1855,6 +1871,8 @@ const Home = () => {
           userId={String(selectedProfileId)}
           currentUserId={authUserId != null ? String(authUserId) : undefined}
           onOpenProfile={handleOpenProfile}
+          focusPostId={profileFocusPostId}
+          onFocusPostConsumed={() => setProfileFocusPostId(null)}
           onOpenChat={(roomId) => {
             setChatRoomId(String(roomId));
             setChatOpen(true);
@@ -1911,14 +1929,21 @@ const Home = () => {
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0, flex: { xs: 1, md: '0 0 auto' } }}>
+            <Box title="ZPC" sx={{ display: 'flex', alignItems: 'center' }}>
+              <ZpcNavLogo
+                size={isMobile ? 40 : 46}
+                onNavigate={() => {
+                  if (currentPage !== 'home') setCurrentPage('home');
+                  setSelectedProfileId(null);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              />
+            </Box>
             {isMobile && (
               <IconButton edge="start" aria-label="Open menu" onClick={() => setMobileMenuOpen(true)} size="small" sx={{ color: '#EBE6D4' }}>
                 <MenuIcon />
               </IconButton>
             )}
-            <Box title="ZPC" sx={{ display: 'flex', alignItems: 'center' }}>
-              <ZpcLogoMark size={isMobile ? 40 : 46} showTagline={false} animateStroke />
-            </Box>
             {!isMobile && (
               <Box
                 sx={{
@@ -1983,10 +2008,25 @@ const Home = () => {
                       gap: 0.15,
                       py: 0.55,
                       px: 0.35,
+                      my: 0.35,
                       cursor: 'pointer',
                       color: active ? '#EBE6D4' : 'rgba(235,230,212,0.72)',
-                      borderBottom: active ? '2px solid #EBE6D4' : '2px solid transparent',
-                      '&:hover': { color: '#EBE6D4', bgcolor: 'rgba(235,230,212,0.1)' },
+                      borderRadius: 1.75,
+                      border: active
+                        ? '1px solid rgba(235,230,212,0.42)'
+                        : '1px solid transparent',
+                      backgroundImage: active
+                        ? 'linear-gradient(180deg, rgba(255,255,255,0.28) 0%, rgba(235,230,212,0.12) 42%, rgba(0,0,0,0.14) 100%)'
+                        : 'none',
+                      bgcolor: active ? 'rgba(235,230,212,0.14)' : 'transparent',
+                      boxShadow: active
+                        ? 'inset 0 1px 0 rgba(255,255,255,0.38), inset 0 -1px 0 rgba(0,0,0,0.18), 0 1px 3px rgba(0,0,0,0.18)'
+                        : 'none',
+                      transition: 'background-color 160ms ease, box-shadow 160ms ease, color 160ms ease, border-color 160ms ease',
+                      '&:hover': {
+                        color: '#EBE6D4',
+                        bgcolor: active ? 'rgba(235,230,212,0.18)' : 'rgba(235,230,212,0.1)',
+                      },
                       '& .MuiSvgIcon-root': { fontSize: 22 },
                     }}
                   >
@@ -2071,6 +2111,7 @@ const Home = () => {
                 </IconButton>
               </>
             )}
+            <HeaderLogoutButton ink="light" size="small" />
             <Box
               onClick={handleMenu}
               sx={{
@@ -2090,27 +2131,45 @@ const Home = () => {
                 <ArrowDropDownIcon sx={{ fontSize: 16 }} />
               </Box>
             </Box>
-            <Menu
+            <Popover
               anchorEl={notifAnchor}
               open={Boolean(notifAnchor)}
               onClose={() => setNotifAnchor(null)}
-              PaperProps={{
-                sx: {
-                  width: { xs: 'min(380px, calc(100vw - 20px))', sm: 380 },
-                  maxHeight: 460,
-                  borderRadius: CARD_RADIUS,
-                  overflow: 'hidden',
-                  ...MATTE_SURFACE,
-                  p: 0.5,
+              anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+              transformOrigin={{ vertical: 'top', horizontal: 'center' }}
+              slotProps={{
+                paper: {
+                  sx: {
+                    mt: 1,
+                    width: { xs: 'min(360px, calc(100vw - 16px))', sm: 360 },
+                    borderRadius: 2.5,
+                    overflow: 'hidden',
+                    bgcolor: '#F3EFE8',
+                    backgroundImage:
+                      'linear-gradient(165deg, rgba(243,239,232,0.98) 0%, rgba(235,230,212,0.96) 100%)',
+                    border: '1px solid rgba(22,48,42,0.14)',
+                    boxShadow:
+                      '0 12px 32px rgba(10,18,16,0.18), 0 2px 8px rgba(10,18,16,0.08)',
+                    p: 0,
+                  },
                 },
               }}
-              MenuListProps={{ sx: { p: 0 } }}
+              TransitionProps={{ timeout: 180 }}
             >
-              <Box sx={{ px: 0.5, py: 0.5 }}>
-                <NotificationsPanel
-                  key={notifAnchor ? 'notif-open' : 'notif-closed'}
-                  notifications={notifications}
-                  onSelect={async (n) => {
+              <NotificationsPanel
+                key={notifAnchor ? 'notif-open' : 'notif-closed'}
+                notifications={notifications}
+                clearing={clearingNotifs}
+                onClear={async () => {
+                  if (!activeUserId) return;
+                  try {
+                    await clearNotifications({ variables: { userId: String(activeUserId) } });
+                    await refetchNotifs();
+                  } catch (err) {
+                    console.warn('clearNotifications failed', err);
+                  }
+                }}
+                onSelect={async (n) => {
                     if (!n.read && activeUserId) {
                       try {
                         await markNotificationRead({
@@ -2125,23 +2184,63 @@ const Home = () => {
                       }
                     }
                     setNotifAnchor(null);
-                    // Open author profile for follower-post / mention notifications when metadata has authorId
                     try {
-                      const meta = typeof n.metadata === 'string' && n.metadata
-                        ? JSON.parse(n.metadata)
-                        : (n as any).metadata || {};
-                      const authorId = meta?.authorId || meta?.userId;
+                      const meta =
+                        typeof n.metadata === 'string' && n.metadata
+                          ? JSON.parse(n.metadata)
+                          : (n as any).metadata || {};
+                      const postId = meta?.postId || meta?.post_id;
+                      const commentId = meta?.commentId || meta?.comment_id;
                       const t = String(n.type || '').toLowerCase();
-                      if (authorId && (t.includes('follower_post') || t.includes('post') || t.includes('mention'))) {
+                      const isPostRelated =
+                        !!postId &&
+                        (t.includes('mention') ||
+                          t.includes('post') ||
+                          t.includes('comment') ||
+                          t.includes('like') ||
+                          t.includes('reply'));
+
+                      if (isPostRelated) {
+                        setCurrentPage('home');
+                        setSelectedProfileId(null);
+                        const focus = () => {
+                          const el = document.getElementById(`post-${postId}`);
+                          if (el) {
+                            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            el.style.outline = '2px solid #5F8670';
+                            el.style.outlineOffset = '4px';
+                            window.setTimeout(() => {
+                              el.style.outline = '';
+                              el.style.outlineOffset = '';
+                            }, 2200);
+                          }
+                          if (commentId || t.includes('comment') || t.includes('reply')) {
+                            handleCommentClick(String(postId));
+                          }
+                        };
+                        // Allow profile → feed transition to paint before scrolling
+                        window.setTimeout(focus, 120);
+                        // If the post isn't in the current feed DOM, deep-link so Home can load/focus it
+                        window.setTimeout(() => {
+                          if (!document.getElementById(`post-${postId}`)) {
+                            navigate(`/home?post=${encodeURIComponent(String(postId))}`);
+                          }
+                        }, 400);
+                        return;
+                      }
+
+                      // Follow / people notifications → profile
+                      const authorId =
+                        meta?.authorId || meta?.userId || meta?.followerId || meta?.fromUserId;
+                      if (authorId && (t.includes('follow') || t.includes('user'))) {
                         handleOpenProfile(String(authorId));
                       }
                     } catch {
                       /* ignore bad metadata */
                     }
                   }}
-                />
-              </Box>
-            </Menu>
+              />
+            </Popover>
             <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleClose}>
               <MenuItem onClick={handleProfileClick}>Profile</MenuItem>
               {canManageProperties() && (
@@ -2281,137 +2380,54 @@ const Home = () => {
               </Box>
             </Box>
 
-            <Box sx={{ ...MATTE_PANEL, borderRadius: CARD_RADIUS, p: 1.25 }}>
-              <Typography sx={{ fontSize: 12, fontWeight: 750, color: '#16302A', mb: 1, ...interFont }}>
-                Ratings & profile
-              </Typography>
-
-              <Box
-                onClick={handleProfileClick}
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  py: 0.85,
-                  px: 0.5,
-                  borderRadius: 1,
-                  cursor: 'pointer',
-                  '&:hover': { bgcolor: 'rgba(22,48,42,0.06)' },
-                }}
-              >
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <VisibilityOutlinedIcon sx={{ fontSize: 18, color: '#5C675F' }} />
-                  <Typography sx={{ fontSize: 13, color: '#3A4540', fontWeight: 500 }}>
-                    Profile views
-                  </Typography>
-                </Box>
-                <Typography sx={{ fontSize: 13, fontWeight: 750, color: '#16302A' }}>
-                  {profileViewsApprox}
-                </Typography>
-              </Box>
-
-              <Box
-                onClick={handleProfileClick}
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  py: 0.85,
-                  px: 0.5,
-                  borderRadius: 1,
-                  cursor: 'pointer',
-                  '&:hover': { bgcolor: 'rgba(22,48,42,0.06)' },
-                }}
-              >
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <StarRoundedIcon sx={{ fontSize: 18, color: '#B8860B' }} />
-                  <Typography sx={{ fontSize: 13, color: '#3A4540', fontWeight: 500 }}>
-                    Rating
-                  </Typography>
-                </Box>
-                <Typography sx={{ fontSize: 13, fontWeight: 750, color: '#16302A' }}>
-                  {ownRatings.length > 0 ? `${ownAvgRating.toFixed(1)} ★` : '—'}
-                </Typography>
-              </Box>
-
-              <Divider sx={{ my: 0.75, borderColor: 'rgba(22,48,42,0.1)' }} />
-
-              <Box
-                onClick={handleProfileClick}
-                sx={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  py: 0.65,
-                  px: 0.5,
-                  cursor: 'pointer',
-                  borderRadius: 1,
-                  '&:hover': { bgcolor: 'rgba(22,48,42,0.06)' },
-                }}
-              >
-                <Typography sx={{ fontSize: 12.5, color: '#5C675F' }}>Reviews</Typography>
-                <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: '#16302A' }}>
-                  {ownRatings.length}
-                </Typography>
-              </Box>
-              <Box
-                onClick={handleProfileClick}
-                sx={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  py: 0.65,
-                  px: 0.5,
-                  cursor: 'pointer',
-                  borderRadius: 1,
-                  '&:hover': { bgcolor: 'rgba(22,48,42,0.06)' },
-                }}
-              >
-                <Typography sx={{ fontSize: 12.5, color: '#5C675F' }}>Followers</Typography>
-                <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: '#16302A' }}>
-                  {ownFollowers}
-                </Typography>
-              </Box>
-              <Box
-                onClick={handleProfileClick}
-                sx={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  py: 0.65,
-                  px: 0.5,
-                  cursor: 'pointer',
-                  borderRadius: 1,
-                  '&:hover': { bgcolor: 'rgba(22,48,42,0.06)' },
-                }}
-              >
-                <Typography sx={{ fontSize: 12.5, color: '#5C675F' }}>Following</Typography>
-                <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: '#16302A' }}>
-                  {ownFollowing}
-                </Typography>
-              </Box>
-
-              <Button
-                fullWidth
-                onClick={handleProfileClick}
-                sx={{
-                  mt: 1,
-                  textTransform: 'none',
-                  fontWeight: 700,
-                  fontSize: 13,
-                  color: '#16302A',
-                  border: '1px solid rgba(22,48,42,0.18)',
-                  bgcolor: 'rgba(235,230,212,0.45)',
-                  borderRadius: 1,
-                  py: 0.7,
-                  '&:hover': { bgcolor: 'rgba(235,230,212,0.8)' },
-                }}
-              >
-                View my profile
-              </Button>
-            </Box>
+            <HomeRatingsPanel
+              profileViewsApprox={profileViewsApprox}
+              ownAvgRating={ownAvgRating}
+              ownRatingsCount={ownRatings.length}
+              ownFollowers={ownFollowers}
+              ownFollowing={ownFollowing}
+              onProfileClick={handleProfileClick}
+            />
           </Box>
         )}
 
         {/* Center feed */}
         <Box sx={{ minWidth: 0, width: '100%' }}>
+          {isMobile && (
+            <Box
+              onClick={handleProfileClick}
+              sx={{
+                mx: 1.25,
+                mb: 1.25,
+                ...MATTE_PANEL,
+                borderRadius: CARD_RADIUS,
+                px: 1.5,
+                py: 1.15,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 0.75,
+                cursor: 'pointer',
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.4, minWidth: 0 }}>
+                <StarRoundedIcon sx={{ fontSize: 18, color: '#B8860B' }} />
+                <Typography sx={{ fontSize: 13, fontWeight: 750, color: '#16302A' }}>
+                  {ownRatings.length > 0 ? ownAvgRating.toFixed(1) : '—'}
+                </Typography>
+              </Box>
+              <Typography sx={{ fontSize: 12, color: '#5C675F' }}>
+                {ownRatings.length} review{ownRatings.length === 1 ? '' : 's'}
+              </Typography>
+              <Typography sx={{ fontSize: 12, color: '#5C675F' }}>{ownFollowers} followers</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.35 }}>
+                <VisibilityOutlinedIcon sx={{ fontSize: 16, color: '#5C675F' }} />
+                <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#16302A' }}>
+                  {profileViewsApprox}
+                </Typography>
+              </Box>
+            </Box>
+          )}
           <Box
             sx={{
               mb: 1.25,
@@ -2632,7 +2648,32 @@ const Home = () => {
       >
         <Box sx={{ px: 2, py: 2 }}>
           <Box sx={{ mb: 0.75 }}>
-            <ZpcLogoMark size={72} showTagline={false} animateStroke={false} />
+            <ZpcNavLogo
+              size={72}
+              animateStroke={false}
+              ink="dark"
+              onLightBg
+              lightPlate
+              onNavigate={() => {
+                setMobileMenuOpen(false);
+                setCurrentPage('home');
+                setSelectedProfileId(null);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+            />
+          </Box>
+          <Box sx={{ mb: 2 }}>
+            <HomeRatingsPanel
+              profileViewsApprox={profileViewsApprox}
+              ownAvgRating={ownAvgRating}
+              ownRatingsCount={ownRatings.length}
+              ownFollowers={ownFollowers}
+              ownFollowing={ownFollowing}
+              onProfileClick={() => {
+                setMobileMenuOpen(false);
+                handleProfileClick();
+              }}
+            />
           </Box>
           <Typography sx={{ fontSize: 13, color: '#16302A', mb: 2 }}>Menu</Typography>
           <Stack spacing={0.5}>
@@ -2981,7 +3022,7 @@ const Home = () => {
             multiline
             minRows={4}
             disabled={editSaving}
-            helperText="Use @[userId:Name] or @[p:propertyId:Title] for mentions"
+            helperText="Type @Name to mention people or properties"
           />
         </DialogContent>
         <DialogActions>
