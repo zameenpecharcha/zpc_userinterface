@@ -28,6 +28,11 @@ import {
   mentionMapsFromTokens,
 } from '../utils/mentions';
 import { notifyMentionedUsers } from '../utils/notifyMentions';
+import {
+  notifyChatRecipients,
+  recipientIdsFromRoom,
+  mentionedIdsInContent,
+} from '../utils/notifyChatMessage';
 import { MATTE_SURFACE, MATTE_INSET } from '../theme/surfaces';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -399,8 +404,8 @@ const Chat: React.FC<ChatProps> = ({
 
   const notifyChatMentions = useCallback(
     (text: string) => {
-      const authorId = parseInt(String(userId), 10);
-      if (Number.isNaN(authorId) || !text.includes('@[')) return;
+      const authorId = String(userId);
+      if (!text.includes('@[')) return;
       void notifyMentionedUsers(apollo, {
         content: text,
         authorId,
@@ -411,6 +416,33 @@ const Chat: React.FC<ChatProps> = ({
       });
     },
     [apollo, userId, authorDisplayName, canonicalRoomId]
+  );
+
+  const notifyNewChatMessage = useCallback(
+    (text: string) => {
+      const recipients = recipientIdsFromRoom(
+        canonicalRoomId,
+        userId,
+        resolvedMentionCandidates.map((c) => c.id)
+      );
+      if (recipients.length === 0) return;
+      const mentioned = mentionedIdsInContent(text);
+      void notifyChatRecipients(apollo, {
+        recipientIds: recipients,
+        authorId: userId,
+        authorName: authorDisplayName,
+        text,
+        roomId: canonicalRoomId,
+        skipUserIds: mentioned,
+      });
+    },
+    [
+      apollo,
+      userId,
+      authorDisplayName,
+      canonicalRoomId,
+      resolvedMentionCandidates,
+    ]
   );
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -584,6 +616,7 @@ const Chat: React.FC<ChatProps> = ({
         clearPendingFile();
         mentionedUserNamesRef.current = new Map();
         if (text) notifyChatMentions(text);
+        notifyNewChatMessage(text || 'Sent an attachment');
       } catch (err) {
         console.error('Chat media upload failed:', err);
         window.alert(err instanceof Error ? err.message : 'Failed to upload media');
@@ -605,9 +638,11 @@ const Chat: React.FC<ChatProps> = ({
     setInput('');
     mentionedUserNamesRef.current = new Map();
     notifyChatMentions(text);
+    notifyNewChatMessage(text);
   }, [
     input, pendingFile, uploading, apollo, userId, canonicalRoomId,
-    sendPayload, clearPendingFile, pendingPreview, editingMessage, notifyChatMentions,
+    sendPayload, clearPendingFile, pendingPreview, editingMessage,
+    notifyChatMentions, notifyNewChatMessage,
   ]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

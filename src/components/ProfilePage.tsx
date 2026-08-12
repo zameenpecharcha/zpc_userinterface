@@ -1646,7 +1646,10 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
         );
     }
 
-    const isOwnProfile = currentUserId === userId;
+    const isOwnProfile =
+        effectiveCurrentUserId != null &&
+        userId != null &&
+        String(effectiveCurrentUserId) === String(userId);
 
     return (
         <>

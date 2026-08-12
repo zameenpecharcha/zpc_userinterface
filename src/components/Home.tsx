@@ -908,9 +908,21 @@ const Home = () => {
   const [isRefreshing, setIsRefreshing] = useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
   const commentsRefreshTimerRef = useRef<NodeJS.Timeout | null>(null);
-  // Authenticated user object (from localStorage) – do not repurpose for viewing profiles
+  // Authenticated user — prefer AuthContext (live) over localStorage snapshot
   const [currentUser, setCurrentUser] = useState(getUserData());
-  const activeUserId = currentUser?.id || authUser?.id || storedUser?.id;
+  const activeUserId = authUser?.id || currentUser?.id;
+
+  // Keep local Home user state aligned when AuthContext user changes (e.g. account switch)
+  useEffect(() => {
+    if (!authUser?.id) return;
+    setCurrentUser((prev: any) => {
+      const next = { ...(prev || {}), ...authUser, id: String(authUser.id) };
+      if (prev && String(prev.id) === String(authUser.id) && JSON.stringify(prev) === JSON.stringify(next)) {
+        return prev;
+      }
+      return next;
+    });
+  }, [authUser]);
 
   const { data: suggestedData, loading: suggestedLoading, refetch: refetchSuggested } = useQuery(GET_SUGGESTED_USERS, {
     variables: { userId: String(activeUserId || ''), limit: 8 },
@@ -1276,12 +1288,13 @@ const Home = () => {
   }, []);
 
   const handleProfileClick = useCallback(() => {
-    // Open own profile explicitly
-    const ownId = storedUser?.id ?? currentUser?.id;
+    // Always open the currently signed-in account (never a stale module-level localStorage user)
+    const ownId = authUser?.id || currentUser?.id;
     setSelectedProfileId(ownId != null ? String(ownId) : null);
+    setProfileFocusPostId(null);
     setCurrentPage('profile');
     handleClose();
-  }, [handleClose, currentUser?.id]);
+  }, [handleClose, authUser?.id, currentUser?.id]);
 
   const handleOpenProfile = useCallback((uid: string | number, focusPostId?: string | number) => {
     setSelectedProfileId(String(uid));
@@ -1856,7 +1869,7 @@ const Home = () => {
 
   // Render Profile Page
   if (currentPage === 'profile') {
-    const authUserId = currentUser?.id || storedUser?.id;
+    const authUserId = authUser?.id || currentUser?.id;
     if (!authUserId) {
       return <Typography sx={{ m: 4, color: 'red' }}>User not logged in. Please log in again.</Typography>;
     }
@@ -1869,7 +1882,7 @@ const Home = () => {
         <ProfilePage
           onGoBack={handleGoHome}
           userId={String(selectedProfileId)}
-          currentUserId={authUserId != null ? String(authUserId) : undefined}
+          currentUserId={String(authUserId)}
           onOpenProfile={handleOpenProfile}
           focusPostId={profileFocusPostId}
           onFocusPostConsumed={() => setProfileFocusPostId(null)}
@@ -2192,6 +2205,27 @@ const Home = () => {
                       const postId = meta?.postId || meta?.post_id;
                       const commentId = meta?.commentId || meta?.comment_id;
                       const t = String(n.type || '').toLowerCase();
+                      const roomId = meta?.roomId || meta?.room_id;
+                      const isChatRelated =
+                        t.includes('message') ||
+                        t.includes('chat') ||
+                        meta?.kind === 'chat';
+
+                      if (isChatRelated) {
+                        if (isMobile) {
+                          navigate('/chat', {
+                            replace: false,
+                            state: roomId ? { autoSelectRoomId: String(roomId) } : { openChat: true },
+                          });
+                        } else {
+                          setCurrentPage('home');
+                          setSelectedProfileId(null);
+                          setChatRoomId(roomId ? String(roomId) : null);
+                          setChatOpen(true);
+                        }
+                        return;
+                      }
+
                       const isPostRelated =
                         !!postId &&
                         (t.includes('mention') ||
