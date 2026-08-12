@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Avatar,
   Box,
@@ -7,7 +7,6 @@ import {
   InputBase,
   Menu,
   MenuItem,
-  Stack,
   Typography,
 } from '@mui/material';
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
@@ -20,6 +19,13 @@ import {
   COMMENT_REACTION_EMOJIS,
   normalizeReactionEmoji,
 } from './commentReactions';
+
+/** Indent caps so deep threads stay readable on mobile. */
+const MAX_INDENT_DEPTH = 4;
+/** Collapse nested branches (depth >= this) by default. */
+const COLLAPSE_FROM_DEPTH = 2;
+/** Within an expanded branch, show this many before "Show more". */
+const INITIAL_VISIBLE_REPLIES = 3;
 
 export type CommentListItemProps = {
   comment: any;
@@ -34,18 +40,20 @@ export type CommentListItemProps = {
   replyText: string;
   setReplyText: (text: string) => void;
   replying?: boolean;
-  onReply: (text: string) => void | Promise<void>;
+  /** Parent id for the reply being composed is the bubble the user clicked Reply on. */
+  onReply: (text: string, parentCommentId: string) => void | Promise<void>;
   onReactComment: (commentId: string, emoji: string) => void | Promise<void>;
   onEditComment: (commentId: string, text: string) => void | Promise<void>;
   onDeleteComment: (commentId: string) => void | Promise<void>;
   showReplyAction?: boolean;
+  depth?: number;
 };
 
 const defaultFormatTime = (value: any) => formatDateTime(value);
 
 const CommentBubble: React.FC<{
   item: any;
-  isReply?: boolean;
+  depth?: number;
   currentUserId?: string | null;
   formatTime: (value: any) => string;
   likedComments: { [commentId: string]: boolean };
@@ -59,7 +67,7 @@ const CommentBubble: React.FC<{
   onDeleteComment: (commentId: string) => void | Promise<void>;
 }> = ({
   item,
-  isReply = false,
+  depth = 0,
   currentUserId,
   formatTime,
   likedComments,
@@ -78,6 +86,7 @@ const CommentBubble: React.FC<{
   const [saving, setSaving] = useState(false);
   const [animating, setAnimating] = useState(false);
 
+  const isReply = depth > 0;
   const isOwner = currentUserId != null && String(item.userId) === String(currentUserId);
   const reaction = normalizeReactionEmoji(commentReactions[item.id]) || (likedComments[item.id] ? '❤️' : null);
   const likeCount = commentLikeCounts[item.id] !== undefined
@@ -111,7 +120,7 @@ const CommentBubble: React.FC<{
   };
 
   return (
-    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: isReply ? 1 : 1.25, minWidth: 0, mb: isReply ? 1.25 : 0 }}>
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: isReply ? 1 : 1.25, minWidth: 0, mb: 0 }}>
       <Avatar
         src={item.profilePhotoSignedUrl || item.profilePhoto || undefined}
         sx={{
@@ -252,7 +261,6 @@ const CommentBubble: React.FC<{
                 e.stopPropagation();
                 setAnimating(true);
                 setTimeout(() => setAnimating(false), 500);
-                // Direct like/unlike with ❤️ — emoji picker lives under ⋯
                 await onReactComment(item.id, '❤️');
               }}
               disabled={likingComment}
@@ -363,16 +371,35 @@ const CommentListItem: React.FC<CommentListItemProps> = ({
   onEditComment,
   onDeleteComment,
   showReplyAction = true,
+  depth = 0,
 }) => {
+  const replies = useMemo(
+    () => (Array.isArray(comment.replies) ? comment.replies : []),
+    [comment.replies],
+  );
+  const [branchOpen, setBranchOpen] = useState(depth < COLLAPSE_FROM_DEPTH);
+  const [showAllReplies, setShowAllReplies] = useState(false);
+
+  const indentDepth = Math.min(depth, MAX_INDENT_DEPTH);
+  const visibleReplies = branchOpen
+    ? (showAllReplies ? replies : replies.slice(0, INITIAL_VISIBLE_REPLIES))
+    : [];
+  const hiddenCount = branchOpen
+    ? Math.max(0, replies.length - INITIAL_VISIBLE_REPLIES)
+    : replies.length;
+
   const handleSendReply = useCallback(async () => {
     if (!replyText.trim()) return;
-    await onReply(replyText);
-  }, [onReply, replyText]);
+    await onReply(replyText, String(comment.id));
+  }, [onReply, replyText, comment.id]);
+
+  const isComposingHere = String(replyingCommentId) === String(comment.id);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
       <CommentBubble
         item={comment}
+        depth={depth}
         currentUserId={currentUserId}
         formatTime={formatTime}
         likedComments={likedComments}
@@ -386,11 +413,112 @@ const CommentListItem: React.FC<CommentListItemProps> = ({
         onDeleteComment={onDeleteComment}
       />
 
-      {comment.replies && comment.replies.length > 0 && (
-        <Stack spacing={1.1} sx={{ mt: 1.1, ml: { xs: 2.25, sm: 4.5 } }}>
-          {comment.replies.map((reply: any) => (
+      {replies.length > 0 && !branchOpen && (
+        <Button
+          size="small"
+          onClick={() => setBranchOpen(true)}
+          sx={{
+            alignSelf: 'flex-start',
+            mt: 0.75,
+            ml: { xs: 1.5 + indentDepth * 1.25, sm: 3 + indentDepth * 1.5 },
+            textTransform: 'none',
+            fontWeight: 700,
+            fontSize: 12.5,
+            color: '#16302A',
+            px: 0.5,
+            minWidth: 0,
+          }}
+        >
+          View {replies.length} {replies.length === 1 ? 'reply' : 'replies'}
+        </Button>
+      )}
+
+      {(visibleReplies.length > 0 || isComposingHere) && (
+        <Box
+          sx={{
+            mt: 1,
+            ml: { xs: 1.25 + indentDepth * 1.1, sm: 2.75 + indentDepth * 1.35 },
+            pl: { xs: 1.1, sm: 1.35 },
+            borderLeft: '2px solid rgba(22,48,42,0.14)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 1.15,
+          }}
+        >
+          {visibleReplies.map((reply: any) => (
+            <Box key={reply.id} sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.65, minWidth: 0 }}>
+              {depth < MAX_INDENT_DEPTH && (
+                <SubdirectoryArrowRightIcon
+                  aria-hidden
+                  sx={{ mt: 0.85, flexShrink: 0, fontSize: 18, color: '#7A847C' }}
+                />
+              )}
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <CommentListItem
+                  comment={reply}
+                  depth={depth + 1}
+                  currentUserId={currentUserId}
+                  formatTime={formatTime}
+                  likedComments={likedComments}
+                  commentReactions={commentReactions}
+                  commentLikeCounts={commentLikeCounts}
+                  likingComment={likingComment}
+                  replyingCommentId={replyingCommentId}
+                  setReplyingCommentId={setReplyingCommentId}
+                  replyText={replyText}
+                  setReplyText={setReplyText}
+                  replying={replying}
+                  onReply={onReply}
+                  onReactComment={onReactComment}
+                  onEditComment={onEditComment}
+                  onDeleteComment={onDeleteComment}
+                  showReplyAction={showReplyAction}
+                />
+              </Box>
+            </Box>
+          ))}
+
+          {branchOpen && !showAllReplies && replies.length > INITIAL_VISIBLE_REPLIES && (
+            <Button
+              size="small"
+              onClick={() => setShowAllReplies(true)}
+              sx={{
+                alignSelf: 'flex-start',
+                textTransform: 'none',
+                fontWeight: 700,
+                fontSize: 12.5,
+                color: '#16302A',
+                px: 0.5,
+                minWidth: 0,
+              }}
+            >
+              Show {hiddenCount} more {hiddenCount === 1 ? 'reply' : 'replies'}
+            </Button>
+          )}
+
+          {branchOpen && depth >= COLLAPSE_FROM_DEPTH && (
+            <Button
+              size="small"
+              onClick={() => {
+                setBranchOpen(false);
+                setShowAllReplies(false);
+              }}
+              sx={{
+                alignSelf: 'flex-start',
+                textTransform: 'none',
+                fontWeight: 600,
+                fontSize: 12,
+                color: '#5C675F',
+                px: 0.5,
+                minWidth: 0,
+              }}
+            >
+              Hide replies
+            </Button>
+          )}
+
+          {isComposingHere && (
             <Box
-              key={reply.id}
               sx={{
                 display: 'flex',
                 alignItems: 'flex-start',
@@ -400,106 +528,67 @@ const CommentListItem: React.FC<CommentListItemProps> = ({
             >
               <SubdirectoryArrowRightIcon
                 aria-hidden
-                sx={{
-                  mt: 0.85,
-                  flexShrink: 0,
-                  fontSize: 20,
-                  color: '#7A847C',
-                }}
+                sx={{ mt: 1.15, flexShrink: 0, fontSize: 18, color: '#7A847C' }}
               />
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                <CommentBubble
-                  item={reply}
-                  isReply
-                  currentUserId={currentUserId}
-                  formatTime={formatTime}
-                  likedComments={likedComments}
-                  commentReactions={commentReactions}
-                  commentLikeCounts={commentLikeCounts}
-                  likingComment={likingComment}
-                  showReplyAction={false}
-                  onReactComment={onReactComment}
-                  onEditComment={onEditComment}
-                  onDeleteComment={onDeleteComment}
+              <Box
+                sx={{
+                  flex: 1,
+                  minWidth: 0,
+                  display: 'flex',
+                  flexDirection: { xs: 'column', sm: 'row' },
+                  gap: 1,
+                  alignItems: { xs: 'stretch', sm: 'center' },
+                }}
+              >
+                <InputBase
+                  value={replyText}
+                  onChange={(e) => setReplyText(e.target.value)}
+                  placeholder="Write a reply..."
+                  autoFocus
+                  sx={{
+                    bgcolor: '#EBE6D4',
+                    px: 1.5,
+                    py: 1,
+                    borderRadius: 999,
+                    fontSize: 14,
+                    fontWeight: 600,
+                    flex: 1,
+                    minWidth: 0,
+                    border: '1.5px solid #DDD6C0',
+                  }}
+                  multiline
+                  minRows={1}
+                  maxRows={3}
                 />
+                <Box sx={{ display: 'flex', gap: 0.75 }}>
+                  <Button
+                    variant="contained"
+                    disableElevation
+                    sx={{
+                      bgcolor: '#16302A',
+                      fontWeight: 800,
+                      borderRadius: 999,
+                      px: 2,
+                      py: 0.85,
+                      minWidth: 0,
+                      textTransform: 'none',
+                      '&:hover': { bgcolor: '#0F221C' },
+                    }}
+                    onClick={handleSendReply}
+                    disabled={replying || !replyText.trim()}
+                  >
+                    Send
+                  </Button>
+                  <Button
+                    sx={{ color: '#3A4540', fontWeight: 700, borderRadius: 999, px: 1.5, textTransform: 'none' }}
+                    onClick={() => { setReplyingCommentId(null); setReplyText(''); }}
+                  >
+                    Cancel
+                  </Button>
+                </Box>
               </Box>
             </Box>
-          ))}
-        </Stack>
-      )}
-
-      {String(replyingCommentId) === String(comment.id) && (
-        <Box
-          sx={{
-            mt: 1.25,
-            ml: { xs: 2.25, sm: 4.5 },
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: 0.75,
-            minWidth: 0,
-          }}
-        >
-          <SubdirectoryArrowRightIcon
-            aria-hidden
-            sx={{ mt: 1.15, flexShrink: 0, fontSize: 20, color: '#7A847C' }}
-          />
-          <Box
-            sx={{
-              flex: 1,
-              minWidth: 0,
-              display: 'flex',
-              flexDirection: { xs: 'column', sm: 'row' },
-              gap: 1,
-              alignItems: { xs: 'stretch', sm: 'center' },
-            }}
-          >
-          <InputBase
-            value={replyText}
-            onChange={(e) => setReplyText(e.target.value)}
-            placeholder="Write a reply..."
-            autoFocus
-            sx={{
-              bgcolor: '#EBE6D4',
-              px: 1.5,
-              py: 1,
-              borderRadius: 999,
-              fontSize: 14,
-              fontWeight: 600,
-              flex: 1,
-              minWidth: 0,
-              border: '1.5px solid #DDD6C0',
-            }}
-            multiline
-            minRows={1}
-            maxRows={3}
-          />
-          <Box sx={{ display: 'flex', gap: 0.75 }}>
-            <Button
-              variant="contained"
-              disableElevation
-              sx={{
-                bgcolor: '#16302A',
-                fontWeight: 800,
-                borderRadius: 999,
-                px: 2,
-                py: 0.85,
-                minWidth: 0,
-                textTransform: 'none',
-                '&:hover': { bgcolor: '#0F221C' },
-              }}
-              onClick={handleSendReply}
-              disabled={replying || !replyText.trim()}
-            >
-              Send
-            </Button>
-            <Button
-              sx={{ color: '#3A4540', fontWeight: 700, borderRadius: 999, px: 1.5, textTransform: 'none' }}
-              onClick={() => { setReplyingCommentId(null); setReplyText(''); }}
-            >
-              Cancel
-            </Button>
-          </Box>
-          </Box>
+          )}
         </Box>
       )}
     </Box>

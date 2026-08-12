@@ -29,8 +29,12 @@ import { Property } from '../types/property';
 import { MATTE_SURFACE, MATTE_HEADER, PAGE_ATMOSPHERE } from '../theme/surfaces';
 
 const statusColor = (status: string) => {
-  switch (status) {
+  switch (String(status || '').toUpperCase()) {
     case 'PUBLISHED': return '#10B981';
+    case 'UNDER_REVIEW':
+    case 'PENDING_VERIFICATION':
+    case 'PENDING': return '#D97706';
+    case 'REJECTED': return '#EF4444';
     case 'DRAFT': return '#6B7280';
     case 'SOLD': return '#EF4444';
     case 'RENTED': return '#F59E0B';

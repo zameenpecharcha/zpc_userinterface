@@ -43,16 +43,16 @@ const AdminBackground: React.FC = () => {
     const draw = () => {
       ctx.clearRect(0, 0, w, h);
 
-      // Atmosphere wash — sage green like Admin
+      // Atmosphere wash — soft mint (#B2DFDB)
       const g = ctx.createLinearGradient(0, 0, w, h);
-      g.addColorStop(0, '#5F8670');
-      g.addColorStop(0.45, '#8FA998');
-      g.addColorStop(1, '#CBD2C4');
+      g.addColorStop(0, '#80CBC4');
+      g.addColorStop(0.48, '#B2DFDB');
+      g.addColorStop(1, '#E0F2F1');
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, w, h);
 
       const radial = ctx.createRadialGradient(w * 0.3, h * 0.2, 0, w * 0.3, h * 0.2, w * 0.55);
-      radial.addColorStop(0, 'rgba(235,230,212,0.45)');
+      radial.addColorStop(0, 'rgba(235,230,212,0.4)');
       radial.addColorStop(1, 'transparent');
       ctx.fillStyle = radial;
       ctx.fillRect(0, 0, w, h);

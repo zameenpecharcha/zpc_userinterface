@@ -13,8 +13,7 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import { ZpcLogoMark } from './brand/ZpcLogo';
 import { MagicCard } from './MagicCard';
-import GoogleSignInButton from './GoogleSignInButton';
-import FacebookSignInButton from './FacebookSignInButton';
+import SocialAuthIconsRow from './SocialAuthIconsRow';
 
 type Props = {
   email: string;
@@ -332,46 +331,13 @@ const LandingAtmosphereLogin: React.FC<Props> = ({
                 >
                   or
                 </Divider>
-                {onGoogleCredential && (
-                  <Box>
-                    <GoogleSignInButton
-                      text="continue_with"
-                      disabled={busy}
-                      onCredential={onGoogleCredential}
-                    />
-                  </Box>
-                )}
-                {onFacebookAccessToken && (
-                  <Box>
-                    <FacebookSignInButton
-                      disabled={busy}
-                      onAccessToken={onFacebookAccessToken}
-                    />
-                  </Box>
-                )}
-                {onMobileSignIn && (
-                  <Button
-                    fullWidth
-                    variant="outlined"
-                    disabled={busy}
-                    onClick={onMobileSignIn}
-                    sx={{
-                      fontFamily: '"Source Serif 4", "Source Serif Pro", Georgia, serif',
-                      textTransform: 'none',
-                      borderRadius: '12px',
-                      py: 1.25,
-                      color: CREAM,
-                      borderColor: 'rgba(235,230,212,0.35)',
-                      bgcolor: 'rgba(235,230,212,0.08)',
-                      '&:hover': {
-                        borderColor: 'rgba(235,230,212,0.55)',
-                        bgcolor: 'rgba(235,230,212,0.14)',
-                      },
-                    }}
-                  >
-                    Continue with mobile number
-                  </Button>
-                )}
+                <SocialAuthIconsRow
+                  disabled={busy}
+                  tone="dark"
+                  onGoogleCredential={onGoogleCredential}
+                  onFacebookAccessToken={onFacebookAccessToken}
+                  onMobileSignIn={onMobileSignIn}
+                />
               </>
             )}
 

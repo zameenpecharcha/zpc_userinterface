@@ -29,9 +29,10 @@ import PeopleIcon from '@mui/icons-material/People';
 import HomeWorkOutlinedIcon from '@mui/icons-material/HomeWorkOutlined';
 import ArticleOutlinedIcon from '@mui/icons-material/ArticleOutlined';
 import { SEARCH_USERS_LIGHT } from '../graphql/user';
-import { SEARCH_POSTS } from '../graphql/posts';
+import { SEARCH_POSTS_LIGHT } from '../graphql/posts';
 import { PUBLIC_PROPERTIES } from '../graphql/property';
-import { MATTE_PANEL, MATTE_SURFACE, PAGE_ATMOSPHERE } from '../theme/surfaces';
+import TabEnter from './motion/TabEnter';
+import { MATTE_PANEL, MATTE_SURFACE, MATTE_HEADER, PAGE_ATMOSPHERE } from '../theme/surfaces';
 import AdminBackground from './admin/AdminBackground';
 import { ZpcLogoMark } from './brand/ZpcLogo';
 import { nameInitials, stringToColor } from '../utils/mentions';
@@ -44,10 +45,9 @@ type SearchTab = 'all' | 'people' | 'properties' | 'posts';
 
 const ROLE_OPTIONS = [
   { value: '', label: 'Any role' },
-  { value: 'builder', label: 'Builder' },
   { value: 'agent', label: 'Agent' },
-  { value: 'general_user', label: 'General user' },
-  { value: 'admin', label: 'Admin' },
+  { value: 'builder', label: 'Builder' },
+  { value: 'general', label: 'General' },
 ];
 
 const PROPERTY_TYPES = [
@@ -103,7 +103,7 @@ const SearchPage: React.FC = () => {
   const hasQuery = Boolean(parsed.apiQuery || peopleRole || propCity || propType || listingType || postLocation || postPropType);
 
   const [runPeople, peopleState] = useLazyQuery(SEARCH_USERS_LIGHT, { fetchPolicy: 'network-only', errorPolicy: 'all' });
-  const [runPosts, postsState] = useLazyQuery(SEARCH_POSTS, { fetchPolicy: 'network-only', errorPolicy: 'all' });
+  const [runPosts, postsState] = useLazyQuery(SEARCH_POSTS_LIGHT, { fetchPolicy: 'network-only', errorPolicy: 'all' });
   const [runProps, propsState] = useLazyQuery(PUBLIC_PROPERTIES, { fetchPolicy: 'network-only', errorPolicy: 'all' });
 
   const runSearch = useCallback(
@@ -120,8 +120,8 @@ const SearchPage: React.FC = () => {
       if (needPeople && (apiQ || peopleRole || peopleLocation)) {
         runPeople({
           variables: {
-            // Backend does substring ILIKE matching; don't gate on role here
             search: apiQ || peopleLocation || '',
+            role: peopleRole || null,
             page: 1,
             limit: tab === 'all' ? 8 : 40,
           },
@@ -545,16 +545,12 @@ const SearchPage: React.FC = () => {
         position="sticky"
         elevation={0}
         sx={{
-          ...MATTE_SURFACE,
+          ...MATTE_HEADER,
           borderRadius: 0,
-          borderLeft: 'none',
-          borderRight: 'none',
-          borderTop: 'none',
-          color: '#16302A',
         }}
       >
-        <Toolbar sx={{ gap: 1, maxWidth: 920, width: '100%', mx: 'auto', px: { xs: 1, sm: 2 } }}>
-          <IconButton onClick={() => navigate('/home')} sx={{ color: '#16302A' }} aria-label="Back">
+        <Toolbar sx={{ gap: 1, maxWidth: 920, width: '100%', mx: 'auto', px: { xs: 1, sm: 2 }, bgcolor: 'transparent' }}>
+          <IconButton onClick={() => navigate('/home')} sx={{ color: '#EBE6D4' }} aria-label="Back">
             <ArrowBackIcon />
           </IconButton>
           {!isMobile && <ZpcLogoMark size={40} showTagline={false} animateStroke={false} />}
@@ -564,14 +560,14 @@ const SearchPage: React.FC = () => {
               display: 'flex',
               alignItems: 'center',
               gap: 1,
-              bgcolor: 'rgba(22,48,42,0.06)',
+              bgcolor: 'rgba(235,230,212,0.12)',
               px: 1.5,
               py: 0.65,
               borderRadius: 999,
-              border: '1px solid rgba(22,48,42,0.12)',
+              border: '1px solid rgba(235,230,212,0.28)',
             }}
           >
-            <SearchIcon sx={{ color: '#5C675F', fontSize: 20 }} />
+            <SearchIcon sx={{ color: 'rgba(235,230,212,0.75)', fontSize: 20 }} />
             <InputBase
               fullWidth
               value={draft}
@@ -580,7 +576,12 @@ const SearchPage: React.FC = () => {
                 if (e.key === 'Enter') commitSearch();
               }}
               placeholder='Search people, properties, posts — try "Hyderabad" OR builder'
-              sx={{ fontSize: 14.5, color: '#16302A', ...interFont }}
+              sx={{
+                fontSize: 14.5,
+                color: '#EBE6D4',
+                ...interFont,
+                '& input::placeholder': { color: 'rgba(235,230,212,0.55)', opacity: 1 },
+              }}
             />
             {draft && (
               <IconButton
@@ -589,6 +590,7 @@ const SearchPage: React.FC = () => {
                   setDraft('');
                   commitSearch('');
                 }}
+                sx={{ color: '#EBE6D4' }}
               >
                 <CloseIcon fontSize="small" />
               </IconButton>
@@ -600,11 +602,11 @@ const SearchPage: React.FC = () => {
             sx={{
               textTransform: 'none',
               fontWeight: 700,
-              bgcolor: '#16302A',
-              color: '#fff',
+              bgcolor: 'rgba(235,230,212,0.92)',
+              color: '#16302A',
               borderRadius: 999,
               px: 2,
-              '&:hover': { bgcolor: '#0A1C18' },
+              '&:hover': { bgcolor: '#EBE6D4' },
             }}
           >
             Search
@@ -619,15 +621,17 @@ const SearchPage: React.FC = () => {
             scrollButtons="auto"
             sx={{
               minHeight: 44,
+              bgcolor: 'transparent',
+              border: 'none',
               '& .MuiTab-root': {
                 textTransform: 'none',
                 fontWeight: 700,
                 minHeight: 44,
-                color: '#5C675F',
+                color: 'rgba(235,230,212,0.7)',
                 ...interFont,
               },
-              '& .Mui-selected': { color: '#16302A !important' },
-              '& .MuiTabs-indicator': { bgcolor: '#16302A', height: 2 },
+              '& .Mui-selected': { color: '#EBE6D4 !important' },
+              '& .MuiTabs-indicator': { bgcolor: '#EBE6D4', height: 2 },
             }}
           >
             <Tab value="all" label="All" />
@@ -770,7 +774,7 @@ const SearchPage: React.FC = () => {
             </Stack>
           </Box>
         ) : (
-          <>
+          <TabEnter tabKey={tabParam}>
             <Typography sx={{ mb: 2, color: '#5C675F', fontSize: 13.5 }}>
               Results for <strong style={{ color: '#16302A' }}>{qParam || 'filters'}</strong>
               {loading ? ' · searching…' : ''}
@@ -814,7 +818,7 @@ const SearchPage: React.FC = () => {
             {tabParam === 'posts' && (
               <Box sx={{ ...MATTE_PANEL, borderRadius: CARD_RADIUS, p: 1.75 }}>{renderPosts()}</Box>
             )}
-          </>
+          </TabEnter>
         )}
 
         <Divider sx={{ my: 3, borderColor: 'rgba(22,48,42,0.08)' }} />

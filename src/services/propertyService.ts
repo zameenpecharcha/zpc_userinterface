@@ -143,9 +143,15 @@ export const mapFormDataToPropertyInput = (formData: {
   country?: string;
   bedrooms?: string;
   bathrooms?: string;
+  builderName?: string;
+  projectName?: string;
+  reraId?: string;
 }): CreatePropertyInput => ({
   title: formData.title || '',
   description: formData.description || '',
+  builderName: formData.builderName || '',
+  projectName: formData.projectName || '',
+  reraId: formData.reraId || '',
   propertyType: formData.propertyType || 'APARTMENT',
   listingType: formData.listingType || 'SALE',
   price: parseFloat(formData.price) || 0,

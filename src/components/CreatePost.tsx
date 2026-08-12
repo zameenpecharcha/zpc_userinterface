@@ -23,6 +23,7 @@ import {
   ListSubheader,
   CircularProgress,
   Alert,
+  Grow,
 } from '@mui/material';
 // Removed Grid import to avoid dependency on Unstable_Grid2; using CSS grid instead
 import {
@@ -37,7 +38,9 @@ import {
   VideoFile as VideoIcon
 } from '@mui/icons-material';
 import LocationAutocomplete from './LocationAutocomplete';
-import { MATTE_SURFACE, MATTE_INSET } from '../theme/surfaces';
+import { MATTE_SURFACE, MATTE_INSET, THIN_CREAM_SCROLLBAR } from '../theme/surfaces';
+import { expandPrettyMentions, getTextareaCaretOffset } from '../utils/mentions';
+import { ZPC_MOTION } from '../theme/motion';
 
 const interFont = {
   fontFamily: "'Source Serif 4', 'Source Serif Pro', Georgia, serif",
@@ -64,23 +67,21 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionSearch, setMentionSearch] = useState('');
   const [mentionStart, setMentionStart] = useState<number | null>(null);
+  const [mentionAnchor, setMentionAnchor] = useState({ top: 0, left: 0 });
   const mentionedUserIdsRef = useRef<Set<string>>(new Set());
+  const mentionedUserNamesRef = useRef<Map<string, string>>(new Map());
+  const mentionedPropertyNamesRef = useRef<Map<string, string>>(new Map());
   const descriptionRef = useRef<HTMLTextAreaElement | HTMLInputElement | null>(null);
+  const descriptionWrapRef = useRef<HTMLDivElement | null>(null);
   const mentionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [searchUsers, { data: mentionData, loading: mentionLoading }] = useLazyQuery(
+  const [searchUsers, { data: mentionData, loading: mentionLoading, error: mentionError }] = useLazyQuery(
     SEARCH_USERS_LIGHT,
-    {
-      fetchPolicy: 'network-only',
-      nextFetchPolicy: 'cache-first',
-    }
+    { fetchPolicy: 'network-only', nextFetchPolicy: 'cache-first', errorPolicy: 'all' }
   );
-  const [searchPropertiesQuery, { data: propertyMentionData, loading: propertyMentionLoading }] = useLazyQuery(
+  const [searchPropertiesQuery, { data: propertyMentionData, loading: propertyMentionLoading, error: propertyMentionError }] = useLazyQuery(
     PUBLIC_PROPERTIES,
-    {
-      fetchPolicy: 'network-only',
-      nextFetchPolicy: 'cache-first',
-    }
+    { fetchPolicy: 'network-only', nextFetchPolicy: 'cache-first', errorPolicy: 'all' }
   );
 
   const postTypes = [
@@ -151,6 +152,20 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
     setLongitude(locationData.longitude);
   };
 
+  const updateMentionAnchor = (el: HTMLTextAreaElement | HTMLInputElement, cursorPos: number) => {
+    const coords = getTextareaCaretOffset(el, cursorPos);
+    const fieldRect = el.getBoundingClientRect();
+    const wrapRect = descriptionWrapRef.current?.getBoundingClientRect();
+    const offsetTop = wrapRect ? fieldRect.top - wrapRect.top : el.offsetTop;
+    const offsetLeft = wrapRect ? fieldRect.left - wrapRect.left : el.offsetLeft;
+    const panelWidth = 280;
+    const maxLeft = Math.max(8, (wrapRect?.width || fieldRect.width) - panelWidth - 8);
+    setMentionAnchor({
+      top: offsetTop + coords.top + coords.height + 4,
+      left: Math.min(Math.max(8, offsetLeft + coords.left), maxLeft),
+    });
+  };
+
   const handleDescriptionChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const value = e.target.value;
     setDescription(value);
@@ -169,14 +184,15 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
       setMentionOpen(true);
       setMentionSearch(searchTerm);
       setMentionStart(cursorPos - atMatch[0].length);
-      // Debounce so we don't hit Neon on every keystroke / block behind other loads
+      updateMentionAnchor(e.target, cursorPos);
       mentionTimerRef.current = setTimeout(() => {
-        searchUsers({
-          variables: { search: searchTerm.trim(), page: 1, limit: 8 },
-        });
-        searchPropertiesQuery({
-          variables: { city: searchTerm.trim() || undefined, page: 1, limit: 8 },
-        });
+        const term = searchTerm.trim();
+        if (term.length < 2) return;
+        searchUsers({ variables: { search: term, page: 1, limit: 8 } });
+        const cityToken = term.split(/\s+/)[0];
+        if (cityToken.length >= 2) {
+          searchPropertiesQuery({ variables: { city: cityToken, page: 1, limit: 8 } });
+        }
       }, 280);
     } else {
       setMentionOpen(false);
@@ -187,30 +203,29 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
 
   const handleSelectMention = (user: { id: string; firstName: string; lastName?: string }) => {
     if (mentionStart === null) return;
-
-    const displayName = user.firstName;
-    const token = `@[${user.id}:${displayName}]`;
+    const displayName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'User';
+    const token = `@${displayName}`;
     const before = description.slice(0, mentionStart);
     const after = description.slice(mentionStart + 1 + mentionSearch.length);
     const nextDescription = `${before}${token} ${after}`.slice(0, 500);
-
     setDescription(nextDescription);
     mentionedUserIdsRef.current.add(user.id);
+    mentionedUserNamesRef.current.set(displayName, user.id);
     setMentionOpen(false);
     setMentionSearch('');
     setMentionStart(null);
-
     setTimeout(() => descriptionRef.current?.focus(), 0);
   };
 
   const handleSelectPropertyMention = (prop: { id: string; title: string }) => {
     if (mentionStart === null) return;
     const label = (prop.title || 'Property').replace(/[\[\]]/g, '').slice(0, 40);
-    const token = `@[p:${prop.id}:${label}]`;
+    const token = `@${label}`;
     const before = description.slice(0, mentionStart);
     const after = description.slice(mentionStart + 1 + mentionSearch.length);
     const nextDescription = `${before}${token} ${after}`.slice(0, 500);
     setDescription(nextDescription);
+    mentionedPropertyNamesRef.current.set(label, prop.id);
     setMentionOpen(false);
     setMentionSearch('');
     setMentionStart(null);
@@ -219,13 +234,16 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
 
   const handleSubmit = () => {
     if (!selectedType || !title.trim() || !description.trim() || loading) return;
-    // Drop focus so the button doesn't stay visually highlighted
     (document.activeElement as HTMLElement | null)?.blur?.();
-
+    const content = expandPrettyMentions(
+      description.trim(),
+      mentionedUserNamesRef.current,
+      mentionedPropertyNamesRef.current,
+    );
     const postData = {
       type: selectedType,
       title: title.trim(),
-      content: description.trim(),
+      content,
       location: location.trim(),
       latitude,
       longitude,
@@ -233,7 +251,6 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
       media: uploadedFiles,
       mentionedUserIds: Array.from(mentionedUserIdsRef.current),
     };
-
     onSubmit(postData);
   };
 
@@ -247,6 +264,8 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
     setVisibility('public');
     setUploadedFiles([]);
     mentionedUserIdsRef.current = new Set();
+    mentionedUserNamesRef.current = new Map();
+    mentionedPropertyNamesRef.current = new Map();
     setMentionOpen(false);
     setMentionSearch('');
     setMentionStart(null);
@@ -272,6 +291,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
     <Modal
       open={open}
       onClose={handleClose}
+      closeAfterTransition
       sx={{
         display: 'flex',
         alignItems: 'center',
@@ -279,13 +299,18 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
         p: 2
       }}
     >
+      <Grow in={open} timeout={{ enter: ZPC_MOTION.popupEnter, exit: ZPC_MOTION.popupExit }}>
       <Box
+        tabIndex={-1}
         sx={{
           ...MATTE_SURFACE,
           borderRadius: 3,
           width: { xs: '100%', sm: '90%', md: '900px', lg: '900px' },
           maxHeight: '90vh',
-          overflow: 'auto',
+          overflow: 'hidden',
+          outline: 'none',
+          display: 'flex',
+          flexDirection: 'column',
           ...interFont
         }}
       >
@@ -295,9 +320,11 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
           alignItems: 'center', 
           justifyContent: 'space-between', 
           p: 3, 
+          flexShrink: 0,
           ...MATTE_SURFACE,
           boxShadow: 'none',
-          borderRadius: '12px 12px 0 0',
+          borderRadius: 0,
+          borderBottom: '1px solid rgba(22,48,42,0.08)',
         }}>
           <Box>
             <Typography 
@@ -337,7 +364,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
         </Box>
 
         {/* Content */}
-        <Box sx={{ p: 3 }}>
+        <Box sx={{ p: 3, flex: 1, minHeight: 0, overflow: 'auto', ...THIN_CREAM_SCROLLBAR }}>
           {/* Post Type Selection */}
           <Box sx={{ mb: 3 }}>
             <Typography 
@@ -451,7 +478,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
             </Typography>
           </Box>
 
-          <Box sx={{ mb: 3, position: 'relative' }}>
+          <Box sx={{ mb: 3, position: 'relative' }} ref={descriptionWrapRef}>
             <Typography 
               sx={{ 
                 fontWeight: 600, 
@@ -491,49 +518,66 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
             />
             {mentionOpen && (
               <Paper
-                elevation={4}
+                elevation={6}
                 sx={{
                   position: 'absolute',
-                  left: 0,
-                  right: 0,
-                  top: '100%',
-                  mt: 0.5,
-                  zIndex: 10,
+                  top: mentionAnchor.top,
+                  left: mentionAnchor.left,
+                  width: 280,
+                  maxWidth: 'calc(100% - 16px)',
+                  zIndex: 20,
                   maxHeight: 220,
                   overflow: 'auto',
+                  borderRadius: 2,
+                  border: '1px solid rgba(22,48,42,0.14)',
+                  animation: `zpcPopupIn ${ZPC_MOTION.popover}ms ${ZPC_MOTION.ease} both`,
+                  ...THIN_CREAM_SCROLLBAR,
                 }}
               >
                 <List dense disablePadding>
-                  {(mentionLoading || propertyMentionLoading) && (
-                    <ListItemButton disabled>
-                      <ListItemText primary="Searching…" />
-                    </ListItemButton>
-                  )}
                   <ListSubheader sx={{ lineHeight: '28px', ...MATTE_INSET }}>People</ListSubheader>
-                  {!mentionLoading && (mentionData?.users?.length ?? 0) === 0 && (
-                    <ListItemButton disabled>
-                      <ListItemText primary="No users found" />
-                    </ListItemButton>
+                  {mentionSearch.trim().length < 2 && (
+                    <ListItemButton disabled><ListItemText primary="Type 2+ letters to search" /></ListItemButton>
+                  )}
+                  {mentionSearch.trim().length >= 2 && mentionLoading && (
+                    <ListItemButton disabled><ListItemText primary="Searching people…" /></ListItemButton>
+                  )}
+                  {mentionSearch.trim().length >= 2 && !mentionLoading && mentionError && (
+                    <ListItemButton disabled><ListItemText primary="Couldn’t load people" /></ListItemButton>
+                  )}
+                  {mentionSearch.trim().length >= 2 && !mentionLoading && !mentionError && (mentionData?.users?.length ?? 0) === 0 && (
+                    <ListItemButton disabled><ListItemText primary="No users found" /></ListItemButton>
                   )}
                   {(mentionData?.users ?? []).map((user: any) => (
                     <ListItemButton key={`u-${user.id}`} onClick={() => handleSelectMention(user)}>
                       <ListItemText
                         primary={`${user.firstName} ${user.lastName || ''}`.trim()}
                         secondary={user.role || user.email}
+                        primaryTypographyProps={{ noWrap: true, fontSize: 13.5, fontWeight: 600 }}
+                        secondaryTypographyProps={{ noWrap: true, fontSize: 11.5 }}
                       />
                     </ListItemButton>
                   ))}
                   <ListSubheader sx={{ lineHeight: '28px', ...MATTE_INSET }}>Properties</ListSubheader>
-                  {!propertyMentionLoading && (propertyMentionData?.publicProperties?.properties?.length ?? 0) === 0 && (
-                    <ListItemButton disabled>
-                      <ListItemText primary="No properties found" />
-                    </ListItemButton>
+                  {mentionSearch.trim().length < 2 && (
+                    <ListItemButton disabled><ListItemText primary="Type 2+ letters to search" /></ListItemButton>
+                  )}
+                  {mentionSearch.trim().length >= 2 && propertyMentionLoading && (
+                    <ListItemButton disabled><ListItemText primary="Searching properties…" /></ListItemButton>
+                  )}
+                  {mentionSearch.trim().length >= 2 && !propertyMentionLoading && propertyMentionError && (
+                    <ListItemButton disabled><ListItemText primary="Couldn’t load properties" /></ListItemButton>
+                  )}
+                  {mentionSearch.trim().length >= 2 && !propertyMentionLoading && !propertyMentionError && (propertyMentionData?.publicProperties?.properties?.length ?? 0) === 0 && (
+                    <ListItemButton disabled><ListItemText primary="No properties found" /></ListItemButton>
                   )}
                   {(propertyMentionData?.publicProperties?.properties ?? []).slice(0, 8).map((prop: any) => (
                     <ListItemButton key={`p-${prop.id}`} onClick={() => handleSelectPropertyMention(prop)}>
                       <ListItemText
                         primary={prop.title}
                         secondary={prop.location || prop.city || 'Property'}
+                        primaryTypographyProps={{ noWrap: true, fontSize: 13.5, fontWeight: 600 }}
+                        secondaryTypographyProps={{ noWrap: true, fontSize: 11.5 }}
                       />
                     </ListItemButton>
                   ))}
@@ -700,9 +744,20 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
               {error}
             </Alert>
           )}
+        </Box>
 
           {/* Action Buttons */}
-          <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+          <Box
+            sx={{
+              display: 'flex',
+              gap: 2,
+              justifyContent: 'flex-end',
+              flexShrink: 0,
+              px: 3,
+              py: 2,
+              borderTop: '1px solid rgba(22,48,42,0.08)',
+            }}
+          >
             <Button
               variant="outlined"
               onClick={handleClose}
@@ -762,8 +817,8 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
               {loading ? 'Creating post…' : 'Create Post'}
             </Button>
           </Box>
-        </Box>
       </Box>
+      </Grow>
     </Modal>
   );
 };

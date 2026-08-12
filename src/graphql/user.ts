@@ -15,8 +15,8 @@ export const GET_USERS = gql`
 `;
 
 export const SEARCH_USERS_LIGHT = gql`
-  query SearchUsersLight($search: String, $page: Int, $limit: Int) {
-    users(search: $search, page: $page, limit: $limit) {
+  query SearchUsersLight($search: String, $page: Int, $limit: Int, $role: String) {
+    users(search: $search, page: $page, limit: $limit, role: $role) {
       id
       firstName
       lastName

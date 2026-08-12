@@ -34,7 +34,7 @@ export const ZPC_GLASS = {
   green: 'rgba(22, 48, 42, 0.16)',
   greenLogin: 'rgba(22, 48, 42, 0.22)',
   greenBorder: 'rgba(235, 230, 212, 0.35)',
-  header: 'rgba(22, 48, 42, 0.38)',
+  header: 'rgba(22, 48, 42, 0.32)',
   inset: 'rgba(22, 48, 42, 0.08)',
   tab: 'rgba(232, 226, 206, 0.4)',
   tabActive: 'rgba(22, 48, 42, 0.88)',

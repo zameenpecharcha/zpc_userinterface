@@ -1,8 +1,13 @@
+html,
 body {
   margin: 0;
+  min-height: 100%;
+  background-color: #B2DFDB;
+}
+
+body {
   font-family: 'Source Serif 4', 'Source Serif Pro', Georgia, serif;
   color: #0A1210;
-  background-color: #EBE6D4;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -68,4 +73,39 @@ code {
   font-size: 1.25rem;
   line-height: 1;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.15));
+}
+
+/*
+ * Shared shell motion (pages, tabs, custom popups).
+ * Page enter must NOT use transform — a retained translateY(0) from
+ * animation-fill-mode:both creates a containing block and breaks
+ * position:fixed descendants (sticky header + viewport atmosphere).
+ */
+@keyframes zpcPageIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes zpcTabIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes zpcPopupIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }

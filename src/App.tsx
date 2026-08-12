@@ -1,7 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ApolloProvider } from '@apollo/client';
-import { CssBaseline, ThemeProvider, createTheme } from '@mui/material';
+import { CssBaseline, ThemeProvider, createTheme, Grow, Fade } from '@mui/material';
 import Register from './components/Register';
 import Home from './components/Home';
 import Landing from './components/Landing';
@@ -18,6 +18,8 @@ import client from './apollo-client';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { postLoginPath } from './utils/roles';
 import { ZPC_COLORS, ZPC_FONTS, ZPC_GLASS, ZPC_RADIUS } from './theme/zpcTheme';
+import { ZPC_TRANSITION } from './theme/motion';
+import PageEnter from './components/motion/PageEnter';
 
 const theme = createTheme({
   palette: {
@@ -58,10 +60,50 @@ const theme = createTheme({
   components: {
     MuiCssBaseline: {
       styleOverrides: {
+        html: {
+          backgroundColor: '#B2DFDB',
+        },
         body: {
-          backgroundColor: ZPC_COLORS.bg,
+          backgroundColor: '#B2DFDB',
           color: ZPC_COLORS.text,
         },
+      },
+    },
+    MuiDialog: {
+      defaultProps: {
+        TransitionComponent: Grow,
+        transitionDuration: ZPC_TRANSITION.popup,
+      },
+      styleOverrides: {
+        paper: {
+          // Smooth feel even if a Dialog overrides TransitionComponent
+          transitionTimingFunction: 'cubic-bezier(0.22, 1, 0.36, 1)',
+        },
+      },
+    },
+    MuiDrawer: {
+      defaultProps: {
+        transitionDuration: ZPC_TRANSITION.drawer,
+      },
+    },
+    MuiPopover: {
+      defaultProps: {
+        TransitionComponent: Fade,
+        transitionDuration: ZPC_TRANSITION.popover,
+      },
+    },
+    MuiMenu: {
+      defaultProps: {
+        TransitionComponent: Fade,
+        transitionDuration: ZPC_TRANSITION.popover,
+      },
+    },
+    MuiTooltip: {
+      defaultProps: {
+        enterDelay: 280,
+        leaveDelay: 60,
+        TransitionComponent: Fade,
+        TransitionProps: { timeout: 140 },
       },
     },
     MuiPaper: {
@@ -93,18 +135,35 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           backgroundImage:
-            'linear-gradient(180deg, rgba(22,48,42,0.48) 0%, rgba(22,48,42,0.28) 100%)',
-          backgroundColor: 'rgba(22, 48, 42, 0.38)',
-          backdropFilter: 'blur(18px) saturate(1.25)',
-          WebkitBackdropFilter: 'blur(18px) saturate(1.25)',
+            'linear-gradient(180deg, rgba(22,48,42,0.42) 0%, rgba(22,48,42,0.22) 55%, rgba(22,48,42,0.28) 100%), linear-gradient(180deg, rgba(235,230,212,0.14) 0%, rgba(235,230,212,0) 42%)',
+          backgroundColor: 'rgba(22, 48, 42, 0.32)',
+          backdropFilter: 'blur(20px) saturate(1.35)',
+          WebkitBackdropFilter: 'blur(20px) saturate(1.35)',
           borderBottom: '1px solid rgba(235,230,212,0.28)',
-          boxShadow: '0 8px 28px rgba(10, 18, 16, 0.12), inset 0 1px 0 rgba(235,230,212,0.18)',
+          boxShadow:
+            '0 8px 28px rgba(10, 18, 16, 0.14), inset 0 1px 0 rgba(235,230,212,0.28), inset 0 -1px 0 rgba(10,18,16,0.12)',
           color: ZPC_COLORS.primaryContrast,
           '& .MuiIconButton-root:hover': {
-            backgroundColor: 'rgba(15, 34, 28, 0.55)',
+            backgroundColor: 'rgba(235, 230, 212, 0.12)',
           },
           '& .MuiButton-root:hover': {
-            backgroundColor: 'rgba(15, 34, 28, 0.55)',
+            backgroundColor: 'rgba(235, 230, 212, 0.12)',
+          },
+        },
+      },
+    },
+    MuiTab: {
+      styleOverrides: {
+        root: {
+          minHeight: 32,
+          borderRadius: 999,
+          textTransform: 'none',
+          fontWeight: 600,
+          color: ZPC_COLORS.textMuted,
+          transition: 'background-color 0.2s cubic-bezier(0.22, 1, 0.36, 1), color 0.2s ease',
+          '&.Mui-selected': {
+            color: ZPC_COLORS.primaryContrast,
+            backgroundColor: ZPC_GLASS.tabActive,
           },
         },
       },
@@ -123,20 +182,8 @@ const theme = createTheme({
         indicator: {
           display: 'none',
         },
-      },
-    },
-    MuiTab: {
-      styleOverrides: {
-        root: {
-          minHeight: 32,
-          borderRadius: 999,
-          textTransform: 'none',
-          fontWeight: 600,
-          color: ZPC_COLORS.textMuted,
-          '&.Mui-selected': {
-            color: ZPC_COLORS.primaryContrast,
-            backgroundColor: ZPC_GLASS.tabActive,
-          },
+        flexContainer: {
+          transition: 'none',
         },
       },
     },
@@ -342,8 +389,10 @@ const RoleProtectedRoute: React.FC<RoleProtectedRouteProps> = ({ children, allow
 };
 
 function AppRoutes() {
+  const location = useLocation();
   return (
-    <Routes>
+    <PageEnter enterKey={location.pathname}>
+      <Routes location={location}>
       {/* Public Routes */}
       <Route
         path="/"
@@ -398,7 +447,7 @@ function AppRoutes() {
       <Route
         path="/create-property"
         element={
-          <RoleProtectedRoute allowedRoles={['builder', 'admin']}>
+          <RoleProtectedRoute allowedRoles={['agent', 'builder']}>
             <CreateProperty />
           </RoleProtectedRoute>
         }
@@ -406,7 +455,7 @@ function AppRoutes() {
       <Route
         path="/my-properties"
         element={
-          <RoleProtectedRoute allowedRoles={['builder', 'admin']}>
+          <RoleProtectedRoute allowedRoles={['agent', 'builder']}>
             <MyProperties />
           </RoleProtectedRoute>
         }
@@ -449,7 +498,8 @@ function AppRoutes() {
 
       {/* Catch all route */}
       <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+      </Routes>
+    </PageEnter>
   );
 }
 
