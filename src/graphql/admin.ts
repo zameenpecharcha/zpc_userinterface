@@ -128,6 +128,10 @@ export const ADMIN_REPORTS = gql`
         status
         priority
         createdAt
+        entityLabel
+        entityPreview
+        reporterName
+        reporterEmail
       }
     }
   }

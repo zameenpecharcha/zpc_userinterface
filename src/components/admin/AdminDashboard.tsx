@@ -9,8 +9,13 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
   Drawer,
+  Fade,
   IconButton,
   InputBase,
   MenuItem,
@@ -22,8 +27,7 @@ import {
   useMediaQuery,
 } from '@mui/material';
 import BarChartIcon from '@mui/icons-material/BarChart';
-import { ZpcLogoMark } from '../brand/ZpcLogo';
-import RefreshIcon from '@mui/icons-material/Refresh';
+import { ZpcNavLogo } from '../brand/ZpcNavLogo';
 import LogoutIcon from '@mui/icons-material/Logout';
 import HomeIcon from '@mui/icons-material/Home';
 import PeopleAltIcon from '@mui/icons-material/PeopleAlt';
@@ -43,6 +47,7 @@ import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined';
 import FlagOutlinedIcon from '@mui/icons-material/FlagOutlined';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import { useAuth } from '../../contexts/AuthContext';
+import { collapseMentionTokens } from '../../utils/mentions';
 import {
   ADMIN_APPROVE_PROPERTY,
   ADMIN_DELETE_POST,
@@ -132,10 +137,85 @@ function fmtMoney(n?: number | null) {
   return `₹${Number(n).toLocaleString('en-IN')}`;
 }
 
+/** Shorten UUIDs / long ids for compact admin tables. */
+function shortId(id?: string | number | null, keep = 8): string {
+  const s = String(id ?? '').trim();
+  if (!s) return '—';
+  if (s.length <= keep + 1) return s;
+  return `${s.slice(0, keep)}…`;
+}
+
 function userDisplayName(u: any): string {
   if (!u) return 'Unknown user';
   const name = `${u.firstName || ''} ${u.lastName || ''}`.trim();
   return name || u.email || `User #${u.id}`;
+}
+
+function truncateText(value?: string | null, max = 90): string {
+  const text = collapseMentionTokens(String(value || ''))
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text) return '';
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+function reportEntitySummary(
+  report: any,
+  postById: Map<string, any>,
+  propertyById: Map<string, any>,
+  userById: Map<string, any>
+): { kind: string; title: string; subtitle?: string } {
+  const kind = String(report?.entityType || 'ENTITY').toUpperCase();
+  if (report?.entityLabel) {
+    const kindLabel =
+      kind === 'POST'
+        ? 'Post'
+        : kind === 'PROPERTY'
+          ? 'Property'
+          : kind === 'USER'
+            ? 'User'
+            : kind === 'COMMENT'
+              ? 'Comment'
+              : kind;
+    return {
+      kind: kindLabel,
+      title: truncateText(String(report.entityLabel), 80) || kindLabel,
+      subtitle: report.entityPreview ? truncateText(String(report.entityPreview), 120) : undefined,
+    };
+  }
+  const id = String(report?.entityId || '');
+  if (kind === 'POST') {
+    const post = postById.get(id);
+    if (!post) return { kind: 'Post', title: 'Post report', subtitle: 'Content unavailable' };
+    const author = `${post.userFirstName || ''} ${post.userLastName || ''}`.trim();
+    return {
+      kind: 'Post',
+      title: post.title || 'Untitled post',
+      subtitle: truncateText(post.content) || (author ? `by ${author}` : undefined),
+    };
+  }
+  if (kind === 'PROPERTY') {
+    const prop = propertyById.get(id);
+    if (!prop) return { kind: 'Property', title: 'Property report', subtitle: 'Listing unavailable' };
+    const where = [prop.city, prop.state].filter(Boolean).join(', ');
+    return {
+      kind: 'Property',
+      title: prop.title || prop.propertyCode || 'Untitled property',
+      subtitle: where || prop.propertyType || undefined,
+    };
+  }
+  if (kind === 'USER') {
+    const u = userById.get(id) || userById.get(String(report?.reportedUserId || ''));
+    return {
+      kind: 'User',
+      title: userDisplayName(u),
+      subtitle: u?.email || u?.role || undefined,
+    };
+  }
+  if (kind === 'COMMENT') {
+    return { kind: 'Comment', title: 'Comment report', subtitle: truncateText(report?.description) || undefined };
+  }
+  return { kind, title: kind, subtitle: undefined };
 }
 
 const whiteCardSx = {
@@ -149,6 +229,54 @@ const listRowHoverSx = {
   transition: 'background-color 0.18s ease',
   '&:hover': { bgcolor: '#F8FAFC' },
 };
+
+/** Glossy teal icon chip for admin header actions */
+const ADMIN_GLOSSY_ICON_SX = {
+  width: 40,
+  height: 40,
+  borderRadius: '12px',
+  color: '#0F766E',
+  border: '1px solid rgba(0, 121, 107, 0.2)',
+  backgroundImage:
+    'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(178,223,219,0.42) 48%, rgba(0,121,107,0.14) 100%)',
+  boxShadow:
+    'inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -1px 0 rgba(0,121,107,0.08), 0 1px 3px rgba(15,23,42,0.08)',
+  transition:
+    'transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, color 160ms ease',
+  '&:hover': {
+    color: '#004D40',
+    borderColor: 'rgba(0, 121, 107, 0.35)',
+    backgroundImage:
+      'linear-gradient(180deg, #fff 0%, rgba(178,223,219,0.55) 45%, rgba(0,121,107,0.2) 100%)',
+    boxShadow:
+      'inset 0 1px 0 rgba(255,255,255,1), 0 4px 14px rgba(0,121,107,0.2)',
+    transform: 'translateY(-1px)',
+  },
+  '&:active': {
+    transform: 'translateY(0) scale(0.95)',
+    boxShadow: 'inset 0 2px 4px rgba(0,121,107,0.18)',
+  },
+  '& .MuiSvgIcon-root': { fontSize: 20 },
+} as const;
+
+const ADMIN_HEADER_SEARCH_SX = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 1,
+  px: 1.5,
+  py: 0.85,
+  borderRadius: '12px',
+  minHeight: 40,
+  bgcolor: 'rgba(255,255,255,0.72)',
+  border: '1px solid rgba(0,121,107,0.16)',
+  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 2px rgba(15,23,42,0.04)',
+  backdropFilter: 'blur(8px)',
+  transition: 'border-color 160ms ease, box-shadow 160ms ease',
+  '&:focus-within': {
+    borderColor: 'rgba(0,121,107,0.4)',
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.95), 0 0 0 3px rgba(0,121,107,0.12)',
+  },
+} as const;
 
 const KpiCard: React.FC<{
   label: string;
@@ -275,6 +403,10 @@ const AdminDashboard: React.FC = () => {
   const [approveProperty, { loading: approvingProperty }] = useMutation(ADMIN_APPROVE_PROPERTY);
   const [rejectProperty, { loading: rejectingProperty }] = useMutation(ADMIN_REJECT_PROPERTY);
   const [updateReportStatus, { loading: updatingReport }] = useMutation(ADMIN_UPDATE_REPORT_STATUS);
+  const [reportConfirm, setReportConfirm] = useState<{
+    report: any;
+    status: 'RESOLVED' | 'REJECTED';
+  } | null>(null);
 
   const users = usersData?.users || [];
   const publicProperties = propsData?.publicProperties?.properties || [];
@@ -298,6 +430,22 @@ const AdminDashboard: React.FC = () => {
     users.forEach((u: any) => map.set(String(u.id), u));
     return map;
   }, [users]);
+
+  const postById = useMemo(() => {
+    const map = new Map<string, any>();
+    posts.forEach((p: any) => {
+      if (p?.id) map.set(String(p.id), p);
+    });
+    return map;
+  }, [posts]);
+
+  const propertyById = useMemo(() => {
+    const map = new Map<string, any>();
+    properties.forEach((p: any) => {
+      if (p?.id) map.set(String(p.id), p);
+    });
+    return map;
+  }, [properties]);
 
   const pendingProperties = useMemo(() => {
     if (queueProperties.length) return queueProperties;
@@ -388,19 +536,6 @@ const AdminDashboard: React.FC = () => {
     setHeaderSearch('');
   };
 
-  const refreshAll = async () => {
-    setActionMsg(null);
-    await Promise.all([
-      refetchUsers(),
-      refetchProps(),
-      refetchPendingProps(),
-      refetchPosts(),
-      refetchReports().catch(() => undefined),
-      refetchReportStats().catch(() => undefined),
-    ]);
-    setActionMsg({ type: 'success', text: 'Dashboard data refreshed.' });
-  };
-
   const onDeletePost = async (postId: number | string) => {
     if (!window.confirm(`Delete post #${postId}? This cannot be undone.`)) return;
     try {
@@ -462,21 +597,32 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  const onUpdateReport = async (reportId: string, status: 'RESOLVED' | 'REJECTED') => {
-    const label = status === 'RESOLVED' ? 'resolve' : 'dismiss';
-    if (!window.confirm(`${label.charAt(0).toUpperCase() + label.slice(1)} report ${reportId}?`)) return;
+  const requestReportUpdate = (report: any, status: 'RESOLVED' | 'REJECTED') => {
+    setReportConfirm({ report, status });
+  };
+
+  const confirmReportUpdate = async () => {
+    if (!reportConfirm) return;
+    const { report, status } = reportConfirm;
+    const reportId = String(report.id);
+    const code = report.reportCode || reportId.slice(0, 8);
+    const entity = reportEntitySummary(report, postById, propertyById, userById);
     try {
       const { data } = await updateReportStatus({
         variables: {
-          reportId: String(reportId),
+          reportId,
           status,
-          reviewedBy: user?.email || String(user?.id || 'admin'),
-          actionTaken: status === 'RESOLVED' ? 'RESOLVED' : 'DISMISSED',
+          reviewedBy: user?.id ? String(user.id) : undefined,
+          actionTaken: status === 'RESOLVED' ? 'NONE' : 'NO_ACTION',
           actionNote: status === 'RESOLVED' ? 'Resolved by admin' : 'Dismissed by admin',
         },
       });
       if (data?.updateReportStatus?.success) {
-        setActionMsg({ type: 'success', text: `Report ${reportId} ${status === 'RESOLVED' ? 'resolved' : 'dismissed'}.` });
+        setActionMsg({
+          type: 'success',
+          text: `${status === 'RESOLVED' ? 'Resolved' : 'Dismissed'} ${code} — ${entity.title}`,
+        });
+        setReportConfirm(null);
         refetchReports().catch(() => undefined);
         refetchReportStats().catch(() => undefined);
       } else {
@@ -597,7 +743,7 @@ const AdminDashboard: React.FC = () => {
     >
       <Box sx={{ px: 2.5, pt: 2.5, pb: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
-          <ZpcLogoMark size={40} showTagline={false} animateStroke={false} ink="light" />
+          <ZpcNavLogo size={40} ink="light" />
           <Typography sx={{ fontWeight: 700, fontSize: '1.1rem', color: '#FFFBF0', fontFamily: FONT }}>
             ZPC stats
           </Typography>
@@ -605,6 +751,37 @@ const AdminDashboard: React.FC = () => {
       </Box>
 
       <Box sx={{ flex: 1, overflowY: 'auto', px: 1.5 }}>
+        <Box
+          component="button"
+          onClick={() => {
+            setSidebarOpen(false);
+            navigate('/home');
+          }}
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.25,
+            width: '100%',
+            border: 'none',
+            cursor: 'pointer',
+            textAlign: 'left',
+            px: 1.5,
+            py: 1,
+            mb: 1.5,
+            borderRadius: '8px',
+            bgcolor: 'transparent',
+            color: 'rgba(255, 252, 240, 0.92)',
+            fontFamily: FONT,
+            fontWeight: 600,
+            fontSize: 14,
+            '&:hover': { bgcolor: 'rgba(255,255,255,0.08)' },
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <HomeIcon sx={{ fontSize: 20 }} />
+          </Box>
+          <Box component="span">App home</Box>
+        </Box>
         <Typography
           sx={{
             px: 1.5,
@@ -971,17 +1148,10 @@ const AdminDashboard: React.FC = () => {
   );
 
   const searchFieldSx = {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 1,
+    ...ADMIN_HEADER_SEARCH_SX,
     flex: 1,
     minWidth: 180,
     maxWidth: 360,
-    px: 1.5,
-    py: 0.75,
-    borderRadius: '10px',
-    bgcolor: '#fff',
-    border: '1px solid #E2E8F0',
   };
 
   const renderUsers = () => (
@@ -1277,79 +1447,214 @@ const AdminDashboard: React.FC = () => {
       </Box>
       <Divider />
       {layoutMode === 'list' ? (
-        <Box sx={{ overflowX: 'auto' }}>
-          <Box
-            component="table"
-            sx={{
-              width: '100%',
-              borderCollapse: 'collapse',
-              fontFamily: FONT,
-              '& th, & td': {
-                textAlign: 'left',
-                px: 2,
-                py: 1.25,
-                fontSize: 13,
-                borderBottom: '1px solid #F1F5F9',
-              },
-              '& th': { fontWeight: 700, color: '#64748B', bgcolor: '#F8FAFC', fontSize: 11 },
-              '& tbody tr': listRowHoverSx,
-            }}
-          >
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Listing</th>
-                <th>Type</th>
-                <th>Price</th>
-                <th>Status</th>
-                <th>Views</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {filteredProperties.map((p: any) => (
-                <tr key={propId(p)}>
-                  <td>{propId(p)}</td>
-                  <td>
-                    <Typography sx={{ fontWeight: 600, fontSize: 13 }}>{p.title}</Typography>
-                    <Typography sx={{ fontSize: 12, color: '#64748B' }}>
-                      {p.city || p.location || '—'} · owner #{propOwnerId(p)}
-                    </Typography>
-                  </td>
-                  <td>{p.propertyType}</td>
-                  <td>{fmtMoney(p.price)}</td>
-                  <td>
-                    <Chip size="small" label={p.status || (p.isActive ? 'ACTIVE' : 'INACTIVE')} sx={{ fontWeight: 600 }} />
-                  </td>
-                  <td>{p.viewCount ?? 0}</td>
-                  <td>
-                    <Box sx={{ display: 'flex', gap: 0.5 }}>
-                      <Button
-                        size="small"
-                        sx={{ textTransform: 'none', fontWeight: 600, color: '#00796B' }}
-                        onClick={() => navigate(`/property/${propId(p)}`)}
+        isMobile ? (
+          <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+            {filteredProperties.map((p: any) => {
+              const id = propId(p);
+              const ownerId = propOwnerId(p);
+              const statusLabel = p.status || (p.isActive ? 'ACTIVE' : 'INACTIVE');
+              return (
+                <Box
+                  key={id}
+                  sx={{
+                    px: 2,
+                    py: 1.75,
+                    borderBottom: '1px solid #F1F5F9',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 0.85,
+                    minWidth: 0,
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
+                    <Box sx={{ minWidth: 0, flex: 1 }}>
+                      <Typography
+                        sx={{
+                          fontWeight: 700,
+                          fontSize: 14.5,
+                          color: '#0F172A',
+                          lineHeight: 1.3,
+                          wordBreak: 'break-word',
+                        }}
                       >
-                        Open
-                      </Button>
-                      <IconButton
-                        size="small"
-                        color="error"
-                        disabled={deletingProperty}
-                        onClick={() => onDeleteProperty(String(propId(p)))}
-                        title="Delete property"
-                      >
-                        <DeleteOutlineIcon fontSize="small" />
-                      </IconButton>
+                        {p.title || 'Untitled'}
+                      </Typography>
+                      <Typography sx={{ fontSize: 12, color: '#64748B', mt: 0.25 }}>
+                        {p.city || p.location || '—'}
+                      </Typography>
                     </Box>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
+                    <Chip size="small" label={statusLabel} sx={{ fontWeight: 600, flexShrink: 0 }} />
+                  </Box>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, alignItems: 'center' }}>
+                    <Chip size="small" label={p.propertyType || '—'} sx={{ fontWeight: 600 }} />
+                    <Typography sx={{ fontWeight: 700, fontSize: 15, color: '#00796B' }}>
+                      {fmtMoney(p.price)}
+                    </Typography>
+                    <Typography sx={{ fontSize: 12, color: '#94A3B8' }}>
+                      {p.viewCount ?? 0} views
+                    </Typography>
+                  </Box>
+                  <Typography
+                    sx={{
+                      fontSize: 11,
+                      color: '#94A3B8',
+                      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                    }}
+                    title={id}
+                  >
+                    #{shortId(id, 10)}
+                    {ownerId ? ` · owner ${shortId(ownerId, 8)}` : ''}
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 0.75, pt: 0.25 }}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      fullWidth
+                      sx={{ textTransform: 'none', fontWeight: 600, borderColor: '#E2E8F0', color: '#00796B' }}
+                      onClick={() => navigate(`/property/${id}`)}
+                    >
+                      Open
+                    </Button>
+                    <IconButton
+                      size="small"
+                      color="error"
+                      disabled={deletingProperty}
+                      onClick={() => onDeleteProperty(String(id))}
+                      title="Delete property"
+                      sx={{ flexShrink: 0 }}
+                    >
+                      <DeleteOutlineIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                </Box>
+              );
+            })}
+            {filteredProperties.length === 0 && (
+              <Typography sx={{ p: 3, textAlign: 'center', color: '#64748B' }}>No properties match.</Typography>
+            )}
           </Box>
-          {filteredProperties.length === 0 && (
-            <Typography sx={{ p: 3, textAlign: 'center', color: '#64748B' }}>No properties match.</Typography>
-          )}
-        </Box>
+        ) : (
+          <Box sx={{ overflowX: 'auto' }}>
+            <Box
+              component="table"
+              sx={{
+                width: '100%',
+                tableLayout: 'fixed',
+                borderCollapse: 'collapse',
+                fontFamily: FONT,
+                '& th, & td': {
+                  textAlign: 'left',
+                  px: 1.5,
+                  py: 1.25,
+                  fontSize: 13,
+                  borderBottom: '1px solid #F1F5F9',
+                  verticalAlign: 'top',
+                },
+                '& th': { fontWeight: 700, color: '#64748B', bgcolor: '#F8FAFC', fontSize: 11 },
+                '& tbody tr': listRowHoverSx,
+              }}
+            >
+              <thead>
+                <tr>
+                  <th style={{ width: '12%' }}>ID</th>
+                  <th style={{ width: '32%' }}>Listing</th>
+                  <th style={{ width: '12%' }}>Type</th>
+                  <th style={{ width: '14%' }}>Price</th>
+                  <th style={{ width: '12%' }}>Status</th>
+                  <th style={{ width: '8%' }}>Views</th>
+                  <th style={{ width: '10%' }} />
+                </tr>
+              </thead>
+              <tbody>
+                {filteredProperties.map((p: any) => {
+                  const id = propId(p);
+                  const ownerId = propOwnerId(p);
+                  return (
+                    <tr key={id}>
+                      <td>
+                        <Tooltip title={id} arrow>
+                          <Typography
+                            component="span"
+                            sx={{
+                              fontSize: 12,
+                              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                              color: '#64748B',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {shortId(id, 8)}
+                          </Typography>
+                        </Tooltip>
+                      </td>
+                      <td>
+                        <Typography
+                          sx={{
+                            fontWeight: 600,
+                            fontSize: 13,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                          title={p.title}
+                        >
+                          {p.title}
+                        </Typography>
+                        <Typography
+                          sx={{
+                            fontSize: 12,
+                            color: '#64748B',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                          title={`${p.city || p.location || '—'} · owner #${ownerId}`}
+                        >
+                          {p.city || p.location || '—'}
+                          {ownerId ? ` · owner ${shortId(ownerId, 6)}` : ''}
+                        </Typography>
+                      </td>
+                      <td>
+                        <Typography sx={{ fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {p.propertyType || '—'}
+                        </Typography>
+                      </td>
+                      <td>
+                        <Typography sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{fmtMoney(p.price)}</Typography>
+                      </td>
+                      <td>
+                        <Chip size="small" label={p.status || (p.isActive ? 'ACTIVE' : 'INACTIVE')} sx={{ fontWeight: 600 }} />
+                      </td>
+                      <td>{p.viewCount ?? 0}</td>
+                      <td>
+                        <Box sx={{ display: 'flex', gap: 0.25, justifyContent: 'flex-end' }}>
+                          <Button
+                            size="small"
+                            sx={{ textTransform: 'none', fontWeight: 600, color: '#00796B', minWidth: 0, px: 1 }}
+                            onClick={() => navigate(`/property/${id}`)}
+                          >
+                            Open
+                          </Button>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            disabled={deletingProperty}
+                            onClick={() => onDeleteProperty(String(id))}
+                            title="Delete property"
+                          >
+                            <DeleteOutlineIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </Box>
+            {filteredProperties.length === 0 && (
+              <Typography sx={{ p: 3, textAlign: 'center', color: '#64748B' }}>No properties match.</Typography>
+            )}
+          </Box>
+        )
       ) : (
         <Box
           sx={{
@@ -1363,14 +1668,16 @@ const AdminDashboard: React.FC = () => {
             <Box key={propId(p)} sx={{ ...whiteCardSx, p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
               <Typography sx={{ fontWeight: 700, fontSize: 15, lineHeight: 1.3 }}>{p.title}</Typography>
               <Typography sx={{ fontSize: 12, color: '#64748B', fontWeight: 500 }}>
-                {p.city || p.location || '—'} · #{propId(p)}
+                {p.city || p.location || '—'} · #{shortId(propId(p), 8)}
               </Typography>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, alignItems: 'center' }}>
                 <Chip size="small" label={p.propertyType || '—'} sx={{ fontWeight: 600 }} />
                 <Chip size="small" label={p.status || (p.isActive ? 'ACTIVE' : 'INACTIVE')} sx={{ fontWeight: 600 }} />
               </Box>
               <Typography sx={{ fontWeight: 700, fontSize: 18, color: '#00796B' }}>{fmtMoney(p.price)}</Typography>
-              <Typography sx={{ fontSize: 12, color: '#64748B' }}>{p.viewCount ?? 0} views · owner #{propOwnerId(p)}</Typography>
+              <Typography sx={{ fontSize: 12, color: '#64748B' }}>
+                {p.viewCount ?? 0} views · owner {shortId(propOwnerId(p), 8)}
+              </Typography>
               <Box sx={{ display: 'flex', gap: 0.75, mt: 'auto', pt: 0.5 }}>
                 <Button
                   size="small"
@@ -1471,7 +1778,7 @@ const AdminDashboard: React.FC = () => {
                         overflow: 'hidden',
                       }}
                     >
-                      {p.content}
+                      {truncateText(p.content, 160)}
                     </Typography>
                   </td>
                   <td>
@@ -1532,7 +1839,7 @@ const AdminDashboard: React.FC = () => {
                   minHeight: 48,
                 }}
               >
-                {p.content}
+                {truncateText(p.content, 180)}
               </Typography>
               <Typography sx={{ fontSize: 12, fontWeight: 600 }}>
                 {p.userFirstName} {p.userLastName}{' '}
@@ -1563,7 +1870,58 @@ const AdminDashboard: React.FC = () => {
     </Box>
   );
 
-  const renderReports = () => (
+  const renderReports = () => {
+    const reportRows: Array<{
+      r: any;
+      entity: { kind: string; title: string; subtitle?: string };
+      reporterName: string;
+      reporterEmail: string;
+      reportedUser: any;
+    }> = reports.map((r: any) => {
+      const entity = reportEntitySummary(r, postById, propertyById, userById);
+      const reporter = userById.get(String(r.reportedBy || ''));
+      const reporterName =
+        (r.reporterName && String(r.reporterName).trim()) || userDisplayName(reporter);
+      const reporterEmail =
+        (r.reporterEmail && String(r.reporterEmail).trim()) || reporter?.email || '';
+      const reportedUser =
+        String(r.entityType || '').toUpperCase() === 'USER'
+          ? userById.get(String(r.reportedUserId || r.entityId || ''))
+          : null;
+      return { r, entity, reporterName, reporterEmail, reportedUser };
+    });
+
+    const reportActions = (r: any) => (
+      <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+        <Button
+          size="small"
+          variant="contained"
+          disabled={updatingReport}
+          onClick={() => requestReportUpdate(r, 'RESOLVED')}
+          sx={{
+            textTransform: 'none',
+            fontWeight: 600,
+            fontSize: 12,
+            bgcolor: '#00796B',
+            '&:hover': { bgcolor: '#00695C' },
+          }}
+        >
+          Resolve
+        </Button>
+        <Button
+          size="small"
+          variant="outlined"
+          color="inherit"
+          disabled={updatingReport}
+          onClick={() => requestReportUpdate(r, 'REJECTED')}
+          sx={{ textTransform: 'none', fontWeight: 600, fontSize: 12 }}
+        >
+          Dismiss
+        </Button>
+      </Box>
+    );
+
+    return (
     <Box sx={{ ...whiteCardSx, overflow: 'hidden' }}>
       {reportsError && (
         <Alert severity="info" sx={{ m: 2, borderRadius: 2 }}>
@@ -1573,6 +1931,76 @@ const AdminDashboard: React.FC = () => {
       {reportsLoading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
           <CircularProgress sx={{ color: '#00796B' }} />
+        </Box>
+      ) : isMobile ? (
+        <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+          {reportRows.map(({ r, entity, reporterName, reporterEmail, reportedUser }) => (
+            <Box
+              key={r.id}
+              sx={{
+                px: 2,
+                py: 1.75,
+                borderBottom: '1px solid #F1F5F9',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 0.85,
+                minWidth: 0,
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
+                <Typography sx={{ fontWeight: 700, fontSize: 13.5, color: '#0F172A', minWidth: 0 }}>
+                  {r.reportCode || r.id}
+                </Typography>
+                <Chip size="small" label={r.status} sx={{ fontWeight: 600, flexShrink: 0 }} />
+              </Box>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography sx={{ fontSize: 11, color: '#00796B', fontWeight: 700, letterSpacing: 0.4 }}>
+                  {entity.kind}
+                </Typography>
+                <Typography
+                  sx={{
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: '#0F172A',
+                    wordBreak: 'break-word',
+                    overflowWrap: 'anywhere',
+                  }}
+                >
+                  {entity.title}
+                </Typography>
+                {entity.subtitle && (
+                  <Typography
+                    sx={{
+                      fontSize: 12.5,
+                      color: '#64748B',
+                      wordBreak: 'break-word',
+                      overflowWrap: 'anywhere',
+                    }}
+                  >
+                    {entity.subtitle}
+                  </Typography>
+                )}
+                {reportedUser && (
+                  <Typography sx={{ fontSize: 11, color: '#94A3B8', mt: 0.25 }}>
+                    Account: {userDisplayName(reportedUser)}
+                  </Typography>
+                )}
+              </Box>
+              <Typography sx={{ fontSize: 12.5, color: '#334155' }}>
+                <Box component="span" sx={{ fontWeight: 700 }}>{r.reasonCode || '—'}</Box>
+                {r.description ? ` · ${truncateText(r.description, 80)}` : ''}
+              </Typography>
+              <Typography sx={{ fontSize: 12, color: '#64748B' }}>
+                {reporterName}
+                {reporterEmail ? ` · ${reporterEmail}` : ''}
+                {r.createdAt ? ` · ${fmtDate(r.createdAt)}` : ''}
+              </Typography>
+              {reportActions(r)}
+            </Box>
+          ))}
+          {reports.length === 0 && !reportsError && (
+            <Typography sx={{ p: 3, textAlign: 'center', color: '#64748B' }}>No pending reports.</Typography>
+          )}
         </Box>
       ) : (
         <Box sx={{ overflowX: 'auto' }}>
@@ -1605,56 +2033,46 @@ const AdminDashboard: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {reports.map((r: any) => (
+              {reportRows.map(({ r, entity, reporterName, reporterEmail, reportedUser }) => (
                 <tr key={r.id}>
                   <td>
                     <Typography sx={{ fontWeight: 600, fontSize: 13 }}>{r.reportCode || r.id}</Typography>
                     <Chip size="small" label={r.status} sx={{ fontWeight: 600, mt: 0.5 }} />
                   </td>
                   <td>
-                    <Typography sx={{ fontSize: 13, fontWeight: 600 }}>{r.entityType}</Typography>
-                    <Typography sx={{ fontSize: 11, color: '#94A3B8' }}>ID: {r.entityId}</Typography>
+                    <Typography sx={{ fontSize: 11, color: '#64748B', fontWeight: 700, letterSpacing: 0.4 }}>
+                      {entity.kind}
+                    </Typography>
+                    <Typography sx={{ fontSize: 13, fontWeight: 600, color: '#0F172A', maxWidth: 280 }}>
+                      {entity.title}
+                    </Typography>
+                    {entity.subtitle && (
+                      <Typography sx={{ fontSize: 12, color: '#64748B', maxWidth: 280, wordBreak: 'break-word' }}>
+                        {entity.subtitle}
+                      </Typography>
+                    )}
+                    {reportedUser && (
+                      <Typography sx={{ fontSize: 11, color: '#94A3B8', mt: 0.25 }}>
+                        Account: {userDisplayName(reportedUser)}
+                      </Typography>
+                    )}
                   </td>
                   <td>
                     <Typography sx={{ fontSize: 13, fontWeight: 600 }}>{r.reasonCode || '—'}</Typography>
                     {r.description && (
-                      <Typography sx={{ fontSize: 12, color: '#64748B', maxWidth: 240 }}>{r.description}</Typography>
+                      <Typography sx={{ fontSize: 12, color: '#64748B', maxWidth: 240 }}>
+                        {truncateText(r.description, 120)}
+                      </Typography>
                     )}
                   </td>
                   <td>
-                    {userDisplayName(userById.get(String(r.reportedUserId || r.reportedBy)))}
-                    <Typography sx={{ fontSize: 11, color: '#94A3B8' }}>{r.reportedBy}</Typography>
+                    <Typography sx={{ fontSize: 13, fontWeight: 600 }}>{reporterName}</Typography>
+                    {reporterEmail && (
+                      <Typography sx={{ fontSize: 12, color: '#64748B' }}>{reporterEmail}</Typography>
+                    )}
                   </td>
                   <td>{fmtDate(r.createdAt)}</td>
-                  <td>
-                    <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
-                      <Button
-                        size="small"
-                        variant="contained"
-                        disabled={updatingReport}
-                        onClick={() => onUpdateReport(r.id, 'RESOLVED')}
-                        sx={{
-                          textTransform: 'none',
-                          fontWeight: 600,
-                          fontSize: 12,
-                          bgcolor: '#00796B',
-                          '&:hover': { bgcolor: '#00695C' },
-                        }}
-                      >
-                        Resolve
-                      </Button>
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        color="inherit"
-                        disabled={updatingReport}
-                        onClick={() => onUpdateReport(r.id, 'REJECTED')}
-                        sx={{ textTransform: 'none', fontWeight: 600, fontSize: 12 }}
-                      >
-                        Dismiss
-                      </Button>
-                    </Box>
-                  </td>
+                  <td>{reportActions(r)}</td>
                 </tr>
               ))}
             </tbody>
@@ -1665,7 +2083,8 @@ const AdminDashboard: React.FC = () => {
         </Box>
       )}
     </Box>
-  );
+    );
+  };
 
   const renderApprovals = () => (
     <Box sx={{ ...whiteCardSx, overflow: 'hidden' }}>
@@ -1830,80 +2249,219 @@ const AdminDashboard: React.FC = () => {
             position: 'sticky',
             top: 0,
             zIndex: 20,
-            bgcolor: MAIN_BG,
-            borderBottom: '1px solid #E2E8F0',
-            px: { xs: 2, sm: 3 },
-            py: 1.5,
+            px: { xs: 1.5, sm: 2.5 },
+            pt: 1.25,
+            pb: 1.25,
+            borderBottom: '1px solid rgba(0,121,107,0.12)',
+            backgroundImage:
+              'linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(248,250,252,0.88) 100%)',
+            backdropFilter: 'blur(12px)',
+            boxShadow: '0 1px 0 rgba(255,255,255,0.8), 0 8px 24px rgba(15,23,42,0.04)',
           }}
         >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: { xs: 0.75, sm: 1.25 },
+              minHeight: 48,
+            }}
+          >
             {isMobile && (
-              <IconButton onClick={() => setSidebarOpen(true)} sx={{ color: '#334155' }}>
+              <IconButton
+                onClick={() => setSidebarOpen(true)}
+                aria-label="Open menu"
+                sx={{
+                  ...ADMIN_GLOSSY_ICON_SX,
+                  width: 38,
+                  height: 38,
+                  flexShrink: 0,
+                }}
+              >
                 <MenuIcon />
               </IconButton>
             )}
+
             <Typography
               sx={{
-                fontWeight: 700,
-                fontSize: { xs: '1.15rem', sm: '1.35rem' },
+                fontWeight: 750,
+                fontSize: { xs: '1.1rem', sm: '1.3rem' },
                 color: '#0F172A',
                 fontFamily: FONT,
-                mr: 'auto',
+                letterSpacing: '-0.02em',
+                minWidth: 0,
+                flex: 1,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
               }}
             >
               {PAGE_TITLES[tab]}
             </Typography>
 
-            <Box sx={searchFieldSx}>
-              <SearchIcon sx={{ color: '#94A3B8', fontSize: 20 }} />
+            <Box
+              sx={{
+                display: { xs: 'none', md: 'flex' },
+                alignItems: 'center',
+                flex: '1 1 220px',
+                maxWidth: 340,
+                mx: 1,
+              }}
+            >
+              <Box sx={{ ...ADMIN_HEADER_SEARCH_SX, width: '100%' }}>
+                <SearchIcon sx={{ color: '#0F766E', fontSize: 18, opacity: 0.75 }} />
+                <InputBase
+                  fullWidth
+                  placeholder="Search…"
+                  value={headerSearch}
+                  onChange={(e) => setHeaderSearch(e.target.value)}
+                  sx={{
+                    fontSize: 14,
+                    fontFamily: FONT,
+                    color: '#0F172A',
+                    '& input::placeholder': { color: '#94A3B8', opacity: 1 },
+                  }}
+                />
+              </Box>
+            </Box>
+
+            {/* Mobile: Home + Logout (rest live in sidebar) */}
+            <Box
+              sx={{
+                display: { xs: 'flex', md: 'none' },
+                alignItems: 'center',
+                gap: 0.5,
+                flexShrink: 0,
+              }}
+            >
+              <Tooltip title="App home">
+                <IconButton
+                  onClick={() => navigate('/home')}
+                  aria-label="App home"
+                  sx={{ ...ADMIN_GLOSSY_ICON_SX, width: 38, height: 38 }}
+                >
+                  <HomeIcon />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Logout">
+                <IconButton
+                  onClick={handleLogout}
+                  aria-label="Logout"
+                  sx={{
+                    ...ADMIN_GLOSSY_ICON_SX,
+                    width: 38,
+                    height: 38,
+                    color: '#B45309',
+                    borderColor: 'rgba(180,83,9,0.22)',
+                    backgroundImage:
+                      'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(254,243,199,0.55) 50%, rgba(245,158,11,0.18) 100%)',
+                    '&:hover': {
+                      ...ADMIN_GLOSSY_ICON_SX['&:hover'],
+                      color: '#92400E',
+                      borderColor: 'rgba(180,83,9,0.4)',
+                    },
+                  }}
+                >
+                  <LogoutIcon />
+                </IconButton>
+              </Tooltip>
+            </Box>
+
+            {/* Desktop: full action cluster (logo stays in sidebar only) */}
+            <Box
+              sx={{
+                display: { xs: 'none', md: 'flex' },
+                alignItems: 'center',
+                gap: 0.75,
+                flexShrink: 0,
+                p: 0.4,
+                borderRadius: '14px',
+                border: '1px solid rgba(0,121,107,0.14)',
+                backgroundImage:
+                  'linear-gradient(180deg, rgba(255,255,255,0.75) 0%, rgba(178,223,219,0.22) 100%)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.85)',
+              }}
+            >
+              <Tooltip title="App home">
+                <IconButton
+                  onClick={() => navigate('/home')}
+                  aria-label="App home"
+                  sx={ADMIN_GLOSSY_ICON_SX}
+                >
+                  <HomeIcon />
+                </IconButton>
+              </Tooltip>
+
+              <Tooltip title="Notifications (coming soon)">
+                <IconButton aria-label="Notifications" sx={ADMIN_GLOSSY_ICON_SX}>
+                  <Badge
+                    variant="dot"
+                    color="error"
+                    overlap="circular"
+                    sx={{
+                      '& .MuiBadge-badge': {
+                        boxShadow: '0 0 0 2px rgba(255,255,255,0.9)',
+                      },
+                    }}
+                  >
+                    <NotificationsNoneIcon />
+                  </Badge>
+                </IconButton>
+              </Tooltip>
+
+              <Tooltip title="Settings">
+                <IconButton aria-label="Settings" sx={ADMIN_GLOSSY_ICON_SX}>
+                  <SettingsOutlinedIcon />
+                </IconButton>
+              </Tooltip>
+
+              <Tooltip title="Logout">
+                <IconButton
+                  onClick={handleLogout}
+                  aria-label="Logout"
+                  sx={{
+                    ...ADMIN_GLOSSY_ICON_SX,
+                    color: '#B45309',
+                    borderColor: 'rgba(180,83,9,0.22)',
+                    backgroundImage:
+                      'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(254,243,199,0.55) 50%, rgba(245,158,11,0.18) 100%)',
+                    '&:hover': {
+                      ...ADMIN_GLOSSY_ICON_SX['&:hover'],
+                      color: '#92400E',
+                      borderColor: 'rgba(180,83,9,0.4)',
+                      backgroundImage:
+                        'linear-gradient(180deg, #fff 0%, rgba(254,243,199,0.7) 45%, rgba(245,158,11,0.28) 100%)',
+                    },
+                  }}
+                >
+                  <LogoutIcon />
+                </IconButton>
+              </Tooltip>
+            </Box>
+          </Box>
+
+          <Box
+            sx={{
+              display: { xs: 'flex', md: 'none' },
+              mt: 1.1,
+              width: '100%',
+            }}
+          >
+            <Box sx={{ ...ADMIN_HEADER_SEARCH_SX, width: '100%' }}>
+              <SearchIcon sx={{ color: '#0F766E', fontSize: 18, opacity: 0.75 }} />
               <InputBase
                 fullWidth
                 placeholder="Search…"
                 value={headerSearch}
                 onChange={(e) => setHeaderSearch(e.target.value)}
-                sx={{ fontSize: 14, fontFamily: FONT }}
+                sx={{
+                  fontSize: 14,
+                  fontFamily: FONT,
+                  color: '#0F172A',
+                  '& input::placeholder': { color: '#94A3B8', opacity: 1 },
+                }}
               />
             </Box>
-
-            <Tooltip title="Refresh data">
-              <IconButton onClick={refreshAll} sx={{ color: '#64748B' }}>
-                <RefreshIcon />
-              </IconButton>
-            </Tooltip>
-
-            <Tooltip title="Notifications (coming soon)">
-              <IconButton sx={{ color: '#64748B' }}>
-                <Badge variant="dot" color="error" overlap="circular">
-                  <NotificationsNoneIcon />
-                </Badge>
-              </IconButton>
-            </Tooltip>
-
-            <Tooltip title="Settings">
-              <IconButton sx={{ color: '#64748B' }}>
-                <SettingsOutlinedIcon />
-              </IconButton>
-            </Tooltip>
-
-            <Tooltip title="Logout">
-              <IconButton onClick={handleLogout} sx={{ color: '#64748B' }}>
-                <LogoutIcon />
-              </IconButton>
-            </Tooltip>
-
-            <Button
-              startIcon={<HomeIcon />}
-              onClick={() => navigate('/home')}
-              sx={{
-                textTransform: 'none',
-                fontWeight: 600,
-                color: '#00796B',
-                fontFamily: FONT,
-                display: { xs: 'none', sm: 'inline-flex' },
-              }}
-            >
-              App home
-            </Button>
           </Box>
         </Box>
 
@@ -1921,6 +2479,127 @@ const AdminDashboard: React.FC = () => {
           <TabEnter tabKey={tab}>{renderContent()}</TabEnter>
         </Box>
       </Box>
+
+      <Dialog
+        open={!!reportConfirm}
+        onClose={() => !updatingReport && setReportConfirm(null)}
+        TransitionComponent={Fade}
+        transitionDuration={{ enter: 280, exit: 180 }}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            overflow: 'hidden',
+            boxShadow: '0 24px 64px rgba(15, 23, 42, 0.28)',
+            animation: reportConfirm ? 'zpcPopupIn 320ms cubic-bezier(0.22, 1, 0.36, 1)' : undefined,
+          },
+        }}
+        BackdropProps={{
+          sx: {
+            bgcolor: 'rgba(15, 23, 42, 0.45)',
+            backdropFilter: 'blur(6px)',
+          },
+        }}
+      >
+        {reportConfirm && (() => {
+          const { report, status } = reportConfirm;
+          const entity = reportEntitySummary(report, postById, propertyById, userById);
+          const reporter =
+            (report.reporterName && String(report.reporterName).trim()) ||
+            userDisplayName(userById.get(String(report.reportedBy || '')));
+          const isResolve = status === 'RESOLVED';
+          return (
+            <>
+              <DialogTitle sx={{ fontFamily: FONT, fontWeight: 700, fontSize: 18, pb: 1 }}>
+                {isResolve ? 'Resolve this report?' : 'Dismiss this report?'}
+              </DialogTitle>
+              <DialogContent sx={{ pt: '4px !important' }}>
+                <Typography sx={{ fontSize: 13, color: '#64748B', mb: 1.5, fontFamily: FONT }}>
+                  {isResolve
+                    ? 'Mark this report as reviewed and resolved.'
+                    : 'Dismiss this report without further action.'}
+                </Typography>
+                <Box
+                  sx={{
+                    bgcolor: '#F8FAFC',
+                    border: '1px solid #E2E8F0',
+                    borderRadius: 2,
+                    p: 1.75,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 1,
+                  }}
+                >
+                  <Box>
+                    <Typography sx={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: 0.4 }}>
+                      REPORT
+                    </Typography>
+                    <Typography sx={{ fontSize: 14, fontWeight: 700, color: '#0F172A', fontFamily: FONT }}>
+                      {report.reportCode || 'Report'}
+                    </Typography>
+                  </Box>
+                  <Box>
+                    <Typography sx={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: 0.4 }}>
+                      {entity.kind.toUpperCase()}
+                    </Typography>
+                    <Typography sx={{ fontSize: 14, fontWeight: 600, color: '#0F172A' }}>{entity.title}</Typography>
+                    {entity.subtitle && (
+                      <Typography sx={{ fontSize: 12.5, color: '#64748B' }}>{entity.subtitle}</Typography>
+                    )}
+                  </Box>
+                  <Box>
+                    <Typography sx={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: 0.4 }}>
+                      REASON
+                    </Typography>
+                    <Typography sx={{ fontSize: 13.5, fontWeight: 600 }}>{report.reasonCode || '—'}</Typography>
+                    {report.description && (
+                      <Typography sx={{ fontSize: 12.5, color: '#64748B' }}>
+                        {truncateText(report.description, 160)}
+                      </Typography>
+                    )}
+                  </Box>
+                  <Box>
+                    <Typography sx={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: 0.4 }}>
+                      REPORTED BY
+                    </Typography>
+                    <Typography sx={{ fontSize: 13.5, fontWeight: 600 }}>{reporter}</Typography>
+                  </Box>
+                </Box>
+              </DialogContent>
+              <DialogActions sx={{ px: 2.5, pb: 2.25, gap: 1 }}>
+                <Button
+                  onClick={() => setReportConfirm(null)}
+                  disabled={updatingReport}
+                  sx={{ textTransform: 'none', fontWeight: 600, color: '#64748B' }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="contained"
+                  disabled={updatingReport}
+                  onClick={confirmReportUpdate}
+                  sx={{
+                    textTransform: 'none',
+                    fontWeight: 700,
+                    px: 2.25,
+                    bgcolor: isResolve ? '#00796B' : '#64748B',
+                    '&:hover': { bgcolor: isResolve ? '#00695C' : '#475569' },
+                  }}
+                >
+                  {updatingReport ? (
+                    <CircularProgress size={18} color="inherit" />
+                  ) : isResolve ? (
+                    'Resolve'
+                  ) : (
+                    'Dismiss'
+                  )}
+                </Button>
+              </DialogActions>
+            </>
+          );
+        })()}
+      </Dialog>
     </Box>
   );
 };

@@ -25,7 +25,6 @@ import Rating from '@mui/material/Rating';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import CameraAltIcon from '@mui/icons-material/CameraAlt';
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
-import FavoriteIcon from '@mui/icons-material/Favorite';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import ShareSymbol from './icons/ShareSymbol';
 import SharePostSheet from './SharePostSheet';
@@ -35,19 +34,24 @@ import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import MessageIcon from '@mui/icons-material/Message';
 import CloseIcon from '@mui/icons-material/Close';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
+import PushPinOutlinedIcon from '@mui/icons-material/PushPinOutlined';
 import { useApolloClient, useMutation } from '@apollo/client';
 import { useNavigate } from 'react-router-dom';
-import { GET_POSTS_BY_USER, DELETE_POST, UPDATE_POST } from '../graphql/posts';
+import { GET_POSTS_BY_USER, DELETE_POST, UPDATE_POST, PIN_POST, UNPIN_POST } from '../graphql/posts';
 import { CREATE_DM_ROOM_MUTATION } from '../graphql/chat';
 import { useAuth } from '../contexts/AuthContext';
-import { renderMentionContent, nameInitials, stringToColor, avatarPlaceholderIndex } from '../utils/mentions';
+import { renderMentionContent, nameInitials, stringToColor, avatarPlaceholderIndex, collapseMentionTokens, expandPrettyMentions, mentionMapsFromTokens } from '../utils/mentions';
+import { formatDateTime, formatRelativeTime } from '../utils/datetime';
 import CommentListItem from './comments/CommentListItem';
 import CommentComposer from './comments/CommentComposer';
 import { nestComments } from '../utils/nestComments';
 import { normalizeReactionEmoji } from './comments/commentReactions';
 import { MATTE_SURFACE, MATTE_HEADER, PAGE_ATMOSPHERE, MATTE_INSET } from '../theme/surfaces';
 import AdminBackground from './admin/AdminBackground';
-import { ZpcLogoMark } from './brand/ZpcLogo';
+import { ZpcNavLogo } from './brand/ZpcNavLogo';
+import HeaderLogoutButton from './HeaderLogoutButton';
+import PostMediaCarousel from './PostMediaCarousel';
+import PostLikeCount from './PostLikeCount';
 
 const isActiveFollowStatus = (status?: string | null) =>
     (status || '').toUpperCase() === 'ACTIVE';
@@ -234,6 +238,19 @@ interface UserProfile {
     averageRating: number;
 }
 
+const sortPostsPinnedFirst = (list: any[]): any[] =>
+    [...list].sort((a, b) => {
+        const ap = a?.isPinned ? 1 : 0;
+        const bp = b?.isPinned ? 1 : 0;
+        if (ap !== bp) return bp - ap;
+        const aPinAt = a?.pinnedAt != null ? Number(a.pinnedAt) : 0;
+        const bPinAt = b?.pinnedAt != null ? Number(b.pinnedAt) : 0;
+        if (ap && bp && aPinAt !== bPinAt) return bPinAt - aPinAt;
+        const aCreated = parseTimestamp(a?.createdAt)?.getTime() ?? 0;
+        const bCreated = parseTimestamp(b?.createdAt)?.getTime() ?? 0;
+        return bCreated - aCreated;
+    });
+
 interface ProfilePageProps {
     onGoBack: () => void;
     userId: string;
@@ -241,6 +258,9 @@ interface ProfilePageProps {
     onOpenProfile?: (userId: string) => void;
     /** Preferred when embedded in Home — opens chat dock without a brittle /home navigate */
     onOpenChat?: (roomId: string) => void;
+    /** Scroll/highlight this post after Activity loads (e.g. from Home “Pinned” badge). */
+    focusPostId?: string | null;
+    onFocusPostConsumed?: () => void;
 }
 
 const GRAPHQL_QUERIES = {
@@ -1004,15 +1024,26 @@ const apiService = {
         return data.createComment;
     },
 };
-const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUserId, onOpenProfile, onOpenChat }) => {
+const ProfilePage: React.FC<ProfilePageProps> = ({
+    onGoBack,
+    userId,
+    currentUserId,
+    onOpenProfile,
+    onOpenChat,
+    focusPostId = null,
+    onFocusPostConsumed,
+}) => {
     const navigate = useNavigate();
     const { updateUser, user: authUser } = useAuth();
     const isMobile = useMediaQuery('(max-width:900px)');
     const [createDmRoom] = useMutation(CREATE_DM_ROOM_MUTATION);
     const [messagingInProgress, setMessagingInProgress] = useState(false);
     const effectiveCurrentUserId = currentUserId || (authUser?.id != null ? String(authUser.id) : undefined);
+    const [highlightedPostId, setHighlightedPostId] = useState<string | null>(null);
     const [deletePostMutation] = useMutation(DELETE_POST);
     const [updatePostMutation] = useMutation(UPDATE_POST);
+    const [pinPostMutation] = useMutation(PIN_POST);
+    const [unpinPostMutation] = useMutation(UNPIN_POST);
     const [user, setUser] = useState<UserProfile | null>(null);
     const [posts, setPosts] = useState<Post[]>([]);
     const [reviews, setReviews] = useState<UserRating[]>([]);
@@ -1027,6 +1058,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
     const [editTitle, setEditTitle] = useState('');
     const [editContent, setEditContent] = useState('');
     const [editSaving, setEditSaving] = useState(false);
+    const [photoLightbox, setPhotoLightbox] = useState<null | { kind: 'profile' | 'cover'; src: string }>(null);
     const [sharePostTarget, setSharePostTarget] = useState<ShareablePost | null>(null);
 
     // Post likes and comments state
@@ -1100,7 +1132,10 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                     ]).then(([followStatus, incoming]) => {
                         if (cancelled) return;
                         setFollowingStatus(followStatus);
-                        setIsFollowing(isActiveFollowStatus(followStatus?.status));
+                        setIsFollowing(
+                            isActiveFollowStatus(followStatus?.status) ||
+                            isPendingFollowStatus(followStatus?.status)
+                        );
                         setIncomingFollowStatus(incoming);
                     }).catch((err) => {
                         console.warn('Error checking following status:', err);
@@ -1141,22 +1176,24 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
             if (data?.postsByUser) {
                 // Do not fetch comments for every post here — that was N+1 and made profile very slow.
                 // Comments load on demand when the user opens the comments UI.
-                const postsWithDetails = data.postsByUser.map((post: any) => ({
-                    ...post,
-                    id: String(post.id),
-                    likesCount: post.likeCount || 0,
-                    commentCount: post.commentCount ?? 0,
-                    commentsCount: post.commentCount ?? 0,
-                    commentsList: [] as any[],
-                    userProfilePhotoSignedUrl: post.userProfilePhotoSignedUrl || post.userProfilePhoto,
-                    user: {
-                        id: post.userId,
-                        firstName: post.userFirstName || '',
-                        lastName: post.userLastName || '',
-                        profilePhoto: post.userProfilePhotoSignedUrl || post.userProfilePhoto || undefined,
-                    },
-                }));
-                setPosts(postsWithDetails);
+                const postsWithDetails = sortPostsPinnedFirst(
+                    data.postsByUser.map((post: any) => ({
+                        ...post,
+                        id: String(post.id),
+                        likesCount: post.likeCount || 0,
+                        commentCount: post.commentCount ?? 0,
+                        commentsCount: post.commentCount ?? 0,
+                        commentsList: [] as any[],
+                        userProfilePhotoSignedUrl: post.userProfilePhotoSignedUrl || post.userProfilePhoto,
+                        user: {
+                            id: post.userId,
+                            firstName: post.userFirstName || '',
+                            lastName: post.userLastName || '',
+                            profilePhoto: post.userProfilePhotoSignedUrl || post.userProfilePhoto || undefined,
+                        },
+                    }))
+                );
+                setPosts(postsWithDetails as Post[]);
 
                 const nextLiked: { [postId: string]: boolean } = {};
                 const nextCounts: { [postId: string]: number } = {};
@@ -1178,6 +1215,33 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
         }
     };
 
+    const scrollToPost = (postId: string | number) => {
+        const id = String(postId);
+        const el = document.getElementById(`post-${id}`);
+        if (!el) return;
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setHighlightedPostId(id);
+        window.setTimeout(() => {
+            setHighlightedPostId((prev) => (prev === id ? null : prev));
+        }, 2200);
+    };
+
+    // Deep-link / Home “Pinned” badge → land on the post in Activity
+    useEffect(() => {
+        if (!focusPostId || postsLoading || posts.length === 0) return;
+        const exists = posts.some((p) => String(p.id) === String(focusPostId));
+        if (!exists) {
+            onFocusPostConsumed?.();
+            return;
+        }
+        const t = window.setTimeout(() => {
+            scrollToPost(focusPostId);
+            onFocusPostConsumed?.();
+        }, 280);
+        return () => window.clearTimeout(t);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [focusPostId, postsLoading, posts]);
+
     const handleFollow = async () => {
         if (!currentUserId || !user) return;
 
@@ -1192,7 +1256,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
             const followResult = await apiService.followUser(currentUserId, userId);
             setFollowingStatus(followResult);
             const isActive = isActiveFollowStatus(followResult?.status);
-            setIsFollowing(isActive);
+            const treatedAsFollowing = isActive || isPendingFollowStatus(followResult?.status);
+            setIsFollowing(treatedAsFollowing);
             if (isActive) {
                 try {
                     const refreshed = await apiService.fetchUserProfile(userId);
@@ -1201,10 +1266,10 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                     setUser(prev => prev ? { ...prev, followersCount: prev.followersCount + 1 } : null);
                 }
             }
-            setSnack({ open: true, message: isPendingFollowStatus(followResult?.status) ? 'Follow request sent' : 'Following', severity: 'success' });
+            setSnack({ open: true, message: 'Following', severity: 'success' });
         } catch (err) {
             console.error('Error sending follow request:', err);
-            setSnack({ open: true, message: 'Failed to send follow request', severity: 'error' });
+            setSnack({ open: true, message: 'Failed to follow', severity: 'error' });
         } finally {
             setFollowingInProgress(false);
         }
@@ -1302,6 +1367,15 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                       profilePhotoSignedUrl: nextPhoto,
                     }
               );
+            }
+
+            const refreshedSrc = isCover ? nextCover : nextPhoto;
+            if (refreshedSrc) {
+                setPhotoLightbox((prev) =>
+                    prev && prev.kind === (isCover ? 'cover' : 'profile')
+                        ? { ...prev, src: refreshedSrc }
+                        : prev
+                );
             }
 
             setSnack({ open: true, message: isCover ? 'Cover photo updated' : 'Profile photo updated', severity: 'success' });
@@ -1552,31 +1626,15 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                         zIndex: 1201,
                     }}
                 >
-                    <Toolbar sx={{ justifyContent: 'space-between', px: { xs: 1, sm: 2 }, minHeight: { xs: 56, sm: 64 }, gap: 1, bgcolor: 'transparent' }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.5, sm: 2 }, minWidth: 0 }}>
-                            <IconButton onClick={onGoBack} size={isMobile ? 'small' : 'medium'} sx={{ color: '#EBE6D4' }}>
-                                <ArrowBackIcon />
-                            </IconButton>
-                            <Typography variant="h6" sx={{ fontWeight: 700, color: '#EBE6D4', fontSize: { xs: '1rem', sm: '1.25rem' } }}>
-                                Profile
-                            </Typography>
-                        </Box>
-                        <Typography
-                            variant="h5"
-                            sx={{
-                                fontWeight: 900,
-                                color: '#EBE6D4',
-                                letterSpacing: 1,
-                                fontSize: { xs: 'clamp(0.85rem, 3.5vw, 1.1rem)', sm: '1.5rem' },
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                minWidth: 0,
-                                maxWidth: { xs: '48%', sm: 'none' },
-                            }}
-                        >
-                            Zameen pe charcha
+                    <Toolbar sx={{ justifyContent: 'flex-start', px: { xs: 1, sm: 2 }, minHeight: { xs: 56, sm: 64 }, gap: 1, bgcolor: 'transparent' }}>
+                        <ZpcNavLogo size={isMobile ? 32 : 36} animateStroke={false} onNavigate={onGoBack} />
+                        <IconButton onClick={onGoBack} size={isMobile ? 'small' : 'medium'} sx={{ color: '#EBE6D4' }}>
+                            <ArrowBackIcon />
+                        </IconButton>
+                        <Typography variant="h6" sx={{ fontWeight: 700, color: '#EBE6D4', fontSize: { xs: '1rem', sm: '1.25rem' }, flex: 1 }}>
+                            Profile
                         </Typography>
+                        <HeaderLogoutButton ink="light" size={isMobile ? 'small' : 'medium'} />
                     </Toolbar>
                 </AppBar>
                 <Box sx={{ pt: { xs: 9, sm: 10 }, px: { xs: 1.25, sm: 2 }, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 'calc(100vh - 80px)' }}>
@@ -1588,7 +1646,10 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
         );
     }
 
-    const isOwnProfile = currentUserId === userId;
+    const isOwnProfile =
+        effectiveCurrentUserId != null &&
+        userId != null &&
+        String(effectiveCurrentUserId) === String(userId);
 
     return (
         <>
@@ -1608,36 +1669,15 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                     zIndex: 1201,
                 }}
             >
-                <Toolbar sx={{ justifyContent: 'space-between', px: { xs: 1, sm: 2 }, minHeight: { xs: 56, sm: 64 }, gap: 1, bgcolor: 'transparent' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.5, sm: 2 }, minWidth: 0 }}>
-                        <IconButton onClick={onGoBack} size={isMobile ? 'small' : 'medium'} sx={{ color: '#EBE6D4' }}>
-                            <ArrowBackIcon />
-                        </IconButton>
-                        <Typography variant="h6" sx={{ fontWeight: 700, color: '#EBE6D4', fontSize: { xs: '1rem', sm: '1.25rem' } }}>
-                            Profile
-                        </Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
-                        <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center' }}>
-                            <ZpcLogoMark size={36} showTagline={false} animateStroke={false} />
-                        </Box>
-                        <Typography
-                            variant="h5"
-                            sx={{
-                                fontWeight: 800,
-                                color: '#EBE6D4',
-                                letterSpacing: 0.2,
-                                fontSize: { xs: 'clamp(0.85rem, 3.5vw, 1.1rem)', sm: '1.25rem' },
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                minWidth: 0,
-                                maxWidth: { xs: '48%', sm: 'none' },
-                            }}
-                        >
-                            Zameen pe charcha
-                        </Typography>
-                    </Box>
+                <Toolbar sx={{ justifyContent: 'flex-start', px: { xs: 1, sm: 2 }, minHeight: { xs: 56, sm: 64 }, gap: 1, bgcolor: 'transparent' }}>
+                    <ZpcNavLogo size={isMobile ? 32 : 36} animateStroke={false} onNavigate={onGoBack} />
+                    <IconButton onClick={onGoBack} size={isMobile ? 'small' : 'medium'} sx={{ color: '#EBE6D4' }}>
+                        <ArrowBackIcon />
+                    </IconButton>
+                    <Typography variant="h6" sx={{ fontWeight: 700, color: '#EBE6D4', fontSize: { xs: '1rem', sm: '1.25rem' }, flex: 1 }}>
+                        Profile
+                    </Typography>
+                    <HeaderLogoutButton ink="light" size={isMobile ? 'small' : 'medium'} />
                 </Toolbar>
             </AppBar>
 
@@ -1657,38 +1697,45 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                         component="img"
                         src={(user as any).coverPhotoSignedUrl || 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&h=300&fit=crop'}
                         alt="Cover"
+                        onClick={() => {
+                            const src =
+                                (user as any).coverPhotoSignedUrl ||
+                                'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&h=300&fit=crop';
+                            setPhotoLightbox({ kind: 'cover', src });
+                        }}
                         sx={{
                             width: '100%',
                             height: { xs: 120, sm: 160, md: 200 },
                             objectFit: 'cover',
                             display: 'block',
+                            cursor: 'pointer',
                         }}
                         onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
                             e.currentTarget.src = 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&h=300&fit=crop';
                         }}
                     />
                     {isOwnProfile && (
-                        <Button
-                            startIcon={<CameraAltIcon />}
-                            size={isMobile ? 'small' : 'medium'}
+                        <IconButton
+                            aria-label="Change cover photo"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleChooseCoverPhoto();
+                            }}
                             sx={{
                                 position: 'absolute',
                                 top: { xs: 8, sm: 12 },
                                 right: { xs: 8, sm: 12 },
-                                bgcolor: 'rgba(235,230,212,0.92)',
+                                width: { xs: 36, sm: 40 },
+                                height: { xs: 36, sm: 40 },
+                                bgcolor: 'rgba(235,230,212,0.94)',
                                 color: '#16302A',
-                                textTransform: 'none',
-                                fontWeight: 700,
-                                minWidth: { xs: 0, sm: 'auto' },
-                                px: { xs: 1.25, sm: 2 },
-                                borderRadius: 1,
-                                border: '1px solid rgba(22,48,42,0.14)',
-                                '&:hover': { bgcolor: 'rgba(235,230,212,1)' },
+                                border: '1px solid rgba(22,48,42,0.16)',
+                                boxShadow: '0 2px 8px rgba(10,18,16,0.18)',
+                                '&:hover': { bgcolor: '#EBE6D4' },
                             }}
-                            onClick={handleChooseCoverPhoto}
                         >
-                            {isMobile ? 'Edit' : 'Edit cover'}
-                        </Button>
+                            <CameraAltIcon sx={{ fontSize: { xs: 18, sm: 20 } }} />
+                        </IconButton>
                     )}
                 </Box>
 
@@ -1721,6 +1768,13 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                             <Box sx={{ position: 'relative', flexShrink: 0 }}>
                                 <Avatar
                                     src={(user as any).profilePhotoSignedUrl || user.profilePhoto || 'https://randomuser.me/api/portraits/lego/1.jpg'}
+                                    onClick={() => {
+                                        const src =
+                                            (user as any).profilePhotoSignedUrl ||
+                                            user.profilePhoto ||
+                                            'https://randomuser.me/api/portraits/lego/1.jpg';
+                                        setPhotoLightbox({ kind: 'profile', src });
+                                    }}
                                     sx={{
                                         width: { xs: 96, sm: 132 },
                                         height: { xs: 96, sm: 132 },
@@ -1729,6 +1783,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                         bgcolor: stringToColor(`${user.firstName} ${user.lastName}`),
                                         fontWeight: 800,
                                         fontSize: { xs: 32, sm: 40 },
+                                        cursor: 'pointer',
                                     }}
                                     onError={(e) => {
                                         (e.target as HTMLImageElement).src = 'https://randomuser.me/api/portraits/lego/1.jpg';
@@ -1740,17 +1795,42 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                     <Box sx={{
                                         position: 'absolute',
                                         bottom: { xs: 6, sm: 10 },
-                                        right: { xs: 6, sm: 10 },
+                                        left: { xs: 6, sm: 10 },
                                         width: { xs: 14, sm: 18 },
                                         height: { xs: 14, sm: 18 },
                                         bgcolor: '#4CAF50',
                                         borderRadius: '50%',
-                                        border: '2px solid #EBE6D4'
+                                        border: '2px solid #EBE6D4',
+                                        zIndex: 1,
                                     }} />
+                                )}
+                                {isOwnProfile && (
+                                    <IconButton
+                                        aria-label="Change profile photo"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleChooseProfilePhoto();
+                                        }}
+                                        sx={{
+                                            position: 'absolute',
+                                            bottom: { xs: 2, sm: 4 },
+                                            right: { xs: 2, sm: 4 },
+                                            width: { xs: 32, sm: 36 },
+                                            height: { xs: 32, sm: 36 },
+                                            bgcolor: '#16302A',
+                                            color: '#EBE6D4',
+                                            border: '2px solid #EBE6D4',
+                                            boxShadow: '0 2px 8px rgba(10,18,16,0.25)',
+                                            zIndex: 2,
+                                            '&:hover': { bgcolor: '#0A1C18' },
+                                        }}
+                                    >
+                                        <CameraAltIcon sx={{ fontSize: { xs: 16, sm: 18 } }} />
+                                    </IconButton>
                                 )}
                             </Box>
                         </Box>
-                        {/* actions stay right - extracted below */}
+                        {!isOwnProfile && (
                         <Box sx={{
                             display: 'flex',
                             flexWrap: 'wrap',
@@ -1760,8 +1840,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                             justifyContent: { xs: 'stretch', sm: 'flex-end' },
                             mt: { xs: 0.5, sm: 1.5 },
                         }}>
-                        {!isOwnProfile && (
-                            <>
+                        <>
                                 {incomingFollowStatus && isPendingFollowStatus(incomingFollowStatus?.status) ? (
                                     <>
                                         <Button
@@ -1822,10 +1901,11 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                                 }
                                             }}
                                         >
-                                            {followingInProgress ? 'Loading...' : (
-                                                isPendingFollowStatus(followingStatus?.status) ? 'Requested' : (
-                                                isFollowing ? 'Following' : 'Follow')
-                                            )}
+                                            {followingInProgress
+                                                ? 'Loading...'
+                                                : (isFollowing || isPendingFollowStatus(followingStatus?.status)
+                                                    ? 'Following'
+                                                    : 'Follow')}
                                         </Button>
                                         <Button
                                             variant="outlined"
@@ -1885,81 +1965,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                     </>
                                 )}
                             </>
-                        )}
-                        {isOwnProfile && isPendingFollowStatus(followingStatus?.status) && (
-                            <>
-                                <Button
-                                    variant="contained"
-                                    size={isMobile ? 'small' : 'medium'}
-                                    sx={{ bgcolor: '#16A34A', '&:hover': { bgcolor: '#15803D' }, flex: { xs: '1 1 auto', sm: '0 0 auto' }, textTransform: 'none', fontWeight: 700, borderRadius: 999 }}
-                                    onClick={async () => {
-                                        try {
-                                            const data = await apiService.graphqlRequest(GRAPHQL_QUERIES.UPDATE_FOLLOW_STATUS, {
-                                                followerId: (followingStatus as any)?.followerId || (followingStatus as any)?.userId || 0,
-                                                followingId: userId,
-                                                status: 'active'
-                                            });
-                                            const updated = data.updateFollowStatus;
-                                            setFollowingStatus(updated);
-                                            setIsFollowing(true);
-                                            setUser(prev => prev ? { ...prev, followersCount: prev.followersCount + 1 } : prev);
-                                            setSnack({ open: true, message: 'Request accepted', severity: 'success' });
-                                        } catch (e) {
-                                            setSnack({ open: true, message: 'Failed to accept request', severity: 'error' });
-                                        }
-                                    }}
-                                >Accept</Button>
-                                <Button
-                                    variant="outlined"
-                                    size={isMobile ? 'small' : 'medium'}
-                                    sx={{ borderColor: '#EF4444', color: '#EF4444', flex: { xs: '1 1 auto', sm: '0 0 auto' }, textTransform: 'none', fontWeight: 700, borderRadius: 999 }}
-                                    onClick={async () => {
-                                        try {
-                                            const data = await apiService.graphqlRequest(GRAPHQL_QUERIES.UPDATE_FOLLOW_STATUS, {
-                                                followerId: (followingStatus as any)?.followerId || (followingStatus as any)?.userId || 0,
-                                                followingId: userId,
-                                                status: 'rejected'
-                                            });
-                                            const updated = data.updateFollowStatus;
-                                            setFollowingStatus(updated);
-                                            setIsFollowing(false);
-                                            setSnack({ open: true, message: 'Request declined', severity: 'success' });
-                                        } catch (e) {
-                                            setSnack({ open: true, message: 'Failed to decline request', severity: 'error' });
-                                        }
-                                    }}
-                                >Decline</Button>
-                            </>
-                        )}
-                        {isOwnProfile && (
-                            <>
-                                <Button
-                                    variant="outlined"
-                                    size={isMobile ? 'small' : 'medium'}
-                                    sx={{ flex: { xs: '1 1 auto', sm: '0 0 auto' }, textTransform: 'none', fontWeight: 700, borderRadius: 999, borderColor: 'rgba(22,48,42,0.28)', color: '#16302A' }}
-                                    onClick={handleChooseProfilePhoto}
-                                >
-                                    {isMobile ? 'Photo' : 'Edit photo'}
-                                </Button>
-                                <Button
-                                    variant="contained"
-                                    size={isMobile ? 'small' : 'medium'}
-                                    sx={{ bgcolor: '#16302A', '&:hover': { bgcolor: '#0A1C18' }, flex: { xs: '1 1 auto', sm: '0 0 auto' }, textTransform: 'none', fontWeight: 700, borderRadius: 999 }}
-                                    onClick={async () => {
-                                        try {
-                                            setLoadingFF(true);
-                                            const data = await apiService.graphqlRequest(GRAPHQL_QUERIES.PENDING_FOLLOW_REQUESTS, { userId });
-                                            const list = (data?.pendingFollowRequests || []);
-                                            setFollowersDetails(list.map((p: UserFollower) => followToDetail(p, p.followerId)));
-                                            setFollowersOpen(true);
-                                        } finally { setLoadingFF(false); }
-                                    }}
-                                >
-                                    {isMobile ? 'Pending' : 'Pending requests'}
-                                </Button>
-                            </>
-                        )}
                         </Box>
+                        )}
                     </Box>
 
                     <Box sx={{ minWidth: 0, mt: { xs: 0.5, sm: 0 } }}>
@@ -1975,11 +1982,13 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                             {user.firstName} {user.lastName}
                         </Typography>
                         <Typography sx={{ color: '#3A4540', mb: 0.35, fontSize: { xs: '0.95rem', sm: '1.05rem' }, fontWeight: 600, textTransform: 'capitalize' }}>
-                            {user.role ? String(user.role).replace(/_/g, ' ') : 'Member'}{user.bio ? '' : ' on Zameen pe charcha'}
+                            {user.role ? String(user.role).replace(/_/g, ' ') : 'Member'}
                         </Typography>
-                        <Typography sx={{ color: '#5C675F', fontSize: '0.875rem', mb: user.bio ? 0.75 : 0 }}>
-                            {user.address || 'Location not set'}
-                        </Typography>
+                        {user.address ? (
+                            <Typography sx={{ color: '#5C675F', fontSize: '0.875rem', mb: user.bio ? 0.75 : 0 }}>
+                                {user.address}
+                            </Typography>
+                        ) : null}
                         {user.bio && (
                             <Typography sx={{ color: '#3A4540', fontSize: '0.9rem', mt: 0.25, maxWidth: 560, lineHeight: 1.45 }}>
                                 {user.bio}
@@ -2080,6 +2089,65 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                             </Box>
                         ) : (
                             <Stack spacing={1.25}>
+                            {(() => {
+                                const pinnedPost = posts.find((p) => !!(p as any).isPinned);
+                                if (!pinnedPost) return null;
+                                const pinTitle = String((pinnedPost as any).title || '').trim();
+                                const pinBody = String((pinnedPost as any).content || '').trim();
+                                const pinPreview = pinTitle || pinBody || 'Pinned post';
+                                return (
+                                    <Box
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={() => scrollToPost(pinnedPost.id)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' || e.key === ' ') {
+                                                e.preventDefault();
+                                                scrollToPost(pinnedPost.id);
+                                            }
+                                        }}
+                                        sx={{
+                                            ...MATTE_POST_SX,
+                                            borderRadius: CARD_RADIUS,
+                                            px: 1.75,
+                                            py: 1.35,
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'flex-start',
+                                            gap: 1.1,
+                                            border: '1px solid rgba(15,118,110,0.28)',
+                                            bgcolor: 'rgba(15,118,110,0.06)',
+                                            '&:hover': {
+                                                bgcolor: 'rgba(15,118,110,0.1)',
+                                            },
+                                        }}
+                                        aria-label="Open pinned post"
+                                    >
+                                        <PushPinOutlinedIcon sx={{ fontSize: 18, color: '#0F766E', mt: 0.2, flexShrink: 0 }} />
+                                        <Box sx={{ minWidth: 0, flex: 1 }}>
+                                            <Typography sx={{ fontSize: 12, fontWeight: 750, color: '#0F766E', letterSpacing: 0.2 }}>
+                                                Pinned post
+                                            </Typography>
+                                            <Typography
+                                                sx={{
+                                                    fontSize: 14,
+                                                    fontWeight: 600,
+                                                    color: '#16302A',
+                                                    mt: 0.2,
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
+                                                    whiteSpace: 'nowrap',
+                                                }}
+                                            >
+                                                {pinPreview}
+                                            </Typography>
+                                            <Typography sx={{ fontSize: 12, color: '#5C675F', mt: 0.15 }}>
+                                                Tap to view
+                                            </Typography>
+                                        </Box>
+                                    </Box>
+                                );
+                            })()}
                             {posts.map((post) => {
                                 const authorName = `${(post as any).userFirstName || ''} ${(post as any).userLastName || ''}`.trim()
                                     || `${user?.firstName || ''} ${user?.lastName || ''}`.trim();
@@ -2091,20 +2159,85 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                     user?.profilePhoto ||
                                     undefined;
                                 const canManage = currentUserId != null && String(currentUserId) === String((post as any).userId);
+                                const title = String((post as any).title || '').trim();
+                                const body = String((post as any).content || '').trim();
+                                const titleRedundant =
+                                    !!title &&
+                                    (body.toLowerCase().startsWith(title.toLowerCase()) ||
+                                        title.toLowerCase() === body.toLowerCase());
+                                const POST_CONTENT_TYPES = new Set(['TEXT', 'IMAGE', 'VIDEO', 'POLL', 'REVIEW', 'PROPERTY']);
+                                const rawPropertyType = String((post as any).propertyType || '').trim();
+                                const listingLabel =
+                                    rawPropertyType && !POST_CONTENT_TYPES.has(rawPropertyType.toUpperCase())
+                                        ? rawPropertyType
+                                        : '';
+                                const metaBits = [
+                                    (post as any).location ? String((post as any).location) : '',
+                                    listingLabel,
+                                    (post as any).price != null && Number((post as any).price) > 0
+                                        ? `₹${(post as any).price}`
+                                        : '',
+                                ].filter(Boolean);
+                                const relativeWhen =
+                                    formatRelativeTime(post.createdAt) ||
+                                    formatDateTime(post.createdAt, {
+                                        latitude: (post as any).latitude,
+                                        longitude: (post as any).longitude,
+                                    });
+                                const likeCount =
+                                    postLikeCounts[String(post.id)] !== undefined
+                                        ? postLikeCounts[String(post.id)]
+                                        : post.likesCount || 0;
+                                const commentCount = post.commentCount ?? post.commentsCount ?? 0;
+                                const liked = !!likedPosts[String(post.id)];
+                                const actionBtnSx = {
+                                    flex: 1,
+                                    minWidth: 0,
+                                    color: '#3A4540',
+                                    textTransform: 'none' as const,
+                                    fontWeight: 650,
+                                    fontSize: 13.5,
+                                    borderRadius: 1.5,
+                                    py: 1,
+                                    px: 1,
+                                    gap: 0.75,
+                                    boxShadow: 'none',
+                                    '& .MuiButton-startIcon': { mr: 0 },
+                                    '&:hover': {
+                                        bgcolor: 'rgba(22,48,42,0.06)',
+                                        color: '#16302A',
+                                    },
+                                };
                                 return (
-                                <Box key={post.id} sx={{ ...MATTE_POST_SX, borderRadius: CARD_RADIUS, p: { xs: 1.5, sm: 2 }, minWidth: 0 }}>
-                                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, minWidth: 0 }}>
+                                <Box
+                                    key={post.id}
+                                    id={`post-${post.id}`}
+                                    sx={{
+                                        ...MATTE_POST_SX,
+                                        borderRadius: CARD_RADIUS,
+                                        overflow: 'hidden',
+                                        p: 0,
+                                        minWidth: 0,
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        outline: highlightedPostId === String(post.id)
+                                            ? '2px solid #0F766E'
+                                            : 'none',
+                                        outlineOffset: 2,
+                                        transition: 'outline-color 0.3s ease',
+                                    }}
+                                >
+                                    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.25, px: 2, pt: 1.75, pb: 1 }}>
                                         <Avatar
                                             src={photoUrl}
                                             sx={{
-                                                width: 44,
-                                                height: 44,
-                                                mr: 2,
-                                                boxShadow: 1,
+                                                width: 48,
+                                                height: 48,
                                                 cursor: 'pointer',
                                                 flexShrink: 0,
                                                 bgcolor: stringToColor(authorName || String((post as any).userId)),
                                                 fontWeight: 700,
+                                                fontSize: 16,
                                             }}
                                             onClick={() => onOpenProfile && onOpenProfile((post as any).userId)}
                                         >
@@ -2112,18 +2245,67 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                         </Avatar>
                                         <Box
                                             onClick={() => onOpenProfile && onOpenProfile((post as any).userId)}
-                                            sx={{ cursor: 'pointer', minWidth: 0, flex: 1 }}
+                                            sx={{ cursor: 'pointer', minWidth: 0, flex: 1, pt: 0.15 }}
                                             role="button"
-                                            aria-label={`Open profile of ${(post as any).userFirstName} ${(post as any).userLastName}`}
+                                            aria-label={`Open profile of ${authorName || 'user'}`}
                                         >
-                                            <Typography sx={{ fontWeight: 700, fontSize: { xs: 16, sm: 18 }, color: '#16302A', ...interFont, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                {(post as any).userFirstName} {(post as any).userLastName}
+                                            <Typography
+                                                sx={{
+                                                    fontWeight: 700,
+                                                    fontSize: 15,
+                                                    color: '#16302A',
+                                                    lineHeight: 1.25,
+                                                    ...interFont,
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
+                                                    whiteSpace: 'nowrap',
+                                                    '&:hover': { textDecoration: 'underline', textDecorationThickness: 1.5 },
+                                                }}
+                                            >
+                                                {authorName || 'ZPC member'}
                                             </Typography>
-                                            <Typography sx={{ fontSize: 13, color: '#6B7280', fontWeight: 500 }}>
-                                                {(post as any).userRole}
-                                            </Typography>
-                                            <Typography sx={{ fontSize: 13, color: '#6B7280' }}>
-                                                {formatDate(post.createdAt)}
+                                            {((post as any).userRole || user?.role || '').trim() ? (
+                                                <Typography sx={{ fontSize: 12.5, color: '#5C675F', fontWeight: 500, lineHeight: 1.3, mt: 0.15 }}>
+                                                    {String((post as any).userRole || user?.role || '').replace(/_/g, ' ')}
+                                                </Typography>
+                                            ) : null}
+                                            <Typography sx={{ fontSize: 12, color: '#7A847C', fontWeight: 500, mt: 0.15, display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+                                                <Box component="span">{relativeWhen}</Box>
+                                                <Box component="span" sx={{ opacity: 0.7 }}>·</Box>
+                                                <Box component="span" sx={{ fontSize: 13 }} aria-hidden>🌐</Box>
+                                                {(post as any).isPinned && (
+                                                    <>
+                                                        <Box component="span" sx={{ opacity: 0.7 }}>·</Box>
+                                                        <Box
+                                                            component="button"
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                e.preventDefault();
+                                                                scrollToPost(post.id);
+                                                            }}
+                                                            sx={{
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                gap: 0.35,
+                                                                color: '#0F766E',
+                                                                fontWeight: 700,
+                                                                fontSize: 11.5,
+                                                                border: 'none',
+                                                                background: 'none',
+                                                                p: 0,
+                                                                m: 0,
+                                                                cursor: 'pointer',
+                                                                font: 'inherit',
+                                                                '&:hover': { textDecoration: 'underline' },
+                                                            }}
+                                                            aria-label="Go to pinned post"
+                                                        >
+                                                            <PushPinOutlinedIcon sx={{ fontSize: 13 }} />
+                                                            Pinned
+                                                        </Box>
+                                                    </>
+                                                )}
                                             </Typography>
                                         </Box>
                                         {canManage && (
@@ -2131,143 +2313,155 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                                 size="small"
                                                 onClick={(e) => setPostMenu({ anchor: e.currentTarget, post })}
                                                 aria-label="Post options"
+                                                sx={{ color: '#3A4540' }}
                                             >
                                                 <MoreVertIcon />
                                             </IconButton>
                                         )}
                                     </Box>
 
-                                    <Typography sx={{ color: '#16302A', fontWeight: 700, fontSize: { xs: 15, sm: 17 }, mb: 1, wordBreak: 'break-word' }}>{(post as any).title}</Typography>
-                                    <Typography sx={{ color: '#374151', lineHeight: 1.6, mb: 2, wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
-                                        {renderMentionContent((post as any).content || '', {
-                                            onOpenProfile: onOpenProfile || undefined,
-                                        })}
-                                    </Typography>
-                                    
-                                    {(post as any).location && (
-                                        <Typography sx={{ color: '#6B7280', fontSize: 14, mb: 2 }}>
-                                            📍 {(post as any).location}
-                                        </Typography>
-                                    )}
+                                    <Box sx={{ px: 2, pb: metaBits.length || (post.media?.length ?? 0) > 0 ? 1 : 0.5 }}>
+                                        {title && !titleRedundant ? (
+                                            <Typography
+                                                component="div"
+                                                sx={{
+                                                    color: '#16302A',
+                                                    fontWeight: 700,
+                                                    fontSize: 15,
+                                                    lineHeight: 1.4,
+                                                    mb: body ? 0.5 : 0,
+                                                    whiteSpace: 'pre-wrap',
+                                                    wordBreak: 'break-word',
+                                                }}
+                                            >
+                                                {title}
+                                            </Typography>
+                                        ) : null}
+                                        {body ? (
+                                            <Typography
+                                                component="div"
+                                                sx={{
+                                                    color: '#16302A',
+                                                    fontSize: 14.5,
+                                                    lineHeight: 1.5,
+                                                    fontWeight: 450,
+                                                    whiteSpace: 'pre-wrap',
+                                                    wordBreak: 'break-word',
+                                                }}
+                                            >
+                                                {renderMentionContent(body, {
+                                                    onOpenProfile: onOpenProfile || undefined,
+                                                    variant: 'chip',
+                                                })}
+                                            </Typography>
+                                        ) : null}
+                                        {metaBits.length > 0 ? (
+                                            <Typography sx={{ mt: 0.85, fontSize: 12.5, color: '#5C675F', fontWeight: 500 }}>
+                                                {metaBits.join(' · ')}
+                                            </Typography>
+                                        ) : null}
+                                    </Box>
 
                                     {post.media && post.media.length > 0 && (
-                                        <Box sx={{
-                                            mb: 2,
-                                            display: 'grid',
-                                            gridTemplateColumns: post.media.length > 1
-                                                ? { xs: '1fr 1fr', sm: '1fr 1fr' }
-                                                : '1fr',
-                                            gap: 1,
-                                        }}>
-                                            {post.media.slice(0, 4).map((media) => {
-                                                const imageUrl = media.signedUrl || media.mediaUrl;
-                                                return (
-                                                    <Box
-                                                        key={media.id}
-                                                        component="img"
-                                                        src={imageUrl}
-                                                        alt={media.caption || 'Post media'}
-                                                        sx={{
-                                                            width: '100%',
-                                                            borderRadius: 2,
-                                                            maxHeight: { xs: 180, sm: 340 },
-                                                            objectFit: 'cover',
-                                                            display: 'block',
-                                                        }}
-                                                        onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
-                                                            if (media.signedUrl && e.currentTarget.src === media.signedUrl) {
-                                                                e.currentTarget.src = media.mediaUrl;
-                                                            } else {
-                                                                e.currentTarget.style.display = 'none';
-                                                            }
-                                                        }}
-                                                    />
-                                                );
-                                            })}
-                                            {post.media && post.media.length > 4 && (
-                                                <Box sx={{
-                                                    display: 'flex',
-                                                    width: '100%',
-                                                    minHeight: { xs: 120, sm: 200 },
-                                                    backgroundColor: 'rgba(0,0,0,0.8)',
-                                                    borderRadius: 2,
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                }}>
-                                                    <Typography sx={{ color: 'white', fontSize: { xs: '1.25rem', sm: '1.5rem' }, fontWeight: 'bold' }}>
-                                                        +{(post.media?.length || 0) - 4}
-                                                    </Typography>
-                                                </Box>
+                                        <Box sx={{ width: '100%', bgcolor: 'rgba(10,18,16,0.04)' }}>
+                                            <PostMediaCarousel media={post.media} maxHeight={{ xs: 360, sm: 480 }} edgeToEdge />
+                                        </Box>
+                                    )}
+
+                                    {(likeCount > 0 || commentCount > 0) && (
+                                        <Box
+                                            sx={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'space-between',
+                                                px: 2,
+                                                pt: 1.1,
+                                                pb: 0.35,
+                                            }}
+                                        >
+                                            {likeCount > 0 ? (
+                                                <PostLikeCount
+                                                    postId={post.id}
+                                                    postUserId={(post as any).userId || userId}
+                                                    likeCount={likeCount}
+                                                    liked={liked}
+                                                    currentUserId={currentUserId}
+                                                    onOpenProfile={onOpenProfile || undefined}
+                                                />
+                                            ) : (
+                                                <Typography sx={{ fontSize: 12.5, color: '#5C675F', fontWeight: 500 }}> </Typography>
                                             )}
+                                            {commentCount > 0 ? (
+                                                <Typography
+                                                    onClick={() => handleCommentClick(post.id)}
+                                                    sx={{
+                                                        fontSize: 12.5,
+                                                        color: '#5C675F',
+                                                        fontWeight: 500,
+                                                        cursor: 'pointer',
+                                                        '&:hover': { color: '#16302A', textDecoration: 'underline' },
+                                                    }}
+                                                >
+                                                    {commentCount} comment{commentCount === 1 ? '' : 's'}
+                                                </Typography>
+                                            ) : null}
                                         </Box>
                                     )}
 
                                     <Box
                                         sx={{
                                             display: 'flex',
-                                            alignItems: 'center',
-                                            mt: 1.75,
-                                            pt: 1.25,
-                                            borderTop: '1.5px solid #E8EDF5',
+                                            alignItems: 'stretch',
+                                            mx: 1,
+                                            mb: 0.75,
+                                            mt: 0.35,
+                                            pt: 0.35,
+                                            borderTop: '1px solid rgba(90,70,50,0.12)',
                                             gap: 0.25,
                                         }}
                                     >
                                         <Button
                                             startIcon={
-                                                likedPosts[String(post.id)] ? (
-                                                    <FavoriteIcon
-                                                        className={`liked-heart-icon ${animatingPosts[String(post.id)] ? 'liked-heart-icon-clicked' : ''}`}
-                                                        sx={{ fontSize: 22 }}
-                                                    />
+                                                liked ? (
+                                                    <Box
+                                                        component="span"
+                                                        className={`liked-heart-emoji ${animatingPosts[String(post.id)] ? 'liked-heart-icon-clicked' : ''}`}
+                                                        aria-hidden
+                                                        sx={{ fontSize: 18, lineHeight: 1 }}
+                                                    >
+                                                        ❤️
+                                                    </Box>
                                                 ) : (
                                                     <FavoriteBorderIcon
                                                         className={animatingPosts[String(post.id)] ? 'liked-heart-icon-clicked' : ''}
-                                                        sx={{ color: '#64748B', fontSize: 22 }}
+                                                        sx={{ color: 'inherit', fontSize: 20 }}
                                                     />
                                                 )
                                             }
                                             onClick={() => handleLikePostWithAnimation(String(post.id))}
                                             disabled={likingPost}
                                             sx={{
-                                                minWidth: 0,
-                                                bgcolor: 'transparent',
-                                                color: likedPosts[String(post.id)] ? '#EF4444' : '#64748B',
-                                                textTransform: 'none',
-                                                fontWeight: 500,
-                                                fontSize: 14,
-                                                borderRadius: 2,
-                                                py: 0.5,
-                                                px: 0.75,
-                                                '& .MuiButton-startIcon': { mr: 0.35 },
+                                                ...actionBtnSx,
+                                                color: liked ? '#E11D48' : '#3A4540',
                                                 '&:hover': {
-                                                    bgcolor: 'transparent',
-                                                    color: likedPosts[String(post.id)] ? '#DC2626' : '#334155',
+                                                    bgcolor: 'rgba(22,48,42,0.06)',
+                                                    color: liked ? '#E11D48' : '#16302A',
                                                 },
                                             }}
                                         >
-                                            {postLikeCounts[String(post.id)] !== undefined ? postLikeCounts[String(post.id)] : post.likesCount || 0}
+                                            Like
                                         </Button>
                                         <Button
-                                            startIcon={<ChatBubbleOutlineIcon sx={{ fontSize: 21, color: 'inherit' }} />}
+                                            startIcon={<ChatBubbleOutlineIcon sx={{ fontSize: 20, color: 'inherit' }} />}
                                             onClick={() => handleCommentClick(post.id)}
-                                            sx={{
-                                                minWidth: 0,
-                                                bgcolor: 'transparent',
-                                                color: '#64748B',
-                                                textTransform: 'none',
-                                                fontWeight: 500,
-                                                fontSize: 14,
-                                                borderRadius: 2,
-                                                py: 0.5,
-                                                px: 0.75,
-                                                '& .MuiButton-startIcon': { mr: 0.35 },
-                                                '&:hover': { bgcolor: 'transparent', color: '#16302A' },
-                                            }}
+                                            sx={actionBtnSx}
                                         >
-                                            {post.commentCount ?? post.commentsCount ?? 0}
+                                            Comment
                                         </Button>
-                                        <IconButton
+                                        <Button
+                                            startIcon={<ShareSymbol sx={{ fontSize: 19 }} />}
                                             aria-label="Share"
+                                            disabled={(post as any).allowShare === false}
                                             onClick={() =>
                                                 setSharePostTarget({
                                                     id: post.id,
@@ -2275,37 +2469,11 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                                     content: (post as any).content,
                                                 })
                                             }
-                                            disabled={(post as any).allowShare === false}
-                                            sx={{
-                                                color: '#64748B',
-                                                borderRadius: 2,
-                                                p: 0.65,
-                                                bgcolor: 'transparent',
-                                                '&:hover': { bgcolor: 'transparent', color: '#16302A' },
-                                            }}
+                                            sx={actionBtnSx}
                                         >
-                                            <ShareSymbol sx={{ fontSize: 21 }} />
-                                        </IconButton>
+                                            Share
+                                        </Button>
                                     </Box>
-
-                                    {post.commentsList && post.commentsList.length > 0 && (
-                                        <Box sx={{ mt: 2, borderTop: '1px solid #eee', pt: 2 }}>
-                                            {post.commentsList.map(comment => (
-                                                <Box key={comment.id} sx={{ display: 'flex', mb: 2 }}>
-                                                    <Avatar
-                                                        src={comment.user?.profilePhoto}
-                                                        sx={{ width: 32, height: 32, mr: 1.5 }}
-                                                    />
-                                                    <Box>
-                                                        <Typography sx={{ fontWeight: 500, fontSize: '0.875rem' }}>
-                                                            {comment.user?.firstName} {comment.user?.lastName}
-                                                        </Typography>
-                                                        <Typography sx={{ fontSize: '0.875rem' }}>{comment.content}</Typography>
-                                                    </Box>
-                                                </Box>
-                                            ))}
-                                        </Box>
-                                    )}
                                 </Box>
                                 );
                             })}
@@ -2417,9 +2585,19 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                 </Box>
                             )}
 
-                            <Box sx={{ textAlign: 'center', mb: 3 }}>
-                                <Typography sx={{ fontWeight: 700, color: '#16302A', mb: 1, fontSize: { xs: '2rem', sm: '3.75rem' }, lineHeight: 1.1 }}>
-                                    {user.averageRating > 0 ? user.averageRating.toFixed(1) : 'N/A'}
+                            <Box sx={{ textAlign: 'center', mb: 2 }}>
+                                <Typography
+                                    sx={{
+                                        fontWeight: 700,
+                                        color: '#16302A',
+                                        mb: 1,
+                                        fontSize: user.averageRating > 0
+                                            ? { xs: '2rem', sm: '3.75rem' }
+                                            : { xs: '1.35rem', sm: '1.75rem' },
+                                        lineHeight: 1.15,
+                                    }}
+                                >
+                                    {user.averageRating > 0 ? user.averageRating.toFixed(1) : 'No Ratings'}
                                 </Typography>
                                 <Box sx={{ display: 'flex', justifyContent: 'center', mb: 1 }}>
                                     {renderStars(user.averageRating)}
@@ -2427,33 +2605,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                 <Typography sx={{ color: '#6B7280', fontSize: '0.875rem' }}>
                                     Based on {user.ratings.length} reviews
                                 </Typography>
-                            </Box>
-
-                            <Box sx={{ mb: 3 }}>
-                                {[5, 4, 3, 2, 1].map((rating) => {
-                                    const count = reviews.filter(r => r.ratingValue === rating).length;
-                                    const percentage = reviews.length > 0 ? (count / reviews.length) * 100 : 0;
-
-                                    return (
-                                        <Box key={rating} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                                            <Typography sx={{ fontSize: '0.875rem', color: '#6B7280' }}>{rating}</Typography>
-                                            <StarIcon sx={{ fontSize: 16, color: '#FFC107' }} />
-                                            <Box sx={{ flex: 1, bgcolor: '#E5E7EB', borderRadius: 1, height: 8 }}>
-                                                <Box
-                                                    sx={{
-                                                        bgcolor: '#FFC107',
-                                                        height: 8,
-                                                        borderRadius: 1,
-                                                        width: `${percentage}%`
-                                                    }}
-                                                />
-                                            </Box>
-                                            <Typography sx={{ fontSize: '0.875rem', color: '#6B7280', minWidth: 32 }}>
-                                                {Math.round(percentage)}%
-                                            </Typography>
-                                        </Box>
-                                    );
-                                })}
                             </Box>
 
                             <Stack spacing={2}>
@@ -2606,7 +2757,10 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                                             </Typography>
                                         )}
                                         <Typography sx={{ color: '#334155', fontSize: 15, fontWeight: 500, lineHeight: 1.55, wordBreak: 'break-word' }}>
-                                            {currentPost.content || (currentPost as any).content}
+                                            {renderMentionContent(
+                                                currentPost.content || (currentPost as any).content || '',
+                                                { variant: 'chip' },
+                                            )}
                                         </Typography>
                                     </Box>
                                 )}
@@ -2765,17 +2919,56 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
             anchorEl={postMenu?.anchor}
             open={Boolean(postMenu)}
             onClose={() => setPostMenu(null)}
+            disableScrollLock
         >
             <MenuItem
                 onClick={() => {
                     if (!postMenu) return;
                     setEditPost(postMenu.post);
                     setEditTitle((postMenu.post as any).title || '');
-                    setEditContent((postMenu.post as any).content || '');
+                    setEditContent(collapseMentionTokens((postMenu.post as any).content || ''));
                     setPostMenu(null);
                 }}
             >
                 Edit
+            </MenuItem>
+            <MenuItem
+                onClick={async () => {
+                    if (!postMenu || !effectiveCurrentUserId) return;
+                    const postId = String(postMenu.post.id);
+                    const currentlyPinned = !!(postMenu.post as any).isPinned;
+                    setPostMenu(null);
+                    try {
+                        const mutation = currentlyPinned ? unpinPostMutation : pinPostMutation;
+                        const key = currentlyPinned ? 'unpinPost' : 'pinPost';
+                        const { data: result } = await mutation({
+                            variables: { postId, userId: String(effectiveCurrentUserId) },
+                        });
+                        if (result?.[key]?.success) {
+                            setPosts((prev) =>
+                                sortPostsPinnedFirst(
+                                    prev.map((p) => {
+                                        if (String(p.id) === postId) {
+                                            return { ...p, isPinned: !currentlyPinned } as any;
+                                        }
+                                        // Only one pinned post per profile
+                                        if (!currentlyPinned && (p as any).isPinned) {
+                                            return { ...p, isPinned: false } as any;
+                                        }
+                                        return p;
+                                    })
+                                )
+                            );
+                        } else {
+                            window.alert(result?.[key]?.message || `Could not ${currentlyPinned ? 'unpin' : 'pin'} post`);
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        window.alert(`Could not ${currentlyPinned ? 'unpin' : 'pin'} post`);
+                    }
+                }}
+            >
+                {postMenu && (postMenu.post as any).isPinned ? 'Unpin from profile' : 'Pin to profile'}
             </MenuItem>
             <MenuItem
                 sx={{ color: '#DC2626' }}
@@ -2832,18 +3025,24 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
                         setEditSaving(true);
                         try {
                             const postId = String(editPost.id);
+                            const maps = mentionMapsFromTokens((editPost as any).content || '');
+                            const expandedContent = expandPrettyMentions(
+                                editContent.trim(),
+                                maps.userNameToId,
+                                maps.propertyNameToId,
+                            );
                             const { data: result } = await updatePostMutation({
                                 variables: {
                                     postId,
                                     title: editTitle.trim(),
-                                    content: editContent.trim(),
+                                    content: expandedContent,
                                 },
                             });
                             if (result?.updatePost?.success) {
                                 setPosts((prev) =>
                                     prev.map((p) =>
                                         String(p.id) === postId
-                                            ? ({ ...p, title: editTitle.trim(), content: editContent.trim() } as any)
+                                            ? ({ ...p, title: editTitle.trim(), content: expandedContent } as any)
                                             : p
                                     )
                                 );
@@ -2869,6 +3068,87 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ onGoBack, userId, currentUser
             post={sharePostTarget}
             onClose={() => setSharePostTarget(null)}
         />
+
+        <Dialog
+            open={Boolean(photoLightbox)}
+            onClose={() => setPhotoLightbox(null)}
+            fullScreen={isMobile}
+            maxWidth="md"
+            PaperProps={{
+                sx: {
+                    bgcolor: isMobile ? '#0A1C18' : 'transparent',
+                    boxShadow: 'none',
+                    m: isMobile ? 0 : 2,
+                    overflow: 'visible',
+                },
+            }}
+        >
+            <Box
+                sx={{
+                    position: 'relative',
+                    width: '100%',
+                    height: isMobile ? '100%' : 'auto',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    bgcolor: isMobile ? '#0A1C18' : 'transparent',
+                    p: isMobile ? 0 : 0,
+                }}
+            >
+                <IconButton
+                    aria-label="Close"
+                    onClick={() => setPhotoLightbox(null)}
+                    sx={{
+                        position: 'absolute',
+                        top: { xs: 12, sm: 8 },
+                        left: { xs: 12, sm: 8 },
+                        zIndex: 2,
+                        bgcolor: 'rgba(235,230,212,0.92)',
+                        color: '#16302A',
+                        '&:hover': { bgcolor: '#EBE6D4' },
+                    }}
+                >
+                    <CloseIcon />
+                </IconButton>
+                {isOwnProfile && photoLightbox && (
+                    <IconButton
+                        aria-label={photoLightbox.kind === 'cover' ? 'Change cover photo' : 'Change profile photo'}
+                        onClick={() => {
+                            if (photoLightbox.kind === 'cover') handleChooseCoverPhoto();
+                            else handleChooseProfilePhoto();
+                        }}
+                        sx={{
+                            position: 'absolute',
+                            top: { xs: 12, sm: 8 },
+                            right: { xs: 12, sm: 8 },
+                            zIndex: 2,
+                            bgcolor: '#16302A',
+                            color: '#EBE6D4',
+                            border: '1px solid rgba(235,230,212,0.35)',
+                            '&:hover': { bgcolor: '#0A1C18' },
+                        }}
+                    >
+                        <CameraAltIcon />
+                    </IconButton>
+                )}
+                {photoLightbox && (
+                    <Box
+                        component="img"
+                        src={photoLightbox.src}
+                        alt={photoLightbox.kind === 'cover' ? 'Cover photo' : 'Profile photo'}
+                        sx={{
+                            maxWidth: '100%',
+                            maxHeight: isMobile ? '100vh' : '85vh',
+                            width: photoLightbox.kind === 'cover' ? '100%' : 'auto',
+                            height: 'auto',
+                            objectFit: 'contain',
+                            borderRadius: photoLightbox.kind === 'profile' && !isMobile ? '50%' : (isMobile ? 0 : 2),
+                            boxShadow: isMobile ? 'none' : '0 8px 32px rgba(0,0,0,0.45)',
+                        }}
+                    />
+                )}
+            </Box>
+        </Dialog>
     </>
     );
 };

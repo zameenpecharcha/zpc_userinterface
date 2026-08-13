@@ -11,7 +11,7 @@ import {
 } from '@mui/material';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
-import { ZpcLogoMark } from './brand/ZpcLogo';
+import { ZpcNavLogo } from './brand/ZpcNavLogo';
 import { MagicCard } from './MagicCard';
 import SocialAuthIconsRow from './SocialAuthIconsRow';
 
@@ -210,7 +210,7 @@ const LandingAtmosphereLogin: React.FC<Props> = ({
           }}
         >
           <Box sx={{ mb: 1.5, display: 'flex', justifyContent: 'center' }}>
-            <ZpcLogoMark size={160} showTagline animateStroke={false} ink="light" />
+            <ZpcNavLogo size={160} showTagline animateStroke={false} ink="light" to="/" title="ZPC" />
           </Box>
           <Typography
             sx={{
@@ -333,6 +333,9 @@ const LandingAtmosphereLogin: React.FC<Props> = ({
                 </Divider>
                 <SocialAuthIconsRow
                   disabled={busy}
+                  googleLoading={googleSigningIn}
+                  facebookLoading={facebookSigningIn}
+                  mobileLoading={mobileLoading}
                   tone="dark"
                   onGoogleCredential={onGoogleCredential}
                   onFacebookAccessToken={onFacebookAccessToken}

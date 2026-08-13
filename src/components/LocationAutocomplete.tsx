@@ -12,6 +12,7 @@ import {
 } from '@mui/material';
 import { LocationOn } from '@mui/icons-material';
 import { useApolloClient, gql } from '@apollo/client';
+import { normalizeLocationSuggestions, type LocalitySuggestion } from '../utils/locationLabel';
 
 // Query exactly matching the backend schema
 const OLA_AUTOCOMPLETE_QUERY = gql`
@@ -26,15 +27,6 @@ const OLA_AUTOCOMPLETE_QUERY = gql`
     }
   }
 `;
-
-interface LocationSuggestion {
-  reference: string;
-  placeId: string;
-  description: string;
-  lat: number;
-  lng: number;
-  types: string[];
-}
 
 interface LocationAutocompleteProps {
   value: string;
@@ -80,7 +72,7 @@ const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
 }) => {
   const client = useApolloClient();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const [suggestions, setSuggestions] = useState<LocationSuggestion[]>([]);
+  const [suggestions, setSuggestions] = useState<LocalitySuggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
 
@@ -97,7 +89,7 @@ const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
     try {
       const queryPromise = client.query({
         query: OLA_AUTOCOMPLETE_QUERY,
-        variables: { input },
+        variables: { input: input.trim() },
         fetchPolicy: 'no-cache',
       });
       const timeoutPromise = new Promise<never>((_, reject) => {
@@ -110,7 +102,7 @@ const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
       }
 
       if (data?.olaAutocomplete) {
-        setSuggestions(data.olaAutocomplete);
+        setSuggestions(normalizeLocationSuggestions(data.olaAutocomplete));
       } else {
         setSuggestions([]);
       }
@@ -123,22 +115,20 @@ const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
     }
   };
 
-  // Reduced debounce time for testing
-  const fetchSuggestions = useDebounce(fetchSuggestionsImmediate, 100);
+  const fetchSuggestions = useDebounce(fetchSuggestionsImmediate, 280);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
-    console.log('Input changed:', newValue); // Debug log
     onChange(newValue);
     setAnchorEl(e.currentTarget);
     fetchSuggestions(newValue);
   };
 
-  const handleSuggestionClick = (suggestion: LocationSuggestion) => {
-    console.log('Selected suggestion:', suggestion); // Debug log
-    onChange(suggestion.description);
+  const handleSuggestionClick = (suggestion: LocalitySuggestion) => {
+    const address = suggestion.label || suggestion.description;
+    onChange(address);
     onLocationSelect({
-      address: suggestion.description,
+      address,
       latitude: suggestion.lat,
       longitude: suggestion.lng,
     });
@@ -146,14 +136,14 @@ const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
     setAnchorEl(null);
   };
 
-  const open = Boolean(anchorEl) && suggestions.length > 0;
+  const open = Boolean(anchorEl) && (suggestions.length > 0 || !!searchError);
   const id = open ? 'location-popper' : undefined;
 
   return (
     <Box sx={{ width: '100%', position: 'relative' }}>
       <TextField
         fullWidth
-        placeholder="Enter your location"
+        placeholder="Search area, city (e.g. Madhapur, Hyderabad)"
         value={value}
         onChange={handleInputChange}
         error={error}
@@ -178,27 +168,34 @@ const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
         placement="bottom-start"
         style={{ width: anchorEl?.clientWidth, zIndex: 1300 }}
       >
-        <Paper elevation={3} sx={{ mt: 1, maxHeight: 300, overflow: 'auto' }}>
+        <Paper elevation={3} sx={{ mt: 1, maxHeight: 300, overflow: 'auto', bgcolor: '#F7F3E8' }}>
           {searchError ? (
             <Box p={2}>
               <Typography color="error">{searchError}</Typography>
             </Box>
           ) : (
-            <List>
+            <List disablePadding>
               {suggestions.map((suggestion) => (
                 <ListItemButton
-                  key={suggestion.placeId}
+                  key={suggestion.placeId || suggestion.label}
                   onClick={() => handleSuggestionClick(suggestion)}
                   sx={{
+                    alignItems: 'flex-start',
+                    py: 1.1,
                     '&:hover': {
                       bgcolor: '#E8E2CE',
                     },
                   }}
                 >
-                  <LocationOn sx={{ color: '#A89F84', mr: 1 }} />
-                  <ListItemText 
-                    primary={suggestion.description}
-                    secondary={suggestion.types?.join(', ')}
+                  <LocationOn sx={{ color: '#A89F84', mr: 1, mt: 0.35, fontSize: 20 }} />
+                  <ListItemText
+                    primary={suggestion.label}
+                    primaryTypographyProps={{
+                      fontSize: 14,
+                      fontWeight: 600,
+                      color: '#16302A',
+                      lineHeight: 1.35,
+                    }}
                   />
                 </ListItemButton>
               ))}

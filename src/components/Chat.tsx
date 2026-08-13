@@ -23,8 +23,16 @@ import {
   renderMentionContent,
   getActiveMentionQuery,
   insertMentionToken,
+  expandPrettyMentions,
+  collapseMentionTokens,
+  mentionMapsFromTokens,
 } from '../utils/mentions';
 import { notifyMentionedUsers } from '../utils/notifyMentions';
+import {
+  notifyChatRecipients,
+  recipientIdsFromRoom,
+  mentionedIdsInContent,
+} from '../utils/notifyChatMessage';
 import { MATTE_SURFACE, MATTE_INSET } from '../theme/surfaces';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -168,6 +176,7 @@ const Chat: React.FC<ChatProps> = ({
   const [mentionQuery, setMentionQuery] = useState('');
   const [mentionStart, setMentionStart] = useState<number | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
+  const mentionedUserNamesRef = useRef<Map<string, string>>(new Map());
   const [connected, setConnected] = useState(false);
   const [typingSet, setTypingSet] = useState<Set<string>>(new Set());
   const [msgMenu, setMsgMenu] = useState<{
@@ -395,8 +404,8 @@ const Chat: React.FC<ChatProps> = ({
 
   const notifyChatMentions = useCallback(
     (text: string) => {
-      const authorId = parseInt(String(userId), 10);
-      if (Number.isNaN(authorId) || !text.includes('@[')) return;
+      const authorId = String(userId);
+      if (!text.includes('@[')) return;
       void notifyMentionedUsers(apollo, {
         content: text,
         authorId,
@@ -407,6 +416,33 @@ const Chat: React.FC<ChatProps> = ({
       });
     },
     [apollo, userId, authorDisplayName, canonicalRoomId]
+  );
+
+  const notifyNewChatMessage = useCallback(
+    (text: string) => {
+      const recipients = recipientIdsFromRoom(
+        canonicalRoomId,
+        userId,
+        resolvedMentionCandidates.map((c) => c.id)
+      );
+      if (recipients.length === 0) return;
+      const mentioned = mentionedIdsInContent(text);
+      void notifyChatRecipients(apollo, {
+        recipientIds: recipients,
+        authorId: userId,
+        authorName: authorDisplayName,
+        text,
+        roomId: canonicalRoomId,
+        skipUserIds: mentioned,
+      });
+    },
+    [
+      apollo,
+      userId,
+      authorDisplayName,
+      canonicalRoomId,
+      resolvedMentionCandidates,
+    ]
   );
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -432,8 +468,10 @@ const Chat: React.FC<ChatProps> = ({
       const el = inputRef.current;
       const cursor = el?.selectionStart ?? input.length;
       const label = (person.name || 'User').replace(/[\[\]]/g, '').slice(0, 40);
-      const token = `@[${person.id}:${label}]`;
+      // Composer shows pretty @Name; expand to @[id:Name] only on send.
+      const token = `@${label}`;
       const { text, cursor: nextCursor } = insertMentionToken(input, cursor, mentionStart, token);
+      mentionedUserNamesRef.current.set(label, String(person.id));
       setInput(text);
       setMentionOpen(false);
       setMentionQuery('');
@@ -485,13 +523,14 @@ const Chat: React.FC<ChatProps> = ({
   // ── Send ───────────────────────────────────────────────────────────────────
 
   const send = useCallback(async () => {
-    const text = input.trim();
+    const text = expandPrettyMentions(input.trim(), mentionedUserNamesRef.current);
 
     // Teams-style edit: save via eventType 7 instead of sending a new message
     if (editingMessage) {
       if (!text || editingMessage.isDeleted) {
         setEditingMessage(null);
         setInput('');
+        mentionedUserNamesRef.current = new Map();
         return;
       }
       const payload = JSON.stringify({
@@ -511,6 +550,7 @@ const Chat: React.FC<ChatProps> = ({
       }
       setEditingMessage(null);
       setInput('');
+      mentionedUserNamesRef.current = new Map();
       notifyChatMentions(text);
       return;
     }
@@ -574,7 +614,9 @@ const Chat: React.FC<ChatProps> = ({
         );
         setInput('');
         clearPendingFile();
+        mentionedUserNamesRef.current = new Map();
         if (text) notifyChatMentions(text);
+        notifyNewChatMessage(text || 'Sent an attachment');
       } catch (err) {
         console.error('Chat media upload failed:', err);
         window.alert(err instanceof Error ? err.message : 'Failed to upload media');
@@ -594,10 +636,13 @@ const Chat: React.FC<ChatProps> = ({
       }
     );
     setInput('');
+    mentionedUserNamesRef.current = new Map();
     notifyChatMentions(text);
+    notifyNewChatMessage(text);
   }, [
     input, pendingFile, uploading, apollo, userId, canonicalRoomId,
-    sendPayload, clearPendingFile, pendingPreview, editingMessage, notifyChatMentions,
+    sendPayload, clearPendingFile, pendingPreview, editingMessage,
+    notifyChatMentions, notifyNewChatMessage,
   ]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -627,6 +672,7 @@ const Chat: React.FC<ChatProps> = ({
       e.preventDefault();
       setEditingMessage(null);
       setInput('');
+      mentionedUserNamesRef.current = new Map();
       return;
     }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); }
@@ -712,7 +758,10 @@ const Chat: React.FC<ChatProps> = ({
       return;
     }
     setEditingMessage(msg);
-    setInput(msg.text || '');
+    const raw = msg.text || '';
+    const maps = mentionMapsFromTokens(raw);
+    mentionedUserNamesRef.current = maps.userNameToId;
+    setInput(collapseMentionTokens(raw));
     setTimeout(() => inputRef.current?.focus(), 50);
   }, [isOwnMessage]);
 
@@ -1150,13 +1199,17 @@ const Chat: React.FC<ChatProps> = ({
             <Box sx={{ minWidth: 0, borderLeft: '3px solid #16302A', pl: 1 }}>
               <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#16302A' }}>Editing message</Typography>
               <Typography noWrap sx={{ fontSize: 12, color: '#3A4540', maxWidth: 280 }}>
-                {editingMessage.text}
+                {collapseMentionTokens(editingMessage.text || '')}
               </Typography>
             </Box>
             <IconButton
               size="small"
               aria-label="Cancel edit"
-              onClick={() => { setEditingMessage(null); setInput(''); }}
+              onClick={() => {
+                setEditingMessage(null);
+                setInput('');
+                mentionedUserNamesRef.current = new Map();
+              }}
             >
               <CloseIcon sx={{ fontSize: 18 }} />
             </IconButton>

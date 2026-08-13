@@ -10,6 +10,7 @@ import {
   DialogContent,
   DialogActions,
   MenuItem,
+  CircularProgress,
 } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
 import { AuthService } from '../services/authService';
@@ -623,12 +624,20 @@ const Landing = () => {
             Cancel
           </Button>
           {mobileStep === 'phone' ? (
-            <Button onClick={handleSendMobileOTP} disabled={mobileLoading || !mobileData.phone.trim()}>
-              {mobileLoading ? 'Sending...' : 'Send OTP'}
+            <Button
+              onClick={handleSendMobileOTP}
+              disabled={mobileLoading || !mobileData.phone.trim()}
+              startIcon={mobileLoading ? <CircularProgress size={16} color="inherit" /> : undefined}
+            >
+              {mobileLoading ? 'Sending OTP…' : 'Send OTP'}
             </Button>
           ) : (
-            <Button onClick={handleVerifyMobileOTP} disabled={mobileLoading || !mobileData.otp.trim()}>
-              {mobileLoading ? 'Verifying...' : 'Verify OTP'}
+            <Button
+              onClick={handleVerifyMobileOTP}
+              disabled={mobileLoading || !mobileData.otp.trim()}
+              startIcon={mobileLoading ? <CircularProgress size={16} color="inherit" /> : undefined}
+            >
+              {mobileLoading ? 'Verifying…' : 'Verify OTP'}
             </Button>
           )}
         </DialogActions>

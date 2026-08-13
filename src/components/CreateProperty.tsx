@@ -15,6 +15,8 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import { ZpcNavLogo } from './brand/ZpcNavLogo';
+import HeaderLogoutButton from './HeaderLogoutButton';
 import CloseIcon from '@mui/icons-material/Close';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
@@ -172,19 +174,27 @@ const CreateProperty: React.FC = () => {
           }}
         >
           <Box sx={{ px: 3, pt: 3, pb: 1.5, position: 'relative', flexShrink: 0 }}>
-            <Typography sx={{ fontFamily: ZPC_FONTS.display, fontWeight: 700, fontSize: 22, color: '#0A1210' }}>
-              Add New Property
-            </Typography>
-            <Typography sx={{ color: '#6B7280', fontSize: 13.5, mt: 0.5 }}>
-              Provide details to list your property on ZPC
-            </Typography>
-            <IconButton
-              onClick={() => navigate(-1)}
-              sx={{ position: 'absolute', top: 16, right: 12, color: '#9CA3AF' }}
-              aria-label="Close"
-            >
-              <CloseIcon />
-            </IconButton>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, mb: 1, pr: 5 }}>
+              <ZpcNavLogo size={40} animateStroke={false} ink="dark" onLightBg />
+              <Box>
+                <Typography sx={{ fontFamily: ZPC_FONTS.display, fontWeight: 700, fontSize: 22, color: '#0A1210' }}>
+                  Add New Property
+                </Typography>
+                <Typography sx={{ color: '#6B7280', fontSize: 13.5, mt: 0.25 }}>
+                  Provide details to list your property on ZPC
+                </Typography>
+              </Box>
+            </Box>
+            <Box sx={{ position: 'absolute', top: 12, right: 8, display: 'flex', alignItems: 'center', gap: 0.25 }}>
+              <HeaderLogoutButton ink="dark" size="small" />
+              <IconButton
+                onClick={() => navigate(-1)}
+                sx={{ color: '#9CA3AF' }}
+                aria-label="Close"
+              >
+                <CloseIcon />
+              </IconButton>
+            </Box>
           </Box>
 
           <Box sx={{ px: 3, pb: 2, display: 'grid', gap: 2.25, flex: 1, minHeight: 0, overflow: 'auto', ...THIN_CREAM_SCROLLBAR }}>

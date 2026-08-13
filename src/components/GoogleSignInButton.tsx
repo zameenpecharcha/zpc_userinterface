@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Box, IconButton, Tooltip, Typography } from '@mui/material';
+import { Box, CircularProgress, IconButton, Tooltip, Typography } from '@mui/material';
 
 type GoogleButtonText = 'signin_with' | 'signup_with' | 'continue_with';
 
 interface GoogleSignInButtonProps {
   onCredential: (credential: string) => void;
   disabled?: boolean;
+  /** Show spinner while Google auth / backend sign-in is in progress. */
+  loading?: boolean;
   text?: GoogleButtonText;
   /** Full-width labeled Google button vs compact circular icon. */
   variant?: 'full' | 'icon';
@@ -19,6 +21,11 @@ declare global {
           initialize: (options: {
             client_id: string;
             callback: (response: { credential?: string }) => void;
+            cancel_on_tap_outside?: boolean;
+            auto_select?: boolean;
+            /** Prefer classic OAuth button flow over FedCM when available. */
+            use_fedcm_for_prompt?: boolean;
+            error_callback?: (error: { type?: string; message?: string } | string) => void;
           }) => void;
           renderButton: (
             parent: HTMLElement,
@@ -39,6 +46,8 @@ declare global {
 
 const GOOGLE_SCRIPT_ID = 'google-identity-services-script';
 const GOOGLE_SCRIPT_SRC = 'https://accounts.google.com/gsi/client';
+/** Max time to wait for Google account picker before clearing local spinner. */
+const PICKER_TIMEOUT_MS = 8000;
 
 /** Official multicolor Google "G" mark — always visible (GIS iframe often clips in small circles). */
 const GoogleGIcon: React.FC<{ size?: number }> = ({ size = 22 }) => (
@@ -93,21 +102,57 @@ const loadGoogleScript = () =>
     document.head.appendChild(script);
   });
 
+const blurActiveIfInside = (root: HTMLElement | null) => {
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && root?.contains(active)) {
+    active.blur();
+  }
+};
+
 const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
   onCredential,
   disabled = false,
+  loading = false,
   text = 'continue_with',
   variant = 'full',
 }) => {
   const buttonRef = useRef<HTMLDivElement | null>(null);
+  const hostRef = useRef<HTMLDivElement | null>(null);
   const onCredentialRef = useRef(onCredential);
   const [scriptError, setScriptError] = useState('');
+  const [pickerError, setPickerError] = useState('');
+  /** True briefly after user opens Google UI until parent `loading` takes over, cancel, or timeout. */
+  const [awaitingPicker, setAwaitingPicker] = useState(false);
   const clientId = process.env.REACT_APP_GOOGLE_CLIENT_ID;
   const isIcon = variant === 'icon';
+  const showLoading = loading || awaitingPicker;
 
   useEffect(() => {
     onCredentialRef.current = onCredential;
   }, [onCredential]);
+
+  useEffect(() => {
+    if (loading) {
+      setAwaitingPicker(false);
+      setPickerError('');
+      blurActiveIfInside(hostRef.current);
+    }
+  }, [loading]);
+
+  // If Google never returns a credential after the callback started our local wait, clear it.
+  useEffect(() => {
+    if (!awaitingPicker || loading) return undefined;
+
+    const timer = window.setTimeout(() => {
+      setAwaitingPicker(false);
+      blurActiveIfInside(hostRef.current);
+      setPickerError(
+        'Google sign-in did not complete. Add http://localhost:3000 to Authorized JavaScript origins for your Google OAuth client.'
+      );
+    }, PICKER_TIMEOUT_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [awaitingPicker, loading]);
 
   useEffect(() => {
     if (!clientId || !buttonRef.current) return;
@@ -119,10 +164,28 @@ const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
         buttonRef.current.innerHTML = '';
         window.google.accounts.id.initialize({
           client_id: clientId,
+          auto_select: false,
+          cancel_on_tap_outside: true,
+          // Avoid FedCM path that often fails with "origin not allowed" for local/dev.
+          use_fedcm_for_prompt: false,
           callback: (response) => {
             if (response.credential) {
+              setPickerError('');
+              setAwaitingPicker(true);
               onCredentialRef.current(response.credential);
+            } else {
+              setAwaitingPicker(false);
+              setPickerError('Google did not return a sign-in credential. Please try again.');
             }
+          },
+          error_callback: (err) => {
+            setAwaitingPicker(false);
+            const msg =
+              typeof err === 'string'
+                ? err
+                : err?.message || err?.type || 'Google sign-in failed';
+            setPickerError(String(msg));
+            blurActiveIfInside(hostRef.current);
           },
         });
         window.google.accounts.id.renderButton(
@@ -185,66 +248,126 @@ const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
 
   if (isIcon) {
     // Always paint our Google "G"; GIS button sits transparent on top for the real click/login.
+    // Do NOT put aria-hidden on the GIS host while its iframe can receive focus (browser warning + stuck UX).
     return (
-      <Tooltip title="Continue with Google">
-        <Box
-          sx={{
-            position: 'relative',
-            width: 48,
-            height: 48,
-            borderRadius: '50%',
-            overflow: 'hidden',
-            bgcolor: '#fff',
-            border: '1px solid rgba(0,0,0,0.12)',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-            opacity: disabled ? 0.55 : 1,
-            pointerEvents: disabled ? 'none' : 'auto',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-          }}
-        >
-          <GoogleGIcon size={22} />
+      <Box ref={hostRef} sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <Tooltip title={showLoading ? 'Signing in with Google…' : 'Continue with Google'}>
           <Box
-            ref={buttonRef}
-            aria-hidden
             sx={{
-              position: 'absolute',
-              inset: 0,
-              opacity: 0.02,
-              cursor: 'pointer',
+              position: 'relative',
+              width: 48,
+              height: 48,
+              borderRadius: '50%',
               overflow: 'hidden',
-              '& > div': {
-                width: '100% !important',
-                height: '100% !important',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              },
-              '& iframe': {
-                width: '48px !important',
-                height: '48px !important',
-                minWidth: '48px !important',
-              },
+              bgcolor: '#fff',
+              border: '1px solid rgba(0,0,0,0.12)',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+              opacity: disabled && !showLoading ? 0.55 : 1,
+              pointerEvents: disabled || showLoading ? 'none' : 'auto',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
             }}
-          />
-        </Box>
-      </Tooltip>
+          >
+            {showLoading ? (
+              <CircularProgress size={22} thickness={4} sx={{ color: '#4285F4' }} />
+            ) : (
+              <GoogleGIcon size={22} />
+            )}
+            <Box
+              ref={buttonRef}
+              // Visually hide GIS chrome; never aria-hide while iframe can hold focus.
+              sx={{
+                position: 'absolute',
+                inset: 0,
+                opacity: showLoading ? 0 : 0.02,
+                pointerEvents: showLoading ? 'none' : 'auto',
+                cursor: 'pointer',
+                overflow: 'hidden',
+                ...(showLoading ? { visibility: 'hidden' as const } : {}),
+                '& > div': {
+                  width: '100% !important',
+                  height: '100% !important',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                },
+                '& iframe': {
+                  width: '48px !important',
+                  height: '48px !important',
+                  minWidth: '48px !important',
+                },
+              }}
+            />
+          </Box>
+        </Tooltip>
+        {pickerError ? (
+          <Typography
+            sx={{
+              mt: 1,
+              maxWidth: 280,
+              textAlign: 'center',
+              fontSize: 11,
+              fontWeight: 600,
+              color: '#B42318',
+              lineHeight: 1.35,
+            }}
+          >
+            {pickerError}
+          </Typography>
+        ) : null}
+      </Box>
     );
   }
 
   return (
     <Box
+      ref={hostRef}
       sx={{
         width: '100%',
-        opacity: disabled ? 0.6 : 1,
-        pointerEvents: disabled ? 'none' : 'auto',
+        position: 'relative',
+        opacity: disabled && !showLoading ? 0.6 : 1,
+        pointerEvents: disabled || showLoading ? 'none' : 'auto',
         '& > div': { width: '100% !important' },
         '& iframe': { width: '100% !important' },
       }}
     >
-      <Box ref={buttonRef} sx={{ width: '100%', display: 'flex', justifyContent: 'center' }} />
+      {showLoading && (
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 2,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 1,
+            bgcolor: 'rgba(255,255,255,0.92)',
+            borderRadius: 1,
+            border: '1px solid rgba(0,0,0,0.12)',
+          }}
+        >
+          <CircularProgress size={18} thickness={4} sx={{ color: '#4285F4' }} />
+          <Typography sx={{ fontSize: 13, fontWeight: 600, color: '#3A4540' }}>
+            Signing in with Google…
+          </Typography>
+        </Box>
+      )}
+      <Box
+        ref={buttonRef}
+        sx={{
+          width: '100%',
+          display: 'flex',
+          justifyContent: 'center',
+          ...(showLoading ? { visibility: 'hidden' as const } : {}),
+        }}
+      />
+      {pickerError ? (
+        <Typography sx={{ mt: 1, textAlign: 'center', fontSize: 12, fontWeight: 600, color: '#B42318' }}>
+          {pickerError}
+        </Typography>
+      ) : null}
     </Box>
   );
 };

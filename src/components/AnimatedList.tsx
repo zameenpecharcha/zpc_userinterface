@@ -50,7 +50,9 @@ export const AnimatedList: React.FC<AnimatedListProps> = ({
         overflowX: 'hidden',
         px: 0.5,
         py: 0.5,
-        scrollbarWidth: 'thin',
+        scrollbarWidth: 'none',
+        msOverflowStyle: 'none',
+        '&::-webkit-scrollbar': { display: 'none', width: 0, height: 0 },
       }}
     >
       {itemsToShow.map((item, i) => {

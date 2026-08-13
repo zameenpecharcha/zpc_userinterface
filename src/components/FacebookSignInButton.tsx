@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Button, IconButton, Tooltip, Typography } from '@mui/material';
+import { Box, Button, CircularProgress, IconButton, Tooltip, Typography } from '@mui/material';
 import FacebookIcon from '@mui/icons-material/Facebook';
 
 interface FacebookSignInButtonProps {
   onAccessToken: (accessToken: string) => void;
   disabled?: boolean;
+  /** Show spinner while Facebook auth / backend sign-in is in progress. */
+  loading?: boolean;
   label?: string;
   /** Full-width labeled button vs compact circular icon. */
   variant?: 'full' | 'icon';
@@ -74,18 +76,31 @@ const loadFacebookScript = (appId: string) =>
 const FacebookSignInButton: React.FC<FacebookSignInButtonProps> = ({
   onAccessToken,
   disabled = false,
+  loading = false,
   label = 'Continue with Facebook',
   variant = 'full',
 }) => {
   const onAccessTokenRef = useRef(onAccessToken);
   const [ready, setReady] = useState(false);
   const [scriptError, setScriptError] = useState('');
+  const [awaitingPicker, setAwaitingPicker] = useState(false);
   const appId = process.env.REACT_APP_FACEBOOK_APP_ID;
   const isIcon = variant === 'icon';
+  const showLoading = loading || awaitingPicker;
 
   useEffect(() => {
     onAccessTokenRef.current = onAccessToken;
   }, [onAccessToken]);
+
+  useEffect(() => {
+    if (loading) setAwaitingPicker(false);
+  }, [loading]);
+
+  useEffect(() => {
+    if (!awaitingPicker || loading) return undefined;
+    const timer = window.setTimeout(() => setAwaitingPicker(false), 12000);
+    return () => window.clearTimeout(timer);
+  }, [awaitingPicker, loading]);
 
   useEffect(() => {
     if (!appId) return;
@@ -110,18 +125,48 @@ const FacebookSignInButton: React.FC<FacebookSignInButtonProps> = ({
       return;
     }
 
+    setScriptError('');
+    setAwaitingPicker(true);
     window.FB.login(
       (response) => {
         const accessToken = response.authResponse?.accessToken;
         if (accessToken) {
           onAccessTokenRef.current(accessToken);
         } else {
+          setAwaitingPicker(false);
           setScriptError('Facebook sign-in was cancelled');
         }
       },
       { scope: 'email,public_profile' }
     );
   };
+
+  const iconButton = (
+    <Tooltip title={showLoading ? 'Signing in with Facebook…' : scriptError || 'Continue with Facebook'}>
+      <span>
+        <IconButton
+          disabled={disabled || !ready || showLoading}
+          onClick={handleClick}
+          aria-label="Continue with Facebook"
+          sx={{
+            width: 48,
+            height: 48,
+            bgcolor: '#1877F2',
+            color: '#fff',
+            boxShadow: '0 2px 8px rgba(24,119,242,0.35)',
+            '&:hover': { bgcolor: '#166FE5' },
+            '&.Mui-disabled': { bgcolor: '#1877F2', color: '#fff', opacity: showLoading ? 1 : 0.55 },
+          }}
+        >
+          {showLoading ? (
+            <CircularProgress size={22} thickness={4} sx={{ color: '#fff' }} />
+          ) : (
+            <FacebookIcon sx={{ fontSize: 26 }} />
+          )}
+        </IconButton>
+      </span>
+    </Tooltip>
+  );
 
   if (!appId) {
     if (isIcon) {
@@ -142,72 +187,49 @@ const FacebookSignInButton: React.FC<FacebookSignInButtonProps> = ({
     );
   }
 
-  if (scriptError && isIcon) {
-    return (
-      <Tooltip title={scriptError}>
-        <span>
-          <IconButton
-            disabled={disabled || !ready}
-            onClick={handleClick}
-            sx={{
-              width: 48,
-              height: 48,
-              bgcolor: '#1877F2',
-              color: '#fff',
-              opacity: 0.7,
-              '&:hover': { bgcolor: '#166FE5' },
-            }}
-            aria-label="Continue with Facebook"
-          >
-            <FacebookIcon />
-          </IconButton>
-        </span>
-      </Tooltip>
-    );
-  }
-
   if (isIcon) {
-    return (
-      <Tooltip title="Continue with Facebook">
-        <span>
-          <IconButton
-            disabled={disabled || !ready}
-            onClick={handleClick}
-            aria-label="Continue with Facebook"
-            sx={{
-              width: 48,
-              height: 48,
-              bgcolor: '#1877F2',
-              color: '#fff',
-              boxShadow: '0 2px 8px rgba(24,119,242,0.35)',
-              '&:hover': { bgcolor: '#166FE5' },
-              '&.Mui-disabled': { bgcolor: '#1877F2', color: '#fff', opacity: 0.55 },
-            }}
-          >
-            <FacebookIcon sx={{ fontSize: 26 }} />
-          </IconButton>
-        </span>
-      </Tooltip>
-    );
+    return iconButton;
   }
 
   return (
-    <Button
-      fullWidth
-      variant="outlined"
-      disabled={disabled || !ready}
-      onClick={handleClick}
-      sx={{
-        textTransform: 'none',
-        py: 1.25,
-        bgcolor: '#1877F2',
-        color: '#fff',
-        borderColor: '#1877F2',
-        '&:hover': { bgcolor: '#166FE5', borderColor: '#166FE5' },
-      }}
-    >
-      {scriptError || label}
-    </Button>
+    <Box sx={{ position: 'relative', width: '100%' }}>
+      {showLoading && (
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 2,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 1,
+            bgcolor: 'rgba(24,119,242,0.92)',
+            borderRadius: 1,
+          }}
+        >
+          <CircularProgress size={18} thickness={4} sx={{ color: '#fff' }} />
+          <Typography sx={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>
+            Signing in with Facebook…
+          </Typography>
+        </Box>
+      )}
+      <Button
+        fullWidth
+        variant="outlined"
+        disabled={disabled || !ready || showLoading}
+        onClick={handleClick}
+        sx={{
+          textTransform: 'none',
+          py: 1.25,
+          bgcolor: '#1877F2',
+          color: '#fff',
+          borderColor: '#1877F2',
+          '&:hover': { bgcolor: '#166FE5', borderColor: '#166FE5' },
+        }}
+      >
+        {scriptError || label}
+      </Button>
+    </Box>
   );
 };
 

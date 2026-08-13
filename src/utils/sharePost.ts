@@ -1,3 +1,5 @@
+import { collapseMentionTokens } from './mentions';
+
 export type ShareablePost = {
   id: string | number;
   title?: string | null;
@@ -11,7 +13,7 @@ export function buildPostShareUrl(postId: string | number): string {
 
 export function buildPostShareText(post: ShareablePost, url: string): string {
   const title = (post.title || '').trim();
-  const content = (post.content || '')
+  const content = collapseMentionTokens(post.content || '')
     .trim()
     .replace(/\s+/g, ' ');
   const preview = content.length > 160 ? `${content.slice(0, 157)}...` : content;

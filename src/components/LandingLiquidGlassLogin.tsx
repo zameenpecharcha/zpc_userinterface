@@ -344,6 +344,9 @@ const LandingLiquidGlassLogin: React.FC<Props> = ({
                 </Box>
                 <SocialAuthIconsRow
                   disabled={busy}
+                  googleLoading={googleSigningIn}
+                  facebookLoading={facebookSigningIn}
+                  mobileLoading={mobileLoading}
                   tone="dark"
                   onGoogleCredential={onGoogleCredential}
                   onFacebookAccessToken={onFacebookAccessToken}

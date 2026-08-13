@@ -111,6 +111,8 @@ export const SEARCH_POSTS = gql`
       likeCount
       commentCount
       isLiked
+      isPinned
+      pinnedAt
       media {
         id
         mediaType

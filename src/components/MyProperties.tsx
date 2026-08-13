@@ -26,6 +26,8 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@apollo/client';
 import { MY_PROPERTIES } from '../graphql/property';
 import { Property } from '../types/property';
+import { ZpcNavLogo } from './brand/ZpcNavLogo';
+import HeaderLogoutButton from './HeaderLogoutButton';
 import { MATTE_SURFACE, MATTE_HEADER, PAGE_ATMOSPHERE } from '../theme/surfaces';
 
 const statusColor = (status: string) => {
@@ -79,14 +81,16 @@ const MyProperties: React.FC = () => {
   return (
     <Box sx={{ minHeight: '100vh', ...PAGE_ATMOSPHERE }}>
       <AppBar position="static" elevation={0} sx={{ ...MATTE_HEADER }}>
-        <Toolbar>
-          <IconButton onClick={() => navigate('/home')} sx={{ mr: 2, color: '#374151' }}>
+        <Toolbar sx={{ gap: 1 }}>
+          <ZpcNavLogo size={40} animateStroke={false} />
+          <IconButton onClick={() => navigate('/home')} sx={{ color: '#EBE6D4' }}>
             <ArrowBackIcon />
           </IconButton>
-          <Typography variant="h6" sx={{ flex: 1, fontWeight: 600 }}>My Properties</Typography>
+          <Typography variant="h6" sx={{ flex: 1, fontWeight: 600, color: '#EBE6D4' }}>My Properties</Typography>
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => navigate('/create-property')}>
             Create Property
           </Button>
+          <HeaderLogoutButton ink="light" />
         </Toolbar>
       </AppBar>
 

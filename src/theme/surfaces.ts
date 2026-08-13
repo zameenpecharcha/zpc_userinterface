@@ -2,32 +2,14 @@
 
 import { ZPC_COLORS, ZPC_GLASS } from './zpcTheme';
 
-/** Thin cream/forest scrollbar for modal bodies (Create Post / Property). */
+/** Invisible scrollbars (scroll still works) — used by modal bodies. */
 export const THIN_CREAM_SCROLLBAR = {
-  scrollbarWidth: 'thin' as const,
-  scrollbarColor: 'rgba(22,48,42,0.35) rgba(235,230,212,0.55)',
+  scrollbarWidth: 'none' as const,
+  msOverflowStyle: 'none' as const,
   '&::-webkit-scrollbar': {
-    width: 8,
-    height: 8,
-  },
-  '&::-webkit-scrollbar-track': {
-    marginTop: 8,
-    marginBottom: 8,
-    background: 'rgba(235,230,212,0.45)',
-    borderRadius: 999,
-  },
-  '&::-webkit-scrollbar-thumb': {
-    background: 'rgba(22,48,42,0.32)',
-    borderRadius: 999,
-    border: '2px solid transparent',
-    backgroundClip: 'padding-box',
-    '&:hover': {
-      background: 'rgba(22,48,42,0.48)',
-      backgroundClip: 'padding-box',
-    },
-  },
-  '&::-webkit-scrollbar-corner': {
-    background: 'transparent',
+    width: 0,
+    height: 0,
+    display: 'none',
   },
 } as const;
 
