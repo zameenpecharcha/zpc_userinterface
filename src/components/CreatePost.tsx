@@ -34,12 +34,22 @@ import {
   LocationOn as LocationIcon,
   CloudUpload as CloudUploadIcon,
   Image as ImageIcon,
-  VideoFile as VideoIcon
+  VideoFile as VideoIcon,
+  Savings as SavingsIcon,
+  TrendingUp as TrendingUpIcon,
+  RateReview as RateReviewIcon,
+  BarChart as BarChartIcon,
+  Balance as BalanceIcon,
+  AccountBalance as AccountBalanceIcon,
+  Construction as ConstructionIcon,
+  VpnKey as VpnKeyIcon,
+  HowToVote as HowToVoteIcon,
 } from '@mui/icons-material';
 import LocationAutocomplete from './LocationAutocomplete';
 import { MATTE_SURFACE, MATTE_INSET, THIN_CREAM_SCROLLBAR } from '../theme/surfaces';
 import { expandPrettyMentions, getTextareaCaretOffset } from '../utils/mentions';
 import { ZPC_MOTION } from '../theme/motion';
+import { POST_CATEGORIES, toBackendPostType, withCategoryPrefix } from '../constants/postCategories';
 
 const interFont = {
   fontFamily: "'Source Serif 4', 'Source Serif Pro', Georgia, serif",
@@ -84,32 +94,27 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
     { fetchPolicy: 'network-only', nextFetchPolicy: 'cache-first', errorPolicy: 'all' }
   );
 
-  const postTypes = [
-    {
-      id: 'buy-sell',
-      title: 'Buy/Sell',
-      icon: <HomeIcon sx={{ fontSize: 'inherit', color: '#16302A' }} />,
-      description: 'Buy or sell properties'
-    },
-    {
-      id: 'suggestion',
-      title: 'Suggestion',
-      icon: <LightbulbIcon sx={{ fontSize: 'inherit', color: '#5F8670' }} />,
-      description: 'Share your ideas'
-    },
-    {
-      id: 'discussion',
-      title: 'Discussion',
-      icon: <ForumIcon sx={{ fontSize: 'inherit', color: '#A89F84' }} />,
-      description: 'Start a conversation'
-    },
-    {
-      id: 'flag-area',
-      title: 'Flag an Area',
-      icon: <FlagIcon sx={{ fontSize: 'inherit', color: '#16302A' }} />,
-      description: 'Report issues'
-    }
-  ];
+  const categoryIcons: Record<string, React.ReactNode> = {
+    'buy-sell': <HomeIcon sx={{ fontSize: 'inherit', color: '#16302A' }} />,
+    'price-check': <SavingsIcon sx={{ fontSize: 'inherit', color: '#5F8670' }} />,
+    investment: <TrendingUpIcon sx={{ fontSize: 'inherit', color: '#A89F84' }} />,
+    discussion: <ForumIcon sx={{ fontSize: 'inherit', color: '#16302A' }} />,
+    suggestion: <LightbulbIcon sx={{ fontSize: 'inherit', color: '#5F8670' }} />,
+    'property-review': <RateReviewIcon sx={{ fontSize: 'inherit', color: '#A89F84' }} />,
+    'market-update': <BarChartIcon sx={{ fontSize: 'inherit', color: '#16302A' }} />,
+    'flag-area': <FlagIcon sx={{ fontSize: 'inherit', color: '#5F8670' }} />,
+    'legal-docs': <BalanceIcon sx={{ fontSize: 'inherit', color: '#A89F84' }} />,
+    'loan-finance': <AccountBalanceIcon sx={{ fontSize: 'inherit', color: '#16302A' }} />,
+    construction: <ConstructionIcon sx={{ fontSize: 'inherit', color: '#5F8670' }} />,
+    'rent-rental': <VpnKeyIcon sx={{ fontSize: 'inherit', color: '#A89F84' }} />,
+    'locality-review': <LocationIcon sx={{ fontSize: 'inherit', color: '#16302A' }} />,
+    'create-poll': <HowToVoteIcon sx={{ fontSize: 'inherit', color: '#5F8670' }} />,
+  };
+
+  const postTypes = POST_CATEGORIES.map((category) => ({
+    ...category,
+    icon: categoryIcons[category.id],
+  }));
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -250,8 +255,9 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
       mentionedPropertyNamesRef.current,
     );
     const postData = {
-      type: selectedType,
-      title: title.trim(),
+      type: toBackendPostType(selectedType),
+      categoryId: selectedType,
+      title: withCategoryPrefix(selectedType, title.trim()),
       content,
       location: location.trim(),
       latitude,
@@ -314,7 +320,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
         sx={{
           ...MATTE_SURFACE,
           borderRadius: 3,
-          width: { xs: '100%', sm: '90%', md: '900px', lg: '900px' },
+          width: { xs: '100%', sm: '94%', md: '960px' },
           maxHeight: '90vh',
           overflow: 'hidden',
           outline: 'none',
@@ -354,7 +360,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
                 fontWeight: 400
               }}
             >
-              Share with your community - buy, sell, discuss, or flag areas
+              Share with your community — listings, reviews, market updates, and more
             </Typography>
           </Box>
           <IconButton 
@@ -389,7 +395,11 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
             <Box
               sx={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+                gridTemplateColumns: {
+                  xs: 'repeat(2, minmax(0, 1fr))',
+                  sm: 'repeat(3, minmax(0, 1fr))',
+                  md: 'repeat(4, minmax(0, 1fr))',
+                },
                 gap: { xs: 1, sm: 1.5 },
               }}
             >
@@ -463,7 +473,11 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
             </Typography>
             <TextField
               fullWidth
-              placeholder="Enter a clear, descriptive title"
+              placeholder={
+                selectedType === 'create-poll'
+                  ? 'Write a clear poll question'
+                  : 'Enter a clear, descriptive title'
+              }
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               sx={{
@@ -512,7 +526,15 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
               fullWidth
               multiline
               rows={4}
-              placeholder="Provide details about your post... Type @ to mention a user or property"
+              placeholder={
+                selectedType === 'create-poll'
+                  ? 'Ask a question the community can vote on… Type @ to mention a user or property'
+                  : selectedType === 'property-review'
+                    ? 'Share what you liked (and what you did not) about this home… Type @ to mention a user or property'
+                    : selectedType === 'locality-review'
+                      ? 'What is this neighborhood like to live in? Type @ to mention a user or property'
+                      : 'Provide details about your post... Type @ to mention a user or property'
+              }
               value={description}
               onChange={handleDescriptionChange}
               inputRef={descriptionRef}

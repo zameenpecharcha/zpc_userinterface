@@ -7,6 +7,7 @@ import { PostService } from '../services/postService';
 import { useAuth } from '../contexts/AuthContext';
 import { renderMentionContent, nameInitials, stringToColor, collapseMentionTokens, expandPrettyMentions, mentionMapsFromTokens } from '../utils/mentions';
 import { formatDateTime, formatRelativeTime } from '../utils/datetime';
+import { postCategoryLabel, categoryFromTitle, stripCategoryPrefix, withCategoryPrefix, POST_CATEGORIES } from '../constants/postCategories';
 import CommentListItem from './comments/CommentListItem';
 import CommentComposer from './comments/CommentComposer';
 import { normalizeReactionEmoji } from './comments/commentReactions';
@@ -361,20 +362,15 @@ const Post = memo(({
     longitude: (post as any).longitude,
   });
 
-  const title = (post.title || '').trim();
+  const rawTitle = (post.title || '').trim();
+  const title = stripCategoryPrefix(rawTitle);
   const body = (post.content || '').trim();
   const titleRedundant =
     !!title &&
     (body.toLowerCase().startsWith(title.toLowerCase()) || title.toLowerCase() === body.toLowerCase());
 
-  // GraphQL `propertyType` is actually post content type (TEXT/IMAGE/VIDEO/…).
-  // Only show real listing-style labels, never the raw media/content type.
-  const POST_CONTENT_TYPES = new Set(['TEXT', 'IMAGE', 'VIDEO', 'POLL', 'REVIEW', 'PROPERTY']);
-  const rawPropertyType = (post.propertyType || '').trim();
-  const listingLabel =
-    rawPropertyType && !POST_CONTENT_TYPES.has(rawPropertyType.toUpperCase())
-      ? rawPropertyType
-      : '';
+  // GraphQL `propertyType` is the post format (TEXT/IMAGE/…). Category is kept in the title prefix.
+  const listingLabel = postCategoryLabel(post.propertyType) || categoryFromTitle(rawTitle);
   const metaBits = [
     post.location ? String(post.location) : '',
     listingLabel,
@@ -1474,7 +1470,7 @@ const Home = () => {
 
   const handleEditPost = useCallback((post: any) => {
     setEditPost(post);
-    setEditTitle(post.title || '');
+    setEditTitle(stripCategoryPrefix(post.title || ''));
     setEditContent(collapseMentionTokens(post.content || ''));
   }, []);
 
@@ -1488,10 +1484,15 @@ const Home = () => {
         maps.userNameToId,
         maps.propertyNameToId,
       );
+      const existingLabel = categoryFromTitle(editPost.title);
+      const category = POST_CATEGORIES.find((item) => item.title === existingLabel);
+      const nextTitle = category
+        ? withCategoryPrefix(category.id, editTitle.trim())
+        : editTitle.trim();
       const { data: result } = await updatePostMutation({
         variables: {
           postId: String(editPost.id),
-          title: editTitle.trim(),
+          title: nextTitle,
           content: expandedContent,
         },
       });
@@ -1529,7 +1530,7 @@ const Home = () => {
     if ((post as any)?.allowShare === false) return;
     setSharePostTarget({
       id: post.id,
-      title: post.title,
+      title: stripCategoryPrefix(post.title || ''),
       content: post.content,
     });
   }, []);
