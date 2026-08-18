@@ -42,6 +42,7 @@ import { CREATE_DM_ROOM_MUTATION } from '../graphql/chat';
 import { useAuth } from '../contexts/AuthContext';
 import { renderMentionContent, nameInitials, stringToColor, avatarPlaceholderIndex, collapseMentionTokens, expandPrettyMentions, mentionMapsFromTokens } from '../utils/mentions';
 import { formatDateTime, formatRelativeTime } from '../utils/datetime';
+import { postCategoryLabel, categoryFromTitle, stripCategoryPrefix, withCategoryPrefix, POST_CATEGORIES } from '../constants/postCategories';
 import CommentListItem from './comments/CommentListItem';
 import CommentComposer from './comments/CommentComposer';
 import { nestComments } from '../utils/nestComments';
@@ -2159,18 +2160,16 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                                     user?.profilePhoto ||
                                     undefined;
                                 const canManage = currentUserId != null && String(currentUserId) === String((post as any).userId);
-                                const title = String((post as any).title || '').trim();
+                                const rawTitle = String((post as any).title || '').trim();
+                                const title = stripCategoryPrefix(rawTitle);
                                 const body = String((post as any).content || '').trim();
                                 const titleRedundant =
                                     !!title &&
                                     (body.toLowerCase().startsWith(title.toLowerCase()) ||
                                         title.toLowerCase() === body.toLowerCase());
-                                const POST_CONTENT_TYPES = new Set(['TEXT', 'IMAGE', 'VIDEO', 'POLL', 'REVIEW', 'PROPERTY']);
-                                const rawPropertyType = String((post as any).propertyType || '').trim();
                                 const listingLabel =
-                                    rawPropertyType && !POST_CONTENT_TYPES.has(rawPropertyType.toUpperCase())
-                                        ? rawPropertyType
-                                        : '';
+                                    postCategoryLabel((post as any).propertyType) ||
+                                    categoryFromTitle(rawTitle);
                                 const metaBits = [
                                     (post as any).location ? String((post as any).location) : '',
                                     listingLabel,
@@ -2925,7 +2924,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                 onClick={() => {
                     if (!postMenu) return;
                     setEditPost(postMenu.post);
-                    setEditTitle((postMenu.post as any).title || '');
+                    setEditTitle(stripCategoryPrefix((postMenu.post as any).title || ''));
                     setEditContent(collapseMentionTokens((postMenu.post as any).content || ''));
                     setPostMenu(null);
                 }}
@@ -3031,10 +3030,15 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                                 maps.userNameToId,
                                 maps.propertyNameToId,
                             );
+                            const existingLabel = categoryFromTitle((editPost as any).title);
+                            const category = POST_CATEGORIES.find((item) => item.title === existingLabel);
+                            const nextTitle = category
+                                ? withCategoryPrefix(category.id, editTitle.trim())
+                                : editTitle.trim();
                             const { data: result } = await updatePostMutation({
                                 variables: {
                                     postId,
-                                    title: editTitle.trim(),
+                                    title: nextTitle,
                                     content: expandedContent,
                                 },
                             });
@@ -3042,7 +3046,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                                 setPosts((prev) =>
                                     prev.map((p) =>
                                         String(p.id) === postId
-                                            ? ({ ...p, title: editTitle.trim(), content: expandedContent } as any)
+                                            ? ({ ...p, title: nextTitle, content: expandedContent } as any)
                                             : p
                                     )
                                 );

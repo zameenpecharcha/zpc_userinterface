@@ -38,6 +38,7 @@ import { ZpcNavLogo } from './brand/ZpcNavLogo';
 import HeaderLogoutButton from './HeaderLogoutButton';
 import { nameInitials, stringToColor, collapseMentionTokens } from '../utils/mentions';
 import { parseSearchQuery } from '../utils/searchQuery';
+import { stripCategoryPrefix, categoryFromTitle } from '../constants/postCategories';
 
 const interFont = { fontFamily: "'DM Sans', 'Source Sans 3', system-ui, sans-serif" };
 const displayFont = { fontFamily: "'Source Serif 4', 'Source Serif Pro', Georgia, serif" };
@@ -498,10 +499,11 @@ const SearchPage: React.FC = () => {
           >
             <Typography sx={{ fontSize: 12, color: '#5C675F', mb: 0.35 }}>
               {[p.userFirstName, p.userLastName].filter(Boolean).join(' ')}
+              {categoryFromTitle(p.title) ? ` · ${categoryFromTitle(p.title)}` : ''}
               {p.location ? ` · ${p.location}` : ''}
             </Typography>
             <Typography sx={{ fontWeight: 750, color: '#16302A', fontSize: 15, ...displayFont }}>
-              {p.title || collapseMentionTokens(p.content || '').slice(0, 80) || 'Post'}
+              {stripCategoryPrefix(p.title || '') || collapseMentionTokens(p.content || '').slice(0, 80) || 'Post'}
             </Typography>
             {p.content && (
               <Typography
