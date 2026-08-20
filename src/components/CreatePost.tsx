@@ -57,9 +57,16 @@ interface CreatePostProps {
   onSubmit: (postData: any) => void | Promise<void>;
   loading?: boolean;
   error?: string | null;
+  seed?: {
+    location?: string;
+    latitude?: number | null;
+    longitude?: number | null;
+    propertyId?: string;
+    propertyTitle?: string;
+  };
 }
 
-const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loading = false, error = null }) => {
+const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loading = false, error = null, seed }) => {
   const [selectedType, setSelectedType] = useState<string>('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -259,6 +266,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
       visibility,
       media: uploadedFiles,
       mentionedUserIds: Array.from(mentionedUserIdsRef.current),
+      propertyId: seed?.propertyId || undefined,
     };
     onSubmit(postData);
   };
@@ -279,6 +287,16 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
     setMentionSearch('');
     setMentionStart(null);
   }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    if (seed?.location) setLocation(seed.location);
+    if (seed?.latitude != null) setLatitude(seed.latitude);
+    if (seed?.longitude != null) setLongitude(seed.longitude);
+    if (seed?.propertyId && seed?.propertyTitle) {
+      mentionedPropertyNamesRef.current.set(seed.propertyTitle, seed.propertyId);
+    }
+  }, [open, seed?.location, seed?.latitude, seed?.longitude, seed?.propertyId, seed?.propertyTitle]);
 
   const handleClose = () => {
     if (!loading) {

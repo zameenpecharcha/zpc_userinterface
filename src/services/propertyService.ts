@@ -1,6 +1,7 @@
 import { ApolloClient } from '@apollo/client';
 import {
   CREATE_PROPERTY,
+  UPDATE_PROPERTY,
   GET_PROPERTY,
   ADD_PROPERTY_MEDIA,
   UPDATE_PROPERTY_STATUS,
@@ -13,6 +14,7 @@ import {
 } from '../graphql/property';
 import {
   CreatePropertyInput,
+  UpdatePropertyInput,
   Property,
   PropertyListPage,
   PropertyMediaInput,
@@ -36,6 +38,17 @@ export class PropertyService {
       throw new Error('Failed to create property');
     }
     return data.createProperty;
+  }
+
+  async updateProperty(input: UpdatePropertyInput): Promise<Property> {
+    const { data } = await this.client.mutate({
+      mutation: UPDATE_PROPERTY,
+      variables: { input },
+    });
+    if (!data?.updateProperty) {
+      throw new Error('Failed to update property');
+    }
+    return data.updateProperty;
   }
 
   async getProperty(propertyId: string): Promise<Property | null> {

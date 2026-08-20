@@ -286,6 +286,7 @@ export const CREATE_POST = gql`
     $status: String!
     $latitude: Float
     $longitude: Float
+    $propertyId: String
     $media: [PostMediaInput!]
   ) {
     createPost(
@@ -299,6 +300,7 @@ export const CREATE_POST = gql`
       status: $status
       latitude: $latitude
       longitude: $longitude
+      propertyId: $propertyId
       media: $media
     ) {
       success

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   AppBar,
@@ -38,10 +38,11 @@ import {
   REMOVE_SAVED_PROPERTY,
   SAVE_PROPERTY,
 } from '../graphql/property';
-import { GET_PROPERTY_POSTS } from '../graphql/posts';
+import { GET_PROPERTY_POSTS, CREATE_POST } from '../graphql/posts';
 import { Property, PropertyRating } from '../types/property';
 import { PropertyService } from '../services/propertyService';
 import { useAuth } from '../contexts/AuthContext';
+import CreatePost from './CreatePost';
 import { MATTE_SURFACE, MATTE_HEADER, PAGE_ATMOSPHERE, MATTE_INSET } from '../theme/surfaces';
 import ShareSymbol from './icons/ShareSymbol';
 import { ZpcNavLogo } from './brand/ZpcNavLogo';
@@ -52,6 +53,7 @@ import { postCategoryLabel, categoryFromTitle } from '../constants/postCategorie
 
 const COVER_FALLBACK =
   'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=1400&h=420&fit=crop';
+const API_GATEWAY_URL = (process.env.REACT_APP_API_GATEWAY_URL || 'http://localhost:8080').replace(/\/$/, '');
 
 const CARD_RADIUS = 2;
 const interFont = {
@@ -70,6 +72,9 @@ const PropertyPage: React.FC = () => {
   const propertyService = useMemo(() => new PropertyService(client), [client]);
 
   const [saved, setSaved] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [cpSubmitting, setCpSubmitting] = useState(false);
+  const [cpError, setCpError] = useState<string | null>(null);
   const [ratingDialogOpen, setRatingDialogOpen] = useState(false);
   const [ratingValue, setRatingValue] = useState<number | null>(null);
   const [ratingTitle, setRatingTitle] = useState('');
@@ -95,6 +100,7 @@ const PropertyPage: React.FC = () => {
     data: postsData,
     loading: postsLoading,
     fetchMore: fetchMorePosts,
+    refetch: refetchPosts,
   } = useQuery(GET_PROPERTY_POSTS, {
     variables: { propertyId: propertyId || '', page: 1, limit: 8 },
     skip: !propertyId,
@@ -105,6 +111,7 @@ const PropertyPage: React.FC = () => {
   const [saveProperty] = useMutation(SAVE_PROPERTY);
   const [removeSavedProperty] = useMutation(REMOVE_SAVED_PROPERTY);
   const [createPropertyRating] = useMutation(CREATE_PROPERTY_RATING);
+  const [createPostMutation] = useMutation(CREATE_POST);
 
   useEffect(() => {
     if (propertyId && user?.id) {
@@ -171,12 +178,105 @@ const PropertyPage: React.FC = () => {
       } else {
         await saveProperty({ variables: { propertyId } });
         setSaved(true);
-        setSnackbar({ open: true, message: 'Property saved', severity: 'success' });
+        setSnackbar({ open: true, message: 'Saved. Open Saved properties from the profile menu.', severity: 'success' });
       }
     } catch {
       setSnackbar({ open: true, message: 'Failed to update saved status', severity: 'error' });
     }
   };
+
+  const handleCreatePost = useCallback(async (postData: any) => {
+    if (!user?.id) {
+      setCpError('You must be signed in to create a post.');
+      return;
+    }
+    setCpError(null);
+    setCpSubmitting(true);
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('No authorization token found. Please sign in again.');
+
+      const uploadedMedia: { name: string; url: string; contentType: string }[] = [];
+      if (postData.media && postData.media.length > 0) {
+        for (const file of postData.media) {
+          const qs = new URLSearchParams({
+            fileName: file.name,
+            contentType: file.type || 'application/octet-stream',
+          }).toString();
+          const presignRes = await fetch(`${API_GATEWAY_URL}/api/v1/uploads/presign-post-media?${qs}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (!presignRes.ok) {
+            const errorText = await presignRes.text();
+            throw new Error(`Failed to get upload URL: ${presignRes.status} ${errorText}`);
+          }
+          const { url, publicUrl } = await presignRes.json();
+          if (!url || !publicUrl) throw new Error('Upload service returned an incomplete response.');
+          const putRes = await fetch(url, {
+            method: 'PUT',
+            headers: { 'Content-Type': file.type || 'application/octet-stream' },
+            body: file,
+          });
+          if (!putRes.ok) {
+            const errorText = await putRes.text();
+            throw new Error(`Failed to upload media: ${putRes.status} ${errorText}`);
+          }
+          uploadedMedia.push({
+            name: file.name,
+            url: publicUrl,
+            contentType: file.type || 'application/octet-stream',
+          });
+        }
+      }
+
+      const { data, errors } = await createPostMutation({
+        variables: {
+          userId: String(user.id),
+          title: postData.title,
+          content: postData.content,
+          visibility: postData.visibility || 'public',
+          propertyType: postData.type,
+          location: postData.location || property?.location || property?.city || '',
+          price: 0,
+          status: 'active',
+          latitude: postData.latitude ?? null,
+          longitude: postData.longitude ?? null,
+          propertyId: propertyId || postData.propertyId || null,
+          media:
+            uploadedMedia.length > 0
+              ? uploadedMedia.map((media, index) => ({
+                  mediaType: media.contentType.startsWith('video/') ? 'VIDEO' : 'IMAGE',
+                  mediaOrder: index + 1,
+                  filePath: media.url,
+                  fileName: media.name,
+                  contentType: media.contentType,
+                }))
+              : null,
+        },
+        errorPolicy: 'all',
+      });
+
+      if (errors?.length && !data?.createPost?.success) {
+        throw new Error(errors.map((e: any) => e.message).join('; ') || 'Failed to create post');
+      }
+      if (!data?.createPost?.success) {
+        throw new Error(data?.createPost?.message || 'Failed to create post');
+      }
+
+      setCreateOpen(false);
+      setCpError(null);
+      setSnackbar({ open: true, message: 'Post published', severity: 'success' });
+      try {
+        await refetchPosts();
+      } catch {
+        /* keep the created post even if refresh fails */
+      }
+    } catch (error: any) {
+      setCpError(error?.message || 'Failed to create post');
+    } finally {
+      setCpSubmitting(false);
+    }
+  }, [user?.id, createPostMutation, propertyId, property?.location, property?.city, refetchPosts]);
 
   const handleSubmitRating = async () => {
     if (!ratingValue || !propertyId) return;
@@ -359,6 +459,7 @@ const PropertyPage: React.FC = () => {
                   >
                     Share
                   </Button>
+                  {!isOwner && (
                   <Button
                     variant={saved ? 'outlined' : 'contained'}
                     size={isMobile ? 'small' : 'medium'}
@@ -377,11 +478,12 @@ const PropertyPage: React.FC = () => {
                   >
                     {saved ? 'Saved' : 'Save'}
                   </Button>
+                  )}
                   {isOwner && (
                     <Button
                       variant="outlined"
                       size={isMobile ? 'small' : 'medium'}
-                      onClick={() => setSnackbar({ open: true, message: 'Edit details coming soon', severity: 'info' })}
+                      onClick={() => navigate(`/create-property?edit=${property.id}`)}
                       sx={{
                         borderColor: '#16302A',
                         color: '#16302A',
@@ -484,13 +586,32 @@ const PropertyPage: React.FC = () => {
 
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) 300px' }, gap: 1.5, alignItems: 'start' }}>
             <Box sx={{ minWidth: 0 }}>
-              <Box sx={{ ...MATTE_SURFACE, borderRadius: CARD_RADIUS, px: { xs: 1.5, sm: 2 }, py: 1.5, mb: 1.25 }}>
+              <Box sx={{ ...MATTE_SURFACE, borderRadius: CARD_RADIUS, px: { xs: 1.5, sm: 2 }, py: 1.5, mb: 1.25, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
+                <Box>
                 <Typography sx={{ fontWeight: 750, color: '#16302A', fontSize: 18, ...displayFont }}>
                   Activity
                 </Typography>
                 <Typography sx={{ fontSize: 13, color: '#5C675F', mt: 0.25 }}>
                   Updates for this property
                 </Typography>
+                </Box>
+                {isOwner && (
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => setCreateOpen(true)}
+                    sx={{
+                      textTransform: 'none',
+                      fontWeight: 700,
+                      borderRadius: 999,
+                      borderColor: '#16302A',
+                      color: '#16302A',
+                      flexShrink: 0,
+                    }}
+                  >
+                    Create post
+                  </Button>
+                )}
               </Box>
 
               {postsLoading && propertyPosts.length === 0 ? (
@@ -503,26 +624,11 @@ const PropertyPage: React.FC = () => {
                   <Typography sx={{ color: '#16302A', fontWeight: 750, mb: 0.5, fontSize: 16, ...displayFont }}>
                     No posts yet
                   </Typography>
-                  <Typography sx={{ color: '#5C675F', fontSize: 13.5, mb: isOwner ? 1.5 : 0 }}>
+                  <Typography sx={{ color: '#5C675F', fontSize: 13.5 }}>
                     {isOwner
                       ? "When you share an update for this property, it will show up here."
                       : 'No updates have been posted for this property yet.'}
                   </Typography>
-                  {isOwner && (
-                    <Button
-                      variant="outlined"
-                      onClick={() => navigate('/home')}
-                      sx={{
-                        textTransform: 'none',
-                        fontWeight: 700,
-                        borderRadius: 999,
-                        borderColor: '#16302A',
-                        color: '#16302A',
-                      }}
-                    >
-                      Create post
-                    </Button>
-                  )}
                 </Box>
               ) : (
                 <Stack spacing={1.25}>
@@ -706,6 +812,24 @@ const PropertyPage: React.FC = () => {
           </Box>
         </Box>
       </Box>
+
+      <CreatePost
+        open={createOpen}
+        onClose={() => {
+          if (!cpSubmitting) {
+            setCreateOpen(false);
+            setCpError(null);
+          }
+        }}
+        onSubmit={handleCreatePost}
+        loading={cpSubmitting}
+        error={cpError}
+        seed={{
+          location: property.location || [property.city, property.state].filter(Boolean).join(', '),
+          propertyId: property.id,
+          propertyTitle: property.title,
+        }}
+      />
 
       <Dialog open={ratingDialogOpen} onClose={() => setRatingDialogOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', color: '#16302A' }}>

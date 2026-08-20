@@ -42,6 +42,15 @@ export const CREATE_PROPERTY = gql`
   ${PROPERTY_FIELDS}
 `;
 
+export const UPDATE_PROPERTY = gql`
+  mutation UpdateProperty($input: UpdatePropertyInput!) {
+    updateProperty(input: $input) {
+      ...PropertyFields
+    }
+  }
+  ${PROPERTY_FIELDS}
+`;
+
 export const GET_PROPERTY = gql`
   query GetProperty($propertyId: String!) {
     property(propertyId: $propertyId) {

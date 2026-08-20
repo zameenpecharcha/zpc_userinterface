@@ -2429,6 +2429,9 @@ const Home = () => {
             </Popover>
             <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleClose}>
               <MenuItem onClick={handleProfileClick}>Profile</MenuItem>
+              <MenuItem onClick={() => { handleClose(); navigate('/saved-properties'); }}>
+                Saved properties
+              </MenuItem>
               {canManageProperties() && (
                 <MenuItem onClick={() => { handleClose(); window.location.href = '/create-property'; }}>
                   Create Property
