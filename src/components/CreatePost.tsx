@@ -1,7 +1,4 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { useLazyQuery } from '@apollo/client';
-import { SEARCH_USERS_LIGHT } from '../graphql/user';
-import { PUBLIC_PROPERTIES } from '../graphql/property';
 import {
   Box,
   Typography,
@@ -15,14 +12,10 @@ import {
   FormControl,
   IconButton,
   Divider,
-  Paper,
-  List,
-  ListItemButton,
-  ListItemText,
-  ListSubheader,
-  CircularProgress,
   Alert,
   Grow,
+  CircularProgress,
+  ClickAwayListener,
 } from '@mui/material';
 // Removed Grid import to avoid dependency on Unstable_Grid2; using CSS grid instead
 import {
@@ -46,8 +39,11 @@ import {
   HowToVote as HowToVoteIcon,
 } from '@mui/icons-material';
 import LocationAutocomplete from './LocationAutocomplete';
-import { MATTE_SURFACE, MATTE_INSET, THIN_CREAM_SCROLLBAR } from '../theme/surfaces';
-import { expandPrettyMentions, getTextareaCaretOffset } from '../utils/mentions';
+import MentionPicker, { mentionKeyHandler } from './mentions/MentionPicker';
+import { MATTE_SURFACE, THIN_CREAM_SCROLLBAR } from '../theme/surfaces';
+import { expandPrettyMentions, getTextareaCaretOffset, getActiveMentionQuery } from '../utils/mentions';
+import { useMentionSearch } from '../hooks/useMentionSearch';
+import type { MentionItem } from '../utils/mentionMatch';
 import { ZPC_MOTION } from '../theme/motion';
 import { POST_CATEGORIES, toBackendPostType, withCategoryPrefix } from '../constants/postCategories';
 
@@ -78,21 +74,17 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
   const [mentionSearch, setMentionSearch] = useState('');
   const [mentionStart, setMentionStart] = useState<number | null>(null);
   const [mentionAnchor, setMentionAnchor] = useState({ top: 0, left: 0 });
+  const [mentionIndex, setMentionIndex] = useState(0);
   const mentionedUserIdsRef = useRef<Set<string>>(new Set());
   const mentionedUserNamesRef = useRef<Map<string, string>>(new Map());
   const mentionedPropertyNamesRef = useRef<Map<string, string>>(new Map());
   const descriptionRef = useRef<HTMLTextAreaElement | HTMLInputElement | null>(null);
   const descriptionWrapRef = useRef<HTMLDivElement | null>(null);
-  const mentionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [searchUsers, { data: mentionData, loading: mentionLoading, error: mentionError }] = useLazyQuery(
-    SEARCH_USERS_LIGHT,
-    { fetchPolicy: 'network-only', nextFetchPolicy: 'cache-first', errorPolicy: 'all' }
-  );
-  const [searchPropertiesQuery, { data: propertyMentionData, loading: propertyMentionLoading, error: propertyMentionError }] = useLazyQuery(
-    PUBLIC_PROPERTIES,
-    { fetchPolicy: 'network-only', nextFetchPolicy: 'cache-first', errorPolicy: 'all' }
-  );
+  const { people, properties, items, loadingPeople, loadingProperties } = useMentionSearch({
+    query: mentionSearch,
+    open: mentionOpen,
+  });
 
   const categoryIcons: Record<string, React.ReactNode> = {
     'buy-sell': <HomeIcon sx={{ fontSize: 'inherit', color: '#16302A' }} />,
@@ -175,9 +167,15 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
     const panelWidth = 280;
     const maxLeft = Math.max(8, (wrapRect?.width || fieldRect.width) - panelWidth - 8);
     setMentionAnchor({
-      top: offsetTop + coords.top + coords.height + 4,
+      top: offsetTop + coords.top,
       left: Math.min(Math.max(8, offsetLeft + coords.left), maxLeft),
     });
+  };
+
+  const closeMentions = () => {
+    setMentionOpen(false);
+    setMentionSearch('');
+    setMentionStart(null);
   };
 
   const handleDescriptionChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -185,33 +183,17 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
     setDescription(value);
 
     const cursorPos = e.target.selectionStart ?? value.length;
-    const textBeforeCursor = value.slice(0, cursorPos);
-    const atMatch = textBeforeCursor.match(/@([\w\s]*)$/);
+    const active = getActiveMentionQuery(value, cursorPos);
 
-    if (mentionTimerRef.current) {
-      clearTimeout(mentionTimerRef.current);
-      mentionTimerRef.current = null;
-    }
-
-    if (atMatch) {
-      const searchTerm = atMatch[1] || '';
+    if (active) {
+      const searchTerm = active.query || '';
       setMentionOpen(true);
       setMentionSearch(searchTerm);
-      setMentionStart(cursorPos - atMatch[0].length);
+      setMentionStart(active.start);
+      setMentionIndex(0);
       updateMentionAnchor(e.target, cursorPos);
-      mentionTimerRef.current = setTimeout(() => {
-        const term = searchTerm.trim();
-        if (term.length < 2) return;
-        searchUsers({ variables: { search: term, page: 1, limit: 8 } });
-        const cityToken = term.split(/\s+/)[0];
-        if (cityToken.length >= 2) {
-          searchPropertiesQuery({ variables: { city: cityToken, page: 1, limit: 8 } });
-        }
-      }, 280);
     } else {
-      setMentionOpen(false);
-      setMentionSearch('');
-      setMentionStart(null);
+      closeMentions();
     }
   };
 
@@ -229,6 +211,18 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
     setMentionSearch('');
     setMentionStart(null);
     setTimeout(() => descriptionRef.current?.focus(), 0);
+  };
+
+  const handleSelectMentionItem = (item: MentionItem) => {
+    if (item.kind === 'person') {
+      handleSelectMention({
+        id: item.person.id,
+        firstName: item.person.name.split(' ')[0] || item.person.name,
+        lastName: item.person.name.split(' ').slice(1).join(' '),
+      });
+      return;
+    }
+    handleSelectPropertyMention({ id: item.property.id, title: item.property.title });
   };
 
   const handleSelectPropertyMention = (prop: { id: string; title: string }) => {
@@ -317,6 +311,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
       <Grow in={open} timeout={{ enter: ZPC_MOTION.popupEnter, exit: ZPC_MOTION.popupExit }}>
       <Box
         tabIndex={-1}
+        className="zpc-overlay-host"
         sx={{
           ...MATTE_SURFACE,
           borderRadius: 3,
@@ -379,7 +374,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
         </Box>
 
         {/* Content */}
-        <Box sx={{ p: 3, flex: 1, minHeight: 0, overflow: 'auto', ...THIN_CREAM_SCROLLBAR }}>
+        <Box className="zpc-overlay-scroll" sx={{ p: 3, flex: 1, minHeight: 0, overflow: 'auto', ...THIN_CREAM_SCROLLBAR }}>
           {/* Post Type Selection */}
           <Box sx={{ mb: 3 }}>
             <Typography 
@@ -537,6 +532,22 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
               }
               value={description}
               onChange={handleDescriptionChange}
+              onBlur={(e) => {
+                const next = e.relatedTarget as Node | null;
+                if (descriptionWrapRef.current?.contains(next)) return;
+                closeMentions();
+              }}
+              onKeyDown={(e) => {
+                if (!mentionOpen) return;
+                mentionKeyHandler(
+                  e,
+                  items,
+                  mentionIndex,
+                  setMentionIndex,
+                  handleSelectMentionItem,
+                  closeMentions,
+                );
+              }}
               inputRef={descriptionRef}
               sx={{
                 '& .MuiOutlinedInput-root': {
@@ -558,72 +569,31 @@ const CreatePost: React.FC<CreatePostProps> = ({ open, onClose, onSubmit, loadin
               }}
             />
             {mentionOpen && (
-              <Paper
-                elevation={6}
-                sx={{
-                  position: 'absolute',
-                  top: mentionAnchor.top,
-                  left: mentionAnchor.left,
-                  width: 280,
-                  maxWidth: 'calc(100% - 16px)',
-                  zIndex: 20,
-                  maxHeight: 220,
-                  overflow: 'auto',
-                  borderRadius: 2,
-                  border: '1px solid rgba(22,48,42,0.14)',
-                  animation: `zpcPopupIn ${ZPC_MOTION.popover}ms ${ZPC_MOTION.ease} both`,
-                  ...THIN_CREAM_SCROLLBAR,
-                }}
-              >
-                <List dense disablePadding>
-                  <ListSubheader sx={{ lineHeight: '28px', ...MATTE_INSET }}>People</ListSubheader>
-                  {mentionSearch.trim().length < 2 && (
-                    <ListItemButton disabled><ListItemText primary="Type 2+ letters to search" /></ListItemButton>
-                  )}
-                  {mentionSearch.trim().length >= 2 && mentionLoading && (
-                    <ListItemButton disabled><ListItemText primary="Searching people…" /></ListItemButton>
-                  )}
-                  {mentionSearch.trim().length >= 2 && !mentionLoading && mentionError && (
-                    <ListItemButton disabled><ListItemText primary="Couldn’t load people" /></ListItemButton>
-                  )}
-                  {mentionSearch.trim().length >= 2 && !mentionLoading && !mentionError && (mentionData?.users?.length ?? 0) === 0 && (
-                    <ListItemButton disabled><ListItemText primary="No users found" /></ListItemButton>
-                  )}
-                  {(mentionData?.users ?? []).map((user: any) => (
-                    <ListItemButton key={`u-${user.id}`} onClick={() => handleSelectMention(user)}>
-                      <ListItemText
-                        primary={`${user.firstName} ${user.lastName || ''}`.trim()}
-                        secondary={user.role || user.email}
-                        primaryTypographyProps={{ noWrap: true, fontSize: 13.5, fontWeight: 600 }}
-                        secondaryTypographyProps={{ noWrap: true, fontSize: 11.5 }}
-                      />
-                    </ListItemButton>
-                  ))}
-                  <ListSubheader sx={{ lineHeight: '28px', ...MATTE_INSET }}>Properties</ListSubheader>
-                  {mentionSearch.trim().length < 2 && (
-                    <ListItemButton disabled><ListItemText primary="Type 2+ letters to search" /></ListItemButton>
-                  )}
-                  {mentionSearch.trim().length >= 2 && propertyMentionLoading && (
-                    <ListItemButton disabled><ListItemText primary="Searching properties…" /></ListItemButton>
-                  )}
-                  {mentionSearch.trim().length >= 2 && !propertyMentionLoading && propertyMentionError && (
-                    <ListItemButton disabled><ListItemText primary="Couldn’t load properties" /></ListItemButton>
-                  )}
-                  {mentionSearch.trim().length >= 2 && !propertyMentionLoading && !propertyMentionError && (propertyMentionData?.publicProperties?.properties?.length ?? 0) === 0 && (
-                    <ListItemButton disabled><ListItemText primary="No properties found" /></ListItemButton>
-                  )}
-                  {(propertyMentionData?.publicProperties?.properties ?? []).slice(0, 8).map((prop: any) => (
-                    <ListItemButton key={`p-${prop.id}`} onClick={() => handleSelectPropertyMention(prop)}>
-                      <ListItemText
-                        primary={prop.title}
-                        secondary={prop.location || prop.city || 'Property'}
-                        primaryTypographyProps={{ noWrap: true, fontSize: 13.5, fontWeight: 600 }}
-                        secondaryTypographyProps={{ noWrap: true, fontSize: 11.5 }}
-                      />
-                    </ListItemButton>
-                  ))}
-                </List>
-              </Paper>
+              <ClickAwayListener onClickAway={closeMentions}>
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    top: mentionAnchor.top,
+                    left: mentionAnchor.left,
+                    zIndex: 20,
+                    transform: 'translateY(calc(-100% - 6px))',
+                  }}
+                >
+                  <MentionPicker
+                    open={mentionOpen}
+                    query={mentionSearch}
+                    items={items}
+                    people={people}
+                    properties={properties}
+                    loadingPeople={loadingPeople}
+                    loadingProperties={loadingProperties}
+                    selectedIndex={mentionIndex}
+                    onHoverIndex={setMentionIndex}
+                    onSelect={handleSelectMentionItem}
+                    onClose={closeMentions}
+                  />
+                </Box>
+              </ClickAwayListener>
             )}
             <Typography 
               sx={{ 

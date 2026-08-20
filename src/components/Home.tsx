@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback, memo, useEffect, useRef } from 'react';
 import { gql, useQuery, useMutation, useApolloClient } from '@apollo/client';
 import { SEARCH_POSTS, CREATE_POST, TRENDING_POSTS, DELETE_POST, UPDATE_POST, UPDATE_COMMENT, DELETE_COMMENT, UNLIKE_COMMENT, GET_POST_COMMENTS, CREATE_COMMENT, LIKE_COMMENT, LIKE_POST, UNLIKE_POST, REPORT_POST, PIN_POST, UNPIN_POST } from '../graphql/posts';
-import { GET_SUGGESTED_USERS, FOLLOW_USER, GET_USER_NOTIFICATIONS, MARK_NOTIFICATION_READ, CLEAR_NOTIFICATIONS, GET_USER_PROFILE, GET_USER_FOLLOWERS, GET_USER_FOLLOWING } from '../graphql/user';
+import { GET_SUGGESTED_USERS, FOLLOW_USER, GET_USER_NOTIFICATIONS, MARK_NOTIFICATION_READ, CLEAR_NOTIFICATIONS, GET_USER_PROFILE } from '../graphql/user';
 import CreatePost from './CreatePost';
 import { PostService } from '../services/postService';
 import { useAuth } from '../contexts/AuthContext';
@@ -43,8 +43,10 @@ import {
   ListItemButton,
   ListItemAvatar,
   ListItemText,
+  Chip,
+  Snackbar,
 } from '@mui/material';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import HomeIcon from '@mui/icons-material/Home';
 import PeopleIcon from '@mui/icons-material/People';
 import GroupIcon from '@mui/icons-material/Group';
@@ -57,6 +59,7 @@ import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import ShareSymbol from './icons/ShareSymbol';
 import SharePostSheet from './SharePostSheet';
+import ConfirmDialog from './ConfirmDialog';
 import type { ShareablePost } from '../utils/sharePost';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import PushPinOutlinedIcon from '@mui/icons-material/PushPinOutlined';
@@ -129,7 +132,7 @@ const displayFont = {
 const leftNav = [
   { icon: <HomeIcon fontSize="small" />, label: 'Home', href: null as string | null },
   { icon: <PeopleIcon fontSize="small" />, label: 'My Network', href: null },
-  { icon: <GroupIcon fontSize="small" />, label: 'Properties', href: '/my-properties' },
+  { icon: <GroupIcon fontSize="small" />, label: 'Properties', href: '/search?tab=properties' },
 ];
 
 const CARD_RADIUS = 2; // LinkedIn-like modest corners, ZPC cream glass fills
@@ -292,22 +295,70 @@ interface PostProps {
 const PostSkeleton = () => (
   <Box sx={{ ...MATTE_POST_SX, borderRadius: CARD_RADIUS, overflow: 'hidden', mb: 0 }}>
     <Box sx={{ display: 'flex', alignItems: 'center', px: 2, pt: 1.75, pb: 1 }}>
-      <Skeleton variant="circular" width={48} height={48} sx={{ mr: 1.5 }} />
+      <Skeleton animation="wave" variant="circular" width={48} height={48} sx={{ mr: 1.5 }} />
       <Box sx={{ flex: 1 }}>
-        <Skeleton variant="text" width="38%" height={20} />
-        <Skeleton variant="text" width="28%" height={16} />
+        <Skeleton animation="wave" variant="text" width="38%" height={20} />
+        <Skeleton animation="wave" variant="text" width="28%" height={16} />
       </Box>
     </Box>
     <Box sx={{ px: 2, pb: 1.25 }}>
-      <Skeleton variant="text" width="92%" height={18} />
-      <Skeleton variant="text" width="74%" height={18} />
+      <Skeleton animation="wave" variant="text" width="92%" height={18} />
+      <Skeleton animation="wave" variant="text" width="74%" height={18} />
     </Box>
-    <Skeleton variant="rectangular" height={220} sx={{ mb: 1 }} />
+    <Skeleton animation="wave" variant="rectangular" height={180} sx={{ mb: 1 }} />
     <Box sx={{ display: 'flex', gap: 1, px: 1, py: 1 }}>
-      <Skeleton variant="rectangular" height={36} sx={{ flex: 1, borderRadius: 1 }} />
-      <Skeleton variant="rectangular" height={36} sx={{ flex: 1, borderRadius: 1 }} />
-      <Skeleton variant="rectangular" height={36} sx={{ flex: 1, borderRadius: 1 }} />
+      <Skeleton animation="wave" variant="rectangular" height={36} sx={{ flex: 1, borderRadius: 1 }} />
+      <Skeleton animation="wave" variant="rectangular" height={36} sx={{ flex: 1, borderRadius: 1 }} />
+      <Skeleton animation="wave" variant="rectangular" height={36} sx={{ flex: 1, borderRadius: 1 }} />
     </Box>
+  </Box>
+);
+
+const PostsLoadingWait = ({ label = 'Loading posts', cards = 2 }: { label?: string; cards?: number }) => (
+  <Box>
+    <Box
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 1.25,
+        py: 1.75,
+        mb: 1.25,
+        ...MATTE_POST_SX,
+        borderRadius: CARD_RADIUS,
+      }}
+    >
+      <CircularProgress size={20} thickness={5} sx={{ color: '#16302A' }} />
+      <Typography sx={{ fontSize: 14, fontWeight: 650, color: '#16302A', display: 'flex', alignItems: 'center', ...interFont }}>
+        {label}
+        <Box component="span" sx={{ display: 'inline-flex', ml: 0.6, alignItems: 'center' }}>
+          {[0, 1, 2].map((i) => (
+            <Box
+              key={i}
+              component="span"
+              sx={{
+                width: 5,
+                height: 5,
+                borderRadius: '50%',
+                bgcolor: '#16302A',
+                mx: '1.5px',
+                animation: 'zpcPulseDot 1s ease-in-out infinite',
+                animationDelay: `${i * 0.16}s`,
+                '@keyframes zpcPulseDot': {
+                  '0%, 80%, 100%': { opacity: 0.22, transform: 'translateY(0)' },
+                  '40%': { opacity: 1, transform: 'translateY(-3px)' },
+                },
+              }}
+            />
+          ))}
+        </Box>
+      </Typography>
+    </Box>
+    <Stack spacing={1.25}>
+      {Array.from({ length: cards }).map((_, i) => (
+        <PostSkeleton key={i} />
+      ))}
+    </Stack>
   </Box>
 );
 
@@ -373,7 +424,6 @@ const Post = memo(({
   const listingLabel = postCategoryLabel(post.propertyType) || categoryFromTitle(rawTitle);
   const metaBits = [
     post.location ? String(post.location) : '',
-    listingLabel,
     post.price != null && Number(post.price) > 0 ? `₹${post.price}` : '',
   ].filter(Boolean);
 
@@ -544,6 +594,23 @@ const Post = memo(({
             )}
           </Typography>
         </Box>
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5, flexShrink: 0, ml: 0.5 }}>
+          {listingLabel ? (
+            <Chip
+              label={listingLabel}
+              size="small"
+              sx={{
+                height: 22,
+                fontSize: 11,
+                fontWeight: 700,
+                color: '#16302A',
+                bgcolor: 'rgba(22,48,42,0.08)',
+                border: '1px solid rgba(22,48,42,0.16)',
+                maxWidth: { xs: 110, sm: 160 },
+                '& .MuiChip-label': { px: 1, overflow: 'hidden', textOverflow: 'ellipsis' },
+              }}
+            />
+          ) : null}
         {(isOwner || onReportPost || onPinPost) && (
           <>
             <IconButton size="small" onClick={(e) => setMenuAnchor(e.currentTarget)} aria-label="Post options" sx={{ color: '#3A4540' }}>
@@ -583,7 +650,7 @@ const Post = memo(({
                   sx={{ color: '#16302A' }}
                   onClick={() => {
                     setMenuAnchor(null);
-                    if (window.confirm('Delete this post?')) onDeletePost?.(post.id);
+                    if (onDeletePost) onDeletePost(post.id);
                   }}
                 >
                   Delete
@@ -603,6 +670,7 @@ const Post = memo(({
             </Menu>
           </>
         )}
+        </Box>
       </Box>
 
       <Box sx={{ px: 2, pb: metaBits.length || (post.media?.length ?? 0) > 0 ? 1 : 0.5 }}>
@@ -836,14 +904,33 @@ const Post = memo(({
   );
 });
 
+const FEED_PAGE_SIZE = 8;
+
+const REPORT_REASONS = [
+  { code: 'SPAM', label: 'Spam' },
+  { code: 'FAKE_PROPERTY', label: 'Fake listing' },
+  { code: 'SCAM', label: 'Scam' },
+  { code: 'ABUSIVE_LANGUAGE', label: 'Abusive language' },
+  { code: 'HARASSMENT', label: 'Harassment' },
+  { code: 'MISLEADING_INFORMATION', label: 'Misleading' },
+  { code: 'INAPPROPRIATE_CONTENT', label: 'Inappropriate' },
+  { code: 'COPYRIGHT', label: 'Copyright' },
+  { code: 'OTHER', label: 'Other' },
+];
+
 const Home = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user: authUser, isAuthenticated, clearAuth } = useAuth();
-  const { data, loading, error, refetch } = useQuery(SEARCH_POSTS, {
-    variables: { page: 1, limit: 10 },
+  const { data, loading, error, refetch, fetchMore } = useQuery(SEARCH_POSTS, {
+    variables: { page: 1, limit: FEED_PAGE_SIZE },
     fetchPolicy: 'cache-and-network',
   });
+  const [feedPage, setFeedPage] = useState(1);
+  const [feedExhausted, setFeedExhausted] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const loadMoreLock = useRef(false);
+  const feedSentinelRef = useRef<HTMLDivElement | null>(null);
 
   const { data: trendingData, loading: trendingLoading } = useQuery(TRENDING_POSTS, {
     variables: { limit: 5 },
@@ -852,6 +939,46 @@ const Home = () => {
   });
 
   const client = useApolloClient();
+
+  const refetchFeed = useCallback(async () => {
+    setFeedPage(1);
+    setFeedExhausted(false);
+    return refetch({ page: 1, limit: FEED_PAGE_SIZE });
+  }, [refetch]);
+
+  const loadMorePosts = useCallback(async () => {
+    if (loadMoreLock.current || loadingMore || feedExhausted || loading) return;
+    const loaded = data?.searchPosts?.length ?? 0;
+    if (!loaded) return;
+    if (loaded < FEED_PAGE_SIZE) {
+      setFeedExhausted(true);
+      return;
+    }
+    loadMoreLock.current = true;
+    setLoadingMore(true);
+    try {
+      const nextPage = feedPage + 1;
+      let batchSize = 0;
+      await fetchMore({
+        variables: { page: nextPage, limit: FEED_PAGE_SIZE },
+        updateQuery: (prev: any, { fetchMoreResult }: any) => {
+          const batch = fetchMoreResult?.searchPosts || [];
+          batchSize = batch.length;
+          const existing = prev?.searchPosts || [];
+          const seen = new Set(existing.map((p: any) => String(p.id)));
+          const appended = batch.filter((p: any) => !seen.has(String(p.id)));
+          return { ...prev, searchPosts: [...existing, ...appended] };
+        },
+      });
+      setFeedPage(nextPage);
+      if (batchSize < FEED_PAGE_SIZE) setFeedExhausted(true);
+    } catch (err) {
+      console.error('Failed to load more posts:', err);
+    } finally {
+      loadMoreLock.current = false;
+      setLoadingMore(false);
+    }
+  }, [data?.searchPosts?.length, feedExhausted, feedPage, fetchMore, loading, loadingMore]);
 
 
 
@@ -880,6 +1007,27 @@ const Home = () => {
     setLikeCounts(prev => ({ ...nextCounts, ...prev }));
     setCommentCounts(prev => ({ ...nextCommentCounts, ...prev }));
   }, [data?.searchPosts]);
+
+  useEffect(() => {
+    const n = data?.searchPosts?.length;
+    if (n == null) return;
+    if (feedPage === 1 && n < FEED_PAGE_SIZE) setFeedExhausted(true);
+  }, [data?.searchPosts, feedPage]);
+
+  const loadMorePostsRef = useRef(loadMorePosts);
+  useEffect(() => {
+    loadMorePostsRef.current = loadMorePosts;
+  }, [loadMorePosts]);
+
+  useEffect(() => {
+    const el = feedSentinelRef.current;
+    if (!el || feedExhausted || loading) return;
+    const obs = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting) loadMorePostsRef.current();
+    }, { rootMargin: '480px 0px' });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [feedExhausted, data?.searchPosts?.length, loading]);
 
   const [likingPost, setLikingPost] = useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars
   const [unlikingPost, setUnlikingPost] = useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars
@@ -943,32 +1091,20 @@ const Home = () => {
   // Closest live proxy for “who engaged with your profile” until a views API exists.
   const profileViewsApprox = ownFollowers + ownRatings.length;
 
-  const { data: followersData } = useQuery(GET_USER_FOLLOWERS, {
-    variables: { userId: String(activeUserId || '') },
-    skip: !activeUserId,
-    fetchPolicy: 'cache-and-network',
-    errorPolicy: 'ignore',
-  });
-  const { data: followingData } = useQuery(GET_USER_FOLLOWING, {
-    variables: { userId: String(activeUserId || '') },
-    skip: !activeUserId,
-    fetchPolicy: 'cache-and-network',
-    errorPolicy: 'ignore',
-  });
   const networkUserIds = useMemo(() => {
     const ids = new Set<string>();
     const me = activeUserId != null ? String(activeUserId) : '';
     if (me) ids.add(me);
-    (followersData?.userFollowers || []).forEach((f: any) => {
+    (ownProfile?.userFollowers || []).forEach((f: any) => {
       const id = String(f.followerId || '');
       if (id && id !== me) ids.add(id);
     });
-    (followingData?.userFollowing || []).forEach((f: any) => {
+    (ownProfile?.userFollowing || []).forEach((f: any) => {
       const id = String(f.followingId || '');
       if (id && id !== me) ids.add(id);
     });
     return ids;
-  }, [activeUserId, followersData?.userFollowers, followingData?.userFollowing]);
+  }, [activeUserId, ownProfile?.userFollowers, ownProfile?.userFollowing]);
 
   const { data: notifData, refetch: refetchNotifs } = useQuery(GET_USER_NOTIFICATIONS, {
     variables: { userId: String(activeUserId || ''), page: 1, limit: 20 },
@@ -1008,10 +1144,10 @@ const Home = () => {
     if (!state) return;
 
     if (state.openProfileId) {
-      setSelectedProfileId(String(state.openProfileId));
-      setProfileFocusPostId(state.focusPostId != null ? String(state.focusPostId) : null);
-      setCurrentPage('profile');
-      navigate('/home', { replace: true, state: {} });
+      navigate(`/profile/${state.openProfileId}`, {
+        replace: true,
+        state: state.focusPostId != null ? { focusPostId: String(state.focusPostId) } : {},
+      });
       return;
     }
 
@@ -1082,6 +1218,18 @@ const Home = () => {
   const [editContent, setEditContent] = useState('');
   const [editSaving, setEditSaving] = useState(false);
   const [sharePostTarget, setSharePostTarget] = useState<ShareablePost | null>(null);
+  const [reportTarget, setReportTarget] = useState<any | null>(null);
+  const [reportReason, setReportReason] = useState('SPAM');
+  const [reportDetails, setReportDetails] = useState('');
+  const [reportSaving, setReportSaving] = useState(false);
+  const [reportError, setReportError] = useState('');
+  const [reportToast, setReportToast] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' }>({
+    open: false,
+    message: '',
+    severity: 'success',
+  });
+  const [pendingDeletePostId, setPendingDeletePostId] = useState<string | null>(null);
+  const [pendingDeleteCommentId, setPendingDeleteCommentId] = useState<string | null>(null);
 
   // Function to fetch fresh user data from backend
   const fetchAndUpdateUserData = useCallback(async () => {
@@ -1194,7 +1342,7 @@ const Home = () => {
     if (!loading) {
       refreshTimerRef.current = setInterval(async () => {
         try {
-          await refetch();
+          await refetchFeed();
         } catch (error) {
           console.error('Auto-refresh failed:', error);
         }
@@ -1206,7 +1354,7 @@ const Home = () => {
         }
       };
     }
-  }, [loading, refetch]);
+  }, [loading, refetchFeed]);
 
   // Refresh avatar/cover on Home after Profile photo upload (or return to Home)
   useEffect(() => {
@@ -1219,7 +1367,7 @@ const Home = () => {
       }
       if (activeUserId) {
         refetchOwnProfile?.({ fetchPolicy: 'network-only' });
-        refetch?.();
+        refetchFeed();
       }
     };
     const onPhotosUpdated = (e: Event) => {
@@ -1284,19 +1432,17 @@ const Home = () => {
   }, []);
 
   const handleProfileClick = useCallback(() => {
-    // Always open the currently signed-in account (never a stale module-level localStorage user)
     const ownId = authUser?.id || currentUser?.id;
-    setSelectedProfileId(ownId != null ? String(ownId) : null);
-    setProfileFocusPostId(null);
-    setCurrentPage('profile');
+    if (ownId == null) return;
     handleClose();
-  }, [handleClose, authUser?.id, currentUser?.id]);
+    navigate(`/profile/${ownId}`);
+  }, [handleClose, authUser?.id, currentUser?.id, navigate]);
 
   const handleOpenProfile = useCallback((uid: string | number, focusPostId?: string | number) => {
-    setSelectedProfileId(String(uid));
-    setProfileFocusPostId(focusPostId != null ? String(focusPostId) : null);
-    setCurrentPage('profile');
-  }, []);
+    navigate(`/profile/${uid}`, {
+      state: focusPostId != null ? { focusPostId: String(focusPostId) } : undefined,
+    });
+  }, [navigate]);
 
   const handleGoHome = useCallback(() => {
     setCurrentPage('home');
@@ -1336,13 +1482,7 @@ const Home = () => {
     return roleCanManageProperties(user?.role);
   }, [authUser, currentUser, storedUser]);
 
-  const propertyNav = useMemo(
-    () =>
-      canManageProperties()
-        ? leftNav
-        : leftNav.filter((item) => item.label !== 'Properties'),
-    [canManageProperties]
-  );
+  const propertyNav = leftNav;
 
   const canAccessAdmin = useCallback(() => {
     const user = authUser || currentUser || storedUser;
@@ -1451,7 +1591,7 @@ const Home = () => {
       setCpError(null);
 
       try {
-        await refetch();
+        await refetchFeed();
       } catch (refetchErr) {
         console.warn('Post created but feed refresh failed:', refetchErr);
       }
@@ -1498,33 +1638,40 @@ const Home = () => {
       });
       if (result?.updatePost?.success) {
         setEditPost(null);
-        await refetch();
+        await refetchFeed();
       } else {
-        window.alert(result?.updatePost?.message || 'Failed to update post');
+        setReportToast({ open: true, message: result?.updatePost?.message || 'Failed to update post', severity: 'error' });
       }
     } catch (err) {
       console.error('Error updating post:', err);
-      window.alert('Failed to update post');
+      setReportToast({ open: true, message: 'Failed to update post', severity: 'error' });
     } finally {
       setEditSaving(false);
     }
   }, [editPost, editTitle, editContent, updatePostMutation, refetch]);
 
-  const handleDeletePost = useCallback(async (postId: number | string) => {
+  const handleDeletePost = useCallback((postId: number | string) => {
+    setPendingDeletePostId(String(postId));
+  }, []);
+
+  const confirmDeletePost = useCallback(async () => {
+    const postId = pendingDeletePostId;
+    setPendingDeletePostId(null);
+    if (!postId) return;
     try {
       const { data: result } = await deletePostMutation({
         variables: { postId: String(postId) },
       });
       if (result?.deletePost?.success) {
-        await refetch();
+        await refetchFeed();
       } else {
-        window.alert(result?.deletePost?.message || 'Failed to delete post');
+        setReportToast({ open: true, message: result?.deletePost?.message || 'Failed to delete post', severity: 'error' });
       }
     } catch (err) {
       console.error('Error deleting post:', err);
-      window.alert('Failed to delete post');
+      setReportToast({ open: true, message: 'Failed to delete post', severity: 'error' });
     }
-  }, [deletePostMutation, refetch]);
+  }, [deletePostMutation, pendingDeletePostId, refetchFeed]);
 
   const handleSharePost = useCallback((post: ShareablePost) => {
     if ((post as any)?.allowShare === false) return;
@@ -1535,35 +1682,58 @@ const Home = () => {
     });
   }, []);
 
-  const handleReportPost = useCallback(async (post: any) => {
+  const handleReportPost = useCallback((post: any) => {
     if (!activeUserId) {
-      window.alert('Please sign in to report posts.');
+      setReportToast({ open: true, message: 'Please sign in to report posts.', severity: 'info' });
       return;
     }
     if (String(post.userId) === String(activeUserId)) return;
-    const reason = window.prompt('Why are you reporting this post? (spam, abuse, fake, other)', 'spam');
-    if (reason == null) return;
-    const description = window.prompt('Optional details') || '';
+    setReportReason('SPAM');
+    setReportDetails('');
+    setReportError('');
+    setReportTarget(post);
+  }, [activeUserId]);
+
+  const closeReportDialog = useCallback(() => {
+    if (reportSaving) return;
+    setReportTarget(null);
+    setReportError('');
+  }, [reportSaving]);
+
+  const submitReportPost = useCallback(async () => {
+    if (!activeUserId || !reportTarget) return;
+    setReportSaving(true);
+    setReportError('');
     try {
       const { data: result } = await reportPostMutation({
         variables: {
-          postId: String(post.id),
+          postId: String(reportTarget.id),
           reportedBy: String(activeUserId),
-          reportedUserId: String(post.userId || ''),
-          reasonCode: (reason || 'OTHER').trim().toUpperCase().replace(/\s+/g, '_'),
-          description: description.trim(),
+          reportedUserId: String(reportTarget.userId || ''),
+          reasonCode: reportReason,
+          description: reportDetails.trim(),
         },
       });
       if (result?.reportPost?.success) {
-        window.alert('Thanks — your report was submitted.');
+        setReportTarget(null);
+        setReportError('');
+        window.setTimeout(() => {
+          setReportToast({
+            open: true,
+            message: 'Thanks — your report was submitted.',
+            severity: 'success',
+          });
+        }, 220);
       } else {
-        window.alert(result?.reportPost?.message || 'Could not submit report');
+        setReportError(result?.reportPost?.message || 'Could not submit report');
       }
     } catch (err) {
       console.error('Error reporting post:', err);
-      window.alert('Could not submit report');
+      setReportError('Could not submit report');
+    } finally {
+      setReportSaving(false);
     }
-  }, [activeUserId, reportPostMutation]);
+  }, [activeUserId, reportDetails, reportPostMutation, reportReason, reportTarget]);
 
   const handlePinPost = useCallback(async (postId: number | string, pin: boolean) => {
     if (!activeUserId) return;
@@ -1574,13 +1744,13 @@ const Home = () => {
         variables: { postId: String(postId), userId: String(activeUserId) },
       });
       if (result?.[key]?.success) {
-        await refetch();
+        await refetchFeed();
       } else {
-        window.alert(result?.[key]?.message || `Could not ${pin ? 'pin' : 'unpin'} post`);
+        setReportToast({ open: true, message: result?.[key]?.message || `Could not ${pin ? 'pin' : 'unpin'} post`, severity: 'error' });
       }
     } catch (err) {
       console.error('Error pinning post:', err);
-      window.alert(`Could not ${pin ? 'pin' : 'unpin'} post`);
+      setReportToast({ open: true, message: `Could not ${pin ? 'pin' : 'unpin'} post`, severity: 'error' });
     }
   }, [activeUserId, pinPostMutation, unpinPostMutation, refetch]);
 
@@ -1828,7 +1998,13 @@ const Home = () => {
   }, [updateCommentMutation, expandedCommentsPostId, refreshPostComments]);
 
   const handleDeleteComment = useCallback(async (commentId: number | string) => {
-    if (!window.confirm('Delete this comment?')) return;
+    setPendingDeleteCommentId(String(commentId));
+  }, []);
+
+  const confirmDeleteComment = useCallback(async () => {
+    const commentId = pendingDeleteCommentId;
+    setPendingDeleteCommentId(null);
+    if (!commentId) return;
     const postId = expandedCommentsPostId;
     const existing = postId ? commentsByPost[postId] : null;
     const wasTopLevel = Boolean(existing?.some((c: any) => String(c.id) === String(commentId)));
@@ -1850,7 +2026,7 @@ const Home = () => {
     } catch (error) {
       console.error('Error deleting comment:', error);
     }
-  }, [deleteCommentMutation, expandedCommentsPostId, commentsByPost, refreshPostComments]);
+  }, [deleteCommentMutation, expandedCommentsPostId, commentsByPost, refreshPostComments, pendingDeleteCommentId]);
 
 
   // Manual refresh handler
@@ -1858,7 +2034,7 @@ const Home = () => {
   const handleManualRefresh = useCallback(async () => {
     try {
       setIsRefreshing(true);
-      await refetch();
+      await refetchFeed();
     } catch (error) {
       console.error('Manual refresh failed:', error);
     } finally {
@@ -1870,41 +2046,16 @@ const Home = () => {
 
   // Render Profile Page
   if (currentPage === 'profile') {
-    const authUserId = authUser?.id || currentUser?.id;
-    if (!authUserId) {
-      return <Typography sx={{ m: 4, color: 'red' }}>User not logged in. Please log in again.</Typography>;
-    }
-    if (!selectedProfileId) {
-      return <Typography sx={{ m: 4 }}>No profile selected.</Typography>;
-    }
-
-    return (
-      <TabEnter tabKey={`profile-${selectedProfileId}`}>
-        <ProfilePage
-          onGoBack={handleGoHome}
-          userId={String(selectedProfileId)}
-          currentUserId={String(authUserId)}
-          onOpenProfile={handleOpenProfile}
-          focusPostId={profileFocusPostId}
-          onFocusPostConsumed={() => setProfileFocusPostId(null)}
-          onOpenChat={(roomId) => {
-            setChatRoomId(String(roomId));
-            setChatOpen(true);
-          }}
+    if (selectedProfileId) {
+      return (
+        <Navigate
+          to={`/profile/${selectedProfileId}`}
+          replace
+          state={profileFocusPostId ? { focusPostId: profileFocusPostId } : undefined}
         />
-        {!isMobile && chatOpen && (
-          <ChatPage
-            key={chatRoomId || 'chat-dock'}
-            embedded
-            initialRoomId={chatRoomId}
-            onClose={() => {
-              setChatOpen(false);
-              setChatRoomId(null);
-            }}
-          />
-        )}
-      </TabEnter>
-    );
+      );
+    }
+    return <Typography sx={{ m: 4 }}>No profile selected.</Typography>;
   }
 
   // Render Home Page
@@ -2505,11 +2656,9 @@ const Home = () => {
           </Box>
 
           {loading && !data ? (
-            <Stack spacing={1.25} sx={{ mx: { xs: 1.25, md: 0 } }}>
-              <PostSkeleton />
-              <PostSkeleton />
-              <PostSkeleton />
-            </Stack>
+            <Box sx={{ mx: { xs: 1.25, md: 0 } }}>
+              <PostsLoadingWait label="Loading posts" cards={3} />
+            </Box>
           ) : error ? (
             <Box sx={{ textAlign: 'center', mt: 4, px: 2 }}>
               <Typography color="error" sx={{ fontWeight: 600, mb: 1 }}>
@@ -2518,7 +2667,7 @@ const Home = () => {
               <Typography sx={{ color: '#16302A', fontSize: 14, wordBreak: 'break-word' }}>
                 {error.message}
               </Typography>
-              <Button variant="outlined" size="small" sx={{ mt: 2, textTransform: 'none' }} onClick={() => refetch()}>
+              <Button variant="outlined" size="small" sx={{ mt: 2, textTransform: 'none' }} onClick={() => refetchFeed()}>
                 Retry
               </Button>
             </Box>
@@ -2564,6 +2713,26 @@ const Home = () => {
                 />
                 );
               })}
+              <Box ref={feedSentinelRef} sx={{ minHeight: 32 }}>
+                {loadingMore ? (
+                  <PostsLoadingWait label="Loading more posts" cards={2} />
+                ) : feedExhausted ? (
+                  data?.searchPosts?.length ? (
+                    <Typography sx={{ fontSize: 12.5, color: '#7A847C', textAlign: 'center', py: 2 }}>You're all caught up</Typography>
+                  ) : null
+                ) : (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                    <Button
+                      variant="text"
+                      size="small"
+                      onClick={() => loadMorePosts()}
+                      sx={{ textTransform: 'none', color: '#16302A', fontWeight: 600 }}
+                    >
+                      Load more posts
+                    </Button>
+                  </Box>
+                )}
+              </Box>
             </Stack>
           )}
         </Box>
@@ -3037,6 +3206,97 @@ const Home = () => {
         onSubmit={handleCreatePost}
         loading={cpSubmitting}
         error={cpError}
+      />
+
+      <Dialog open={Boolean(reportTarget)} onClose={closeReportDialog} fullWidth maxWidth="sm">
+        <DialogTitle>Report post</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+          <Typography sx={{ fontSize: 14, color: '#5C675F' }}>
+            Why are you reporting this post? Choose a reason:
+          </Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+            {REPORT_REASONS.map((reason) => {
+              const selected = reportReason === reason.code;
+              return (
+                <Button
+                  key={reason.code}
+                  type="button"
+                  variant={selected ? 'contained' : 'outlined'}
+                  onClick={() => setReportReason(reason.code)}
+                  disabled={reportSaving}
+                  sx={{
+                    textTransform: 'none',
+                    borderRadius: 2,
+                    fontWeight: selected ? 700 : 600,
+                    px: 1.5,
+                    py: 0.75,
+                  }}
+                >
+                  {reason.label}
+                </Button>
+              );
+            })}
+          </Box>
+          <TextField
+            label="Optional details"
+            value={reportDetails}
+            onChange={(e) => setReportDetails(e.target.value)}
+            fullWidth
+            multiline
+            minRows={3}
+            disabled={reportSaving}
+          />
+          {reportError ? (
+            <Alert severity="error" sx={{ borderRadius: 1.5 }}>
+              {reportError}
+            </Alert>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeReportDialog} disabled={reportSaving} sx={{ textTransform: 'none' }}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={submitReportPost}
+            disabled={reportSaving || !reportReason}
+            sx={{ textTransform: 'none' }}
+          >
+            {reportSaving ? 'Submitting…' : 'Submit report'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={reportToast.open}
+        autoHideDuration={4000}
+        onClose={() => setReportToast((prev) => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setReportToast((prev) => ({ ...prev, open: false }))}
+          severity={reportToast.severity}
+          sx={{ borderRadius: 1.5, width: '100%' }}
+        >
+          {reportToast.message}
+        </Alert>
+      </Snackbar>
+
+      <ConfirmDialog
+        open={Boolean(pendingDeletePostId)}
+        title="Delete post"
+        message="Delete this post? This cannot be undone."
+        confirmLabel="Delete"
+        onCancel={() => setPendingDeletePostId(null)}
+        onConfirm={() => { void confirmDeletePost(); }}
+      />
+      <ConfirmDialog
+        open={Boolean(pendingDeleteCommentId)}
+        title="Delete comment"
+        message="Delete this comment?"
+        confirmLabel="Delete"
+        onCancel={() => setPendingDeleteCommentId(null)}
+        onConfirm={() => { void confirmDeleteComment(); }}
       />
 
       <Dialog open={Boolean(editPost)} onClose={() => !editSaving && setEditPost(null)} fullWidth maxWidth="sm">

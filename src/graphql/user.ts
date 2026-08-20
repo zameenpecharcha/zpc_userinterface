@@ -47,6 +47,18 @@ export const SEARCH_USERS = gql`
   }
 `;
 
+export const GET_USER_CARD = gql`
+  query GetUserCard($id: String!) {
+    user(id: $id) {
+      id
+      firstName
+      lastName
+      profilePhoto
+      profilePhotoSignedUrl
+    }
+  }
+`;
+
 export const GET_USER_PROFILE = gql`
   query GetUserProfile($id: String!) {
     user(id: $id) {
@@ -80,6 +92,20 @@ export const GET_USER_PROFILE = gql`
         raterLastName
         raterProfilePhoto
         raterProfilePhotoSignedUrl
+      }
+      userFollowers {
+        id
+        followerId
+        followingId
+        status
+        followedAt
+      }
+      userFollowing {
+        id
+        followerId
+        followingId
+        status
+        followedAt
       }
     }
   }

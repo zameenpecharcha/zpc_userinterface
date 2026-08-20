@@ -445,6 +445,14 @@ function AppRoutes() {
         }
       />
       <Route
+        path="/profile/:userId"
+        element={
+          <ProtectedRoute>
+            <Profile />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/create-property"
         element={
           <RoleProtectedRoute allowedRoles={['agent', 'builder']}>

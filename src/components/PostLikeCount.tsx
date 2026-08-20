@@ -116,7 +116,7 @@ const PostLikeCount: React.FC<Props> = ({
           No likes yet
         </Typography>
       ) : (
-        <List dense disablePadding sx={{ maxHeight: 320, overflowY: 'auto' }}>
+        <List dense disablePadding className="zpc-overlay-scroll" sx={{ maxHeight: 320, overflowY: 'auto' }}>
           {likers.map((u) => {
             const name = `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'ZPC member';
             const avatar = u.profilePhotoSignedUrl || u.profilePhoto || '';

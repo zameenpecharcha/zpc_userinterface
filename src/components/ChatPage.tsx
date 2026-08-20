@@ -18,7 +18,7 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useApolloClient, useQuery } from '@apollo/client';
-import { SEARCH_USERS_LIGHT, GET_USER_PROFILE } from '../graphql/user';
+import { SEARCH_USERS_LIGHT, GET_USER_CARD } from '../graphql/user';
 import { CREATE_DM_ROOM_MUTATION, GET_USER_ROOMS, GET_PRESENCE } from '../graphql/chat';
 import Chat from './Chat';
 import { MATTE_SURFACE, PAGE_ATMOSPHERE } from '../theme/surfaces';
@@ -557,7 +557,7 @@ const ChatPage: React.FC<ChatPageProps> = ({
       const entries = await Promise.all(unique.map(async (uid) => {
         try {
           const res = await apollo.query({
-            query: GET_USER_PROFILE,
+            query: GET_USER_CARD,
             variables: { id: uid },
             fetchPolicy: 'cache-first',
           });

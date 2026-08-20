@@ -19,6 +19,7 @@ export const PROPERTY_FIELDS = gql`
     price
     currency
     city
+    location
     state
     country
     status
@@ -64,6 +65,7 @@ export const PUBLIC_PROPERTIES = gql`
     $page: Int
     $limit: Int
     $city: String
+    $search: String
     $propertyType: String
     $listingType: String
   ) {
@@ -71,6 +73,7 @@ export const PUBLIC_PROPERTIES = gql`
       page: $page
       limit: $limit
       city: $city
+      search: $search
       propertyType: $propertyType
       listingType: $listingType
     ) {

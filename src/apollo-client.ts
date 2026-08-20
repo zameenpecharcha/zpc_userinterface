@@ -52,14 +52,18 @@ const errorLink = onError(({ graphQLErrors, networkError, operation, forward }) 
 
 // Auth link to add headers
 const authLink = setContext((_, { headers }) => {
-  // Get token from localStorage
   const token = localStorage.getItem('token');
-  
+  const correlationId =
+    (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+      ? crypto.randomUUID()
+      : `web-${Date.now()}`;
+
   return {
     headers: {
       ...headers,
-      authorization: token ? `Bearer ${token}` : "",
-    }
+      authorization: token ? `Bearer ${token}` : '',
+      'x-correlation-id': correlationId,
+    },
   };
 });
 

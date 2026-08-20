@@ -160,6 +160,7 @@ const CreateProperty: React.FC = () => {
         <Box
           component="form"
           onSubmit={handleSubmit}
+          className="zpc-overlay-host"
           sx={{
             width: '100%',
             maxWidth: 720,
@@ -197,7 +198,7 @@ const CreateProperty: React.FC = () => {
             </Box>
           </Box>
 
-          <Box sx={{ px: 3, pb: 2, display: 'grid', gap: 2.25, flex: 1, minHeight: 0, overflow: 'auto', ...THIN_CREAM_SCROLLBAR }}>
+          <Box className="zpc-overlay-scroll" sx={{ px: 3, pb: 2, display: 'grid', gap: 2.25, flex: 1, minHeight: 0, overflow: 'auto', ...THIN_CREAM_SCROLLBAR }}>
             <Box>
               <Typography sx={{ fontWeight: 600, fontSize: 13.5, mb: 0.75, color: '#1F2937' }}>Property Name</Typography>
               <TextField

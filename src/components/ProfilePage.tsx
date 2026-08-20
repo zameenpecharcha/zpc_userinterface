@@ -20,6 +20,8 @@ import {
     DialogContent,
     DialogActions,
     TextField,
+    Chip,
+    Snackbar,
 } from '@mui/material';
 import Rating from '@mui/material/Rating';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -28,6 +30,7 @@ import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import ShareSymbol from './icons/ShareSymbol';
 import SharePostSheet from './SharePostSheet';
+import ConfirmDialog from './ConfirmDialog';
 import type { ShareablePost } from '../utils/sharePost';
 import StarIcon from '@mui/icons-material/Star';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
@@ -75,21 +78,69 @@ const CARD_RADIUS = 2; // LinkedIn-like modest corners
 const MATTE_POST_SX = MATTE_SURFACE;
 
 const PostSkeleton = () => (
-  <Box sx={{ ...MATTE_POST_SX, borderRadius: { xs: 2, sm: 3 }, p: { xs: 1.5, sm: 3 }, mb: 3 }}>
+  <Box sx={{ ...MATTE_POST_SX, borderRadius: { xs: 2, sm: 3 }, p: { xs: 1.5, sm: 3 }, mb: 0 }}>
     <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-      <Skeleton variant="circular" width={44} height={44} sx={{ mr: 2 }} />
+      <Skeleton animation="wave" variant="circular" width={44} height={44} sx={{ mr: 2 }} />
       <Box sx={{ flex: 1 }}>
-        <Skeleton variant="text" width="30%" height={24} />
-        <Skeleton variant="text" width="20%" height={16} />
+        <Skeleton animation="wave" variant="text" width="30%" height={24} />
+        <Skeleton animation="wave" variant="text" width="20%" height={16} />
       </Box>
     </Box>
-    <Skeleton variant="text" width="60%" height={28} sx={{ mb: 1 }} />
-    <Skeleton variant="rectangular" height={160} sx={{ borderRadius: 2, mb: 2 }} />
+    <Skeleton animation="wave" variant="text" width="60%" height={28} sx={{ mb: 1 }} />
+    <Skeleton animation="wave" variant="rectangular" height={160} sx={{ borderRadius: 2, mb: 2 }} />
     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-      <Skeleton variant="rectangular" width={80} height={32} sx={{ borderRadius: 1 }} />
-      <Skeleton variant="rectangular" width={80} height={32} sx={{ borderRadius: 1 }} />
-      <Skeleton variant="rectangular" width={80} height={32} sx={{ borderRadius: 1 }} />
+      <Skeleton animation="wave" variant="rectangular" width={80} height={32} sx={{ borderRadius: 1 }} />
+      <Skeleton animation="wave" variant="rectangular" width={80} height={32} sx={{ borderRadius: 1 }} />
+      <Skeleton animation="wave" variant="rectangular" width={80} height={32} sx={{ borderRadius: 1 }} />
     </Box>
+  </Box>
+);
+
+const PostsLoadingWait = ({ label = 'Loading posts', cards = 2 }: { label?: string; cards?: number }) => (
+  <Box>
+    <Box
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 1.25,
+        py: 1.75,
+        mb: 1.25,
+        ...MATTE_SURFACE,
+        borderRadius: CARD_RADIUS,
+      }}
+    >
+      <CircularProgress size={20} thickness={5} sx={{ color: '#16302A' }} />
+      <Typography sx={{ fontSize: 14, fontWeight: 650, color: '#16302A', display: 'flex', alignItems: 'center', ...interFont }}>
+        {label}
+        <Box component="span" sx={{ display: 'inline-flex', ml: 0.6, alignItems: 'center' }}>
+          {[0, 1, 2].map((i) => (
+            <Box
+              key={i}
+              component="span"
+              sx={{
+                width: 5,
+                height: 5,
+                borderRadius: '50%',
+                bgcolor: '#16302A',
+                mx: '1.5px',
+                animation: 'zpcPulseDot 1s ease-in-out infinite',
+                animationDelay: `${i * 0.16}s`,
+                '@keyframes zpcPulseDot': {
+                  '0%, 80%, 100%': { opacity: 0.22, transform: 'translateY(0)' },
+                  '40%': { opacity: 1, transform: 'translateY(-3px)' },
+                },
+              }}
+            />
+          ))}
+        </Box>
+      </Typography>
+    </Box>
+    <Stack spacing={1.25}>
+      {Array.from({ length: cards }).map((_, i) => (
+        <PostSkeleton key={i} />
+      ))}
+    </Stack>
   </Box>
 );
 
@@ -256,7 +307,7 @@ interface ProfilePageProps {
     onGoBack: () => void;
     userId: string;
     currentUserId?: string;
-    onOpenProfile?: (userId: string) => void;
+    onOpenProfile?: (userId: string, focusPostId?: string | number) => void;
     /** Preferred when embedded in Home — opens chat dock without a brittle /home navigate */
     onOpenChat?: (roomId: string) => void;
     /** Scroll/highlight this post after Activity loads (e.g. from Home “Pinned” badge). */
@@ -410,6 +461,25 @@ const GRAPHQL_QUERIES = {
     CHECK_FOLLOWING_STATUS: `
         query CheckFollowingStatus($userId: String!, $followingId: String!) {
             checkFollowingStatus(userId: $userId, followingId: $followingId) {
+                id
+                followerId
+                followingId
+                status
+                followedAt
+            }
+        }
+    `,
+
+    CHECK_FOLLOW_RELATIONSHIP: `
+        query CheckFollowRelationship($me: String!, $them: String!) {
+            outgoing: checkFollowingStatus(userId: $me, followingId: $them) {
+                id
+                followerId
+                followingId
+                status
+                followedAt
+            }
+            incoming: checkFollowingStatus(userId: $them, followingId: $me) {
                 id
                 followerId
                 followingId
@@ -683,6 +753,11 @@ const GRAPHQL_QUERIES = {
 };
 // Remove these imports as they're not being used yet
 
+const followRelationshipInflight = new Map<string, Promise<{
+    outgoing: UserFollower | null;
+    incoming: UserFollower | null;
+}>>();
+
 const apiService = {
   async graphqlRequest(query: string, variables: Record<string, any> = {}) {
     try {
@@ -930,6 +1005,30 @@ const apiService = {
         }
     },
 
+    async checkFollowRelationship(me: string, them: string): Promise<{
+        outgoing: UserFollower | null;
+        incoming: UserFollower | null;
+    }> {
+        const key = `${me}:${them}`;
+        const existing = followRelationshipInflight.get(key);
+        if (existing) return existing;
+        const request = (async () => {
+            try {
+                const data = await this.graphqlRequest(GRAPHQL_QUERIES.CHECK_FOLLOW_RELATIONSHIP, { me, them });
+                return {
+                    outgoing: data.outgoing || null,
+                    incoming: data.incoming || null,
+                };
+            } catch (error) {
+                return { outgoing: null, incoming: null };
+            } finally {
+                followRelationshipInflight.delete(key);
+            }
+        })();
+        followRelationshipInflight.set(key, request);
+        return request;
+    },
+
     async checkFollowingStatus(userId: string, followingId: string): Promise<UserFollower | null> {
         try {
             const data = await this.graphqlRequest(GRAPHQL_QUERIES.CHECK_FOLLOWING_STATUS, {
@@ -1054,6 +1153,9 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
     const [isFollowing, setIsFollowing] = useState(false);
     const [followingInProgress, setFollowingInProgress] = useState(false);
     const [postsLoading, setPostsLoading] = useState(false);
+    const [postsLoadingMore, setPostsLoadingMore] = useState(false);
+    const [postsPage, setPostsPage] = useState(1);
+    const [postsHasMore, setPostsHasMore] = useState(true);
     const [postMenu, setPostMenu] = useState<{ anchor: HTMLElement; post: any } | null>(null);
     const [editPost, setEditPost] = useState<any | null>(null);
     const [editTitle, setEditTitle] = useState('');
@@ -1106,9 +1208,13 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
     // Snackbar state
     const [snack, setSnack] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' | 'warning' }>({ open: false, message: '', severity: 'success' });
     const handleSnackClose = () => setSnack(prev => ({ ...prev, open: false }));
+    const [pendingDeletePostId, setPendingDeletePostId] = useState<string | null>(null);
+    const [pendingDeleteCommentId, setPendingDeleteCommentId] = useState<string | null>(null);
 
     useEffect(() => {
         let cancelled = false;
+        const me = currentUserId != null ? String(currentUserId) : '';
+        const them = userId != null ? String(userId) : '';
 
         const fetchData = async () => {
             try {
@@ -1116,7 +1222,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                 setError(null);
 
                 // One profile call already includes counts + ratings — don't waterfall extra lists
-                const userProfile = await apiService.fetchUserProfile(userId);
+                const userProfile = await apiService.fetchUserProfile(them);
                 if (cancelled) return;
 
                 setUser(userProfile);
@@ -1126,16 +1232,14 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                 // Non-blocking: posts + follow status
                 loadUserPosts();
 
-                if (currentUserId && currentUserId !== userId) {
-                    Promise.all([
-                        apiService.checkFollowingStatus(currentUserId, userId),
-                        apiService.checkFollowingStatus(userId, currentUserId),
-                    ]).then(([followStatus, incoming]) => {
+                if (me && them && me !== them) {
+                    // One GraphQL request (aliased outgoing + incoming) instead of two HTTP calls
+                    apiService.checkFollowRelationship(me, them).then(({ outgoing, incoming }) => {
                         if (cancelled) return;
-                        setFollowingStatus(followStatus);
+                        setFollowingStatus(outgoing);
                         setIsFollowing(
-                            isActiveFollowStatus(followStatus?.status) ||
-                            isPendingFollowStatus(followStatus?.status)
+                            isActiveFollowStatus(outgoing?.status) ||
+                            isPendingFollowStatus(outgoing?.status)
                         );
                         setIncomingFollowStatus(incoming);
                     }).catch((err) => {
@@ -1161,58 +1265,67 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
 
     const client = useApolloClient();
 
-    const loadUserPosts = async () => {
-        setPostsLoading(true);
+    const PROFILE_POSTS_PAGE_SIZE = 8;
+
+    const mapProfilePosts = (list: any[]) =>
+        (list || []).map((post: any) => ({
+            ...post,
+            id: String(post.id),
+            likesCount: post.likeCount || 0,
+            commentCount: post.commentCount ?? 0,
+            commentsCount: post.commentCount ?? 0,
+            commentsList: [] as any[],
+            userProfilePhotoSignedUrl: post.userProfilePhotoSignedUrl || post.userProfilePhoto,
+            user: {
+                id: post.userId,
+                firstName: post.userFirstName || '',
+                lastName: post.userLastName || '',
+                profilePhoto: post.userProfilePhotoSignedUrl || post.userProfilePhoto || undefined,
+            },
+        }));
+
+    const loadUserPosts = async (page = 1, append = false) => {
+        if (append) setPostsLoadingMore(true);
+        else setPostsLoading(true);
         try {
-            console.log('Loading user posts for ID:', userId);
-            
             const { data } = await client.query({
                 query: GET_POSTS_BY_USER,
-                variables: { userId, page: 1, limit: 20 },
+                variables: { userId, page, limit: PROFILE_POSTS_PAGE_SIZE },
                 fetchPolicy: 'network-only'
             });
-            
-            console.log('User posts loaded from GraphQL:', data);
-            
+
             if (data?.postsByUser) {
-                // Do not fetch comments for every post here — that was N+1 and made profile very slow.
-                // Comments load on demand when the user opens the comments UI.
-                const postsWithDetails = sortPostsPinnedFirst(
-                    data.postsByUser.map((post: any) => ({
-                        ...post,
-                        id: String(post.id),
-                        likesCount: post.likeCount || 0,
-                        commentCount: post.commentCount ?? 0,
-                        commentsCount: post.commentCount ?? 0,
-                        commentsList: [] as any[],
-                        userProfilePhotoSignedUrl: post.userProfilePhotoSignedUrl || post.userProfilePhoto,
-                        user: {
-                            id: post.userId,
-                            firstName: post.userFirstName || '',
-                            lastName: post.userLastName || '',
-                            profilePhoto: post.userProfilePhotoSignedUrl || post.userProfilePhoto || undefined,
-                        },
-                    }))
-                );
-                setPosts(postsWithDetails as Post[]);
+                const mapped = mapProfilePosts(data.postsByUser);
+                setPostsHasMore(mapped.length >= PROFILE_POSTS_PAGE_SIZE);
+                setPostsPage(page);
+                if (append) {
+                    setPosts((prev) => {
+                        const seen = new Set(prev.map((p) => String(p.id)));
+                        return [...prev, ...mapped.filter((p: any) => !seen.has(String(p.id)))];
+                    });
+                } else {
+                    setPosts(sortPostsPinnedFirst(mapped) as Post[]);
+                }
 
                 const nextLiked: { [postId: string]: boolean } = {};
                 const nextCounts: { [postId: string]: number } = {};
-                postsWithDetails.forEach((post: any) => {
+                mapped.forEach((post: any) => {
                     const id = String(post.id);
                     if (post.isLiked) nextLiked[id] = true;
                     nextCounts[id] = post.likeCount || post.likesCount || 0;
                 });
-                setLikedPosts(nextLiked);
+                setLikedPosts(prev => ({ ...prev, ...nextLiked }));
                 setPostLikeCounts(prev => ({ ...prev, ...nextCounts }));
-            } else {
+            } else if (!append) {
                 setPosts([]);
+                setPostsHasMore(false);
             }
         } catch (error) {
             console.error('Failed to load posts:', error);
-            setPosts([]);
+            if (!append) setPosts([]);
         } finally {
             setPostsLoading(false);
+            setPostsLoadingMore(false);
         }
     };
 
@@ -1558,7 +1671,13 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
     };
 
     const handleDeleteComment = async (commentId: string) => {
-        if (!window.confirm('Delete this comment?')) return;
+        setPendingDeleteCommentId(commentId);
+    };
+
+    const confirmDeleteComment = async () => {
+        const commentId = pendingDeleteCommentId;
+        setPendingDeleteCommentId(null);
+        if (!commentId) return;
         const postId = commentsModalOpen.postId;
         if (!postId) return;
         const existing = commentsByPost[postId];
@@ -2071,11 +2190,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                             </Typography>
                         </Box>
                         {postsLoading ? (
-                            <Stack spacing={1.25}>
-                                <PostSkeleton />
-                                <PostSkeleton />
-                                <PostSkeleton />
-                            </Stack>
+                            <PostsLoadingWait label="Loading posts" cards={3} />
                         ) : posts.length === 0 ? (
                             <Box sx={{ ...MATTE_POST_SX, borderRadius: CARD_RADIUS, p: { xs: 2.5, sm: 3.5 }, textAlign: 'center' }}>
                                 <Typography sx={{ color: '#16302A', fontWeight: 750, mb: 0.5, fontSize: 16, ...displayFont }}>
@@ -2172,7 +2287,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                                     categoryFromTitle(rawTitle);
                                 const metaBits = [
                                     (post as any).location ? String((post as any).location) : '',
-                                    listingLabel,
                                     (post as any).price != null && Number((post as any).price) > 0
                                         ? `₹${(post as any).price}`
                                         : '',
@@ -2307,6 +2421,23 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                                                 )}
                                             </Typography>
                                         </Box>
+                                        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5, flexShrink: 0, ml: 0.5 }}>
+                                          {listingLabel ? (
+                                            <Chip
+                                              label={listingLabel}
+                                              size="small"
+                                              sx={{
+                                                height: 22,
+                                                fontSize: 11,
+                                                fontWeight: 700,
+                                                color: '#16302A',
+                                                bgcolor: 'rgba(22,48,42,0.08)',
+                                                border: '1px solid rgba(22,48,42,0.16)',
+                                                maxWidth: { xs: 110, sm: 160 },
+                                                '& .MuiChip-label': { px: 1, overflow: 'hidden', textOverflow: 'ellipsis' },
+                                              }}
+                                            />
+                                          ) : null}
                                         {canManage && (
                                             <IconButton
                                                 size="small"
@@ -2317,6 +2448,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                                                 <MoreVertIcon />
                                             </IconButton>
                                         )}
+                                        </Box>
                                     </Box>
 
                                     <Box sx={{ px: 2, pb: metaBits.length || (post.media?.length ?? 0) > 0 ? 1 : 0.5 }}>
@@ -2476,6 +2608,24 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                                 </Box>
                                 );
                             })}
+                            {(postsHasMore || postsLoadingMore) && (
+                                <Box>
+                                    {postsLoadingMore ? (
+                                        <PostsLoadingWait label="Loading more posts" cards={2} />
+                                    ) : (
+                                        <Box sx={{ display: 'flex', justifyContent: 'center', py: 1.5 }}>
+                                        <Button
+                                            variant="text"
+                                            size="small"
+                                            onClick={() => loadUserPosts(postsPage + 1, true)}
+                                            sx={{ textTransform: 'none', color: '#16302A', fontWeight: 600 }}
+                                        >
+                                            Load more posts
+                                        </Button>
+                                        </Box>
+                                    )}
+                                </Box>
+                            )}
                             </Stack>
                         )}
                     </Box>
@@ -2732,7 +2882,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                                 </IconButton>
                             </Box>
 
-                            <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto', px: { xs: 2, sm: 2.5 }, py: 2 }}>
+                            <Box className="zpc-overlay-scroll" sx={{ flex: 1, minHeight: 0, overflowY: 'auto', px: { xs: 2, sm: 2.5 }, py: 2 }}>
                                 {currentPost && (
                                     <Box sx={{ mb: 2.5 }}>
                                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, mb: 1.25, minWidth: 0 }}>
@@ -2829,7 +2979,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
             {/* Followers modal */}
             {followersOpen && (
                 <Box sx={{ position: 'fixed', inset: 0, bgcolor: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setFollowersOpen(false)}>
-                    <Box sx={{ ...MATTE_SURFACE, borderRadius: 3, width: { xs: '94vw', sm: 420 }, maxWidth: '94vw', maxHeight: { xs: '80vh', sm: '70vh' }, overflowY: 'auto', p: { xs: 1.5, sm: 2 } }} onClick={e => e.stopPropagation()}>
+                    <Box className="zpc-overlay-scroll zpc-overlay-host" sx={{ ...MATTE_SURFACE, borderRadius: 3, width: { xs: '94vw', sm: 420 }, maxWidth: '94vw', maxHeight: { xs: '80vh', sm: '70vh' }, overflowY: 'auto', p: { xs: 1.5, sm: 2 } }} onClick={e => e.stopPropagation()}>
                         <Typography sx={{ fontWeight: 700, color: '#16302A', mb: 1 }}>Followers</Typography>
                         {loadingFF ? (
                             <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress /></Box>
@@ -2889,7 +3039,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
             {/* Following modal */}
             {followingOpen && (
                 <Box sx={{ position: 'fixed', inset: 0, bgcolor: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setFollowingOpen(false)}>
-                    <Box sx={{ ...MATTE_SURFACE, borderRadius: 3, width: { xs: '94vw', sm: 420 }, maxWidth: '94vw', maxHeight: { xs: '80vh', sm: '70vh' }, overflowY: 'auto', p: { xs: 1.5, sm: 2 } }} onClick={e => e.stopPropagation()}>
+                    <Box className="zpc-overlay-scroll zpc-overlay-host" sx={{ ...MATTE_SURFACE, borderRadius: 3, width: { xs: '94vw', sm: 420 }, maxWidth: '94vw', maxHeight: { xs: '80vh', sm: '70vh' }, overflowY: 'auto', p: { xs: 1.5, sm: 2 } }} onClick={e => e.stopPropagation()}>
                         <Typography sx={{ fontWeight: 700, color: '#16302A', mb: 1 }}>Following</Typography>
                         {loadingFF ? (
                             <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress /></Box>
@@ -2959,11 +3109,11 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                                 )
                             );
                         } else {
-                            window.alert(result?.[key]?.message || `Could not ${currentlyPinned ? 'unpin' : 'pin'} post`);
+                            setSnack({ open: true, message: result?.[key]?.message || `Could not ${currentlyPinned ? 'unpin' : 'pin'} post`, severity: 'error' });
                         }
                     } catch (err) {
                         console.error(err);
-                        window.alert(`Could not ${currentlyPinned ? 'unpin' : 'pin'} post`);
+                        setSnack({ open: true, message: `Could not ${currentlyPinned ? 'unpin' : 'pin'} post`, severity: 'error' });
                     }
                 }}
             >
@@ -2975,18 +3125,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                     if (!postMenu) return;
                     const postId = String(postMenu.post.id);
                     setPostMenu(null);
-                    if (!window.confirm('Delete this post?')) return;
-                    try {
-                        const { data: result } = await deletePostMutation({ variables: { postId } });
-                        if (result?.deletePost?.success) {
-                            setPosts((prev) => prev.filter((p) => String(p.id) !== postId));
-                        } else {
-                            window.alert(result?.deletePost?.message || 'Failed to delete post');
-                        }
-                    } catch (err) {
-                        console.error(err);
-                        window.alert('Failed to delete post');
-                    }
+                    setPendingDeletePostId(postId);
                 }}
             >
                 Delete
@@ -3052,11 +3191,11 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
                                 );
                                 setEditPost(null);
                             } else {
-                                window.alert(result?.updatePost?.message || 'Failed to update post');
+                                setSnack({ open: true, message: result?.updatePost?.message || 'Failed to update post', severity: 'error' });
                             }
                         } catch (err) {
                             console.error(err);
-                            window.alert('Failed to update post');
+                            setSnack({ open: true, message: 'Failed to update post', severity: 'error' });
                         } finally {
                             setEditSaving(false);
                         }
@@ -3071,6 +3210,43 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
             open={!!sharePostTarget}
             post={sharePostTarget}
             onClose={() => setSharePostTarget(null)}
+        />
+
+        <Snackbar open={snack.open} autoHideDuration={4000} onClose={handleSnackClose} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+            <Alert onClose={handleSnackClose} severity={snack.severity} sx={{ borderRadius: 1.5, width: '100%' }}>
+                {snack.message}
+            </Alert>
+        </Snackbar>
+        <ConfirmDialog
+            open={Boolean(pendingDeletePostId)}
+            title="Delete post"
+            message="Delete this post? This cannot be undone."
+            confirmLabel="Delete"
+            onCancel={() => setPendingDeletePostId(null)}
+            onConfirm={async () => {
+                const postId = pendingDeletePostId;
+                setPendingDeletePostId(null);
+                if (!postId) return;
+                try {
+                    const { data: result } = await deletePostMutation({ variables: { postId } });
+                    if (result?.deletePost?.success) {
+                        setPosts((prev) => prev.filter((p) => String(p.id) !== postId));
+                    } else {
+                        setSnack({ open: true, message: result?.deletePost?.message || 'Failed to delete post', severity: 'error' });
+                    }
+                } catch (err) {
+                    console.error(err);
+                    setSnack({ open: true, message: 'Failed to delete post', severity: 'error' });
+                }
+            }}
+        />
+        <ConfirmDialog
+            open={Boolean(pendingDeleteCommentId)}
+            title="Delete comment"
+            message="Delete this comment?"
+            confirmLabel="Delete"
+            onCancel={() => setPendingDeleteCommentId(null)}
+            onConfirm={() => { void confirmDeleteComment(); }}
         />
 
         <Dialog

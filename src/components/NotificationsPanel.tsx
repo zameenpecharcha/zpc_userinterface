@@ -132,7 +132,7 @@ const NotificationsPanel: React.FC<Props> = ({ notifications, onSelect, onClear,
   const items = useMemo(() => notifications.slice(0, 20), [notifications]);
 
   return (
-    <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', maxHeight: 420 }}>
+    <Box className="zpc-overlay-host" sx={{ width: '100%', display: 'flex', flexDirection: 'column', maxHeight: 420 }}>
       <Box
         sx={{
           display: 'flex',
@@ -201,14 +201,12 @@ const NotificationsPanel: React.FC<Props> = ({ notifications, onSelect, onClear,
         </Box>
       ) : (
         <Box
+          className="zpc-overlay-scroll"
           sx={{
             overflowY: 'auto',
             overflowX: 'hidden',
             flex: 1,
             minHeight: 0,
-            scrollbarWidth: 'none',
-            msOverflowStyle: 'none',
-            '&::-webkit-scrollbar': { display: 'none', width: 0, height: 0 },
           }}
         >
           {items.map((n, idx) => (
