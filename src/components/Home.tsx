@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, memo, useEffect, useRef } from 'react';
 import { gql, useQuery, useMutation, useApolloClient } from '@apollo/client';
-import { SEARCH_POSTS, CREATE_POST, TRENDING_POSTS, DELETE_POST, UPDATE_POST, UPDATE_COMMENT, DELETE_COMMENT, UNLIKE_COMMENT, GET_POST_COMMENTS, CREATE_COMMENT, LIKE_COMMENT, LIKE_POST, UNLIKE_POST, REPORT_POST, PIN_POST, UNPIN_POST } from '../graphql/posts';
+import { SEARCH_POSTS, CREATE_POST, TRENDING_POSTS, DELETE_POST, UPDATE_POST, UPDATE_COMMENT, DELETE_COMMENT, UNLIKE_COMMENT, GET_POST_COMMENTS, CREATE_COMMENT, LIKE_COMMENT, LIKE_POST, UNLIKE_POST, REPORT_POST, PIN_POST, UNPIN_POST, GET_POST } from '../graphql/posts';
 import { GET_SUGGESTED_USERS, FOLLOW_USER, GET_USER_NOTIFICATIONS, MARK_NOTIFICATION_READ, CLEAR_NOTIFICATIONS, GET_USER_PROFILE } from '../graphql/user';
 import CreatePost from './CreatePost';
 import { PostService } from '../services/postService';
@@ -929,6 +929,8 @@ const Home = () => {
   const [feedPage, setFeedPage] = useState(1);
   const [feedExhausted, setFeedExhausted] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [focusedPost, setFocusedPost] = useState<any | null>(null);
+  const [pendingFocusPostId, setPendingFocusPostId] = useState<string | null>(null);
   const loadMoreLock = useRef(false);
   const feedSentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -980,7 +982,13 @@ const Home = () => {
     }
   }, [data?.searchPosts?.length, feedExhausted, feedPage, fetchMore, loading, loadingMore]);
 
-
+  const feedPosts = useMemo(() => {
+    const base = data?.searchPosts || [];
+    if (!focusedPost?.id) return base;
+    const focusId = String(focusedPost.id);
+    const withoutDup = base.filter((p: any) => String(p.id) !== focusId);
+    return [focusedPost, ...withoutDup];
+  }, [data?.searchPosts, focusedPost]);
 
   // Optimized state management
   const [commentsError, setCommentsError] = useState<string | null>(null);
@@ -993,11 +1001,11 @@ const Home = () => {
 
   // Hydrate liked state from server (persists across refresh)
   useEffect(() => {
-    if (!data?.searchPosts) return;
+    if (!feedPosts.length) return;
     const nextLiked: { [postId: string]: boolean } = {};
     const nextCounts: { [postId: string]: number } = {};
     const nextCommentCounts: { [postId: string]: number } = {};
-    data.searchPosts.forEach((p: any) => {
+    feedPosts.forEach((p: any) => {
       const id = String(p.id);
       if (p.isLiked) nextLiked[id] = true;
       nextCounts[id] = p.likeCount || 0;
@@ -1006,7 +1014,7 @@ const Home = () => {
     setLikedPosts(prev => ({ ...nextLiked, ...prev }));
     setLikeCounts(prev => ({ ...nextCounts, ...prev }));
     setCommentCounts(prev => ({ ...nextCommentCounts, ...prev }));
-  }, [data?.searchPosts]);
+  }, [feedPosts]);
 
   useEffect(() => {
     const n = data?.searchPosts?.length;
@@ -1139,7 +1147,7 @@ const Home = () => {
       openChat?: boolean;
       autoSelectRoomId?: string;
       openProfileId?: string;
-      focusPostId?: number;
+      focusPostId?: string | number;
     } | null;
     if (!state) return;
 
@@ -1152,12 +1160,23 @@ const Home = () => {
     }
 
     if (state.focusPostId) {
+      const postId = String(state.focusPostId);
       setCurrentPage('home');
+      setSelectedProfileId(null);
+      setPendingFocusPostId(postId);
       navigate('/home', { replace: true, state: {} });
-      setTimeout(() => {
-        const el = document.getElementById(`post-${state.focusPostId}`);
-        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }, 400);
+      (async () => {
+        try {
+          const { data: postData } = await client.query({
+            query: GET_POST,
+            variables: { postId },
+            fetchPolicy: 'network-only',
+          });
+          if (postData?.post?.id) setFocusedPost(postData.post);
+        } catch (err) {
+          console.error('Failed to load focused post from state:', err);
+        }
+      })();
       return;
     }
 
@@ -1169,19 +1188,49 @@ const Home = () => {
     setChatRoomId(state.autoSelectRoomId || null);
     setChatOpen(true);
     window.history.replaceState({}, '');
-  }, [location.state, isMobile, navigate]);
+  }, [location.state, isMobile, navigate, client]);
 
-  // Deep-link from shared URL: /home?post=<id>
+  // Deep-link from shared URL or search: /home?post=<id> — stay on Home feed
   useEffect(() => {
     const params = new URLSearchParams(location.search || '');
     const postId = params.get('post');
     if (!postId) return;
+
+    let cancelled = false;
     setCurrentPage('home');
     setSelectedProfileId(null);
-    if (!data?.searchPosts?.length) return;
+    setPendingFocusPostId(postId);
 
-    const t = window.setTimeout(() => {
-      const el = document.getElementById(`post-${postId}`);
+    (async () => {
+      try {
+        const { data: postData } = await client.query({
+          query: GET_POST,
+          variables: { postId },
+          fetchPolicy: 'network-only',
+        });
+        if (cancelled) return;
+        const post = postData?.post;
+        if (post?.id) {
+          setFocusedPost(post);
+        }
+      } catch (err) {
+        console.error('Failed to load focused post:', err);
+      }
+      if (cancelled) return;
+      navigate('/home', { replace: true });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [location.search, navigate, client]);
+
+  // Scroll + highlight once the focused post is in the DOM
+  useEffect(() => {
+    if (!pendingFocusPostId) return;
+    let attempts = 0;
+    const tryScroll = () => {
+      const el = document.getElementById(`post-${pendingFocusPostId}`);
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         el.style.outline = '2px solid #5F8670';
@@ -1190,11 +1239,19 @@ const Home = () => {
           el.style.outline = '';
           el.style.outlineOffset = '';
         }, 2500);
+        setPendingFocusPostId(null);
+        return;
       }
-      navigate('/home', { replace: true });
-    }, 300);
+      attempts += 1;
+      if (attempts < 20) {
+        window.setTimeout(tryScroll, 150);
+      } else {
+        setPendingFocusPostId(null);
+      }
+    };
+    const t = window.setTimeout(tryScroll, 100);
     return () => window.clearTimeout(t);
-  }, [location.search, navigate, data?.searchPosts]);
+  }, [pendingFocusPostId, focusedPost, feedPosts]);
 
   // GraphQL mutations
   const [createComment] = useMutation(CREATE_COMMENT);
@@ -2676,7 +2733,7 @@ const Home = () => {
             </Box>
           ) : (
             <Stack spacing={1.25} sx={{ mx: { xs: 1.25, md: 0 } }}>
-              {data?.searchPosts?.map((post: any) => {
+              {feedPosts.map((post: any) => {
                 const pid = String(post.id);
                 const isOpen = expandedCommentsPostId === pid;
                 return (
@@ -2720,7 +2777,7 @@ const Home = () => {
                 {loadingMore ? (
                   <PostsLoadingWait label="Loading more posts" cards={2} />
                 ) : feedExhausted ? (
-                  data?.searchPosts?.length ? (
+                  feedPosts.length ? (
                     <Typography sx={{ fontSize: 12.5, color: '#7A847C', textAlign: 'center', py: 2 }}>You're all caught up</Typography>
                   ) : null
                 ) : (
