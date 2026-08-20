@@ -54,6 +54,7 @@ export interface Property {
   price: number;
   currency: string;
   city: string;
+  location?: string;
   state: string;
   country: string;
   status: string;
@@ -90,6 +91,24 @@ export interface CreatePropertyInput {
   builderName?: string;
   projectName?: string;
   reraId?: string;
+  propertyType?: string;
+  listingType?: string;
+  price?: number;
+  currency?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  location?: string;
+  bedrooms?: number;
+  bathrooms?: number;
+}
+
+export interface UpdatePropertyInput {
+  propertyId: string;
+  title?: string;
+  description?: string;
+  builderName?: string;
+  projectName?: string;
   propertyType?: string;
   listingType?: string;
   price?: number;

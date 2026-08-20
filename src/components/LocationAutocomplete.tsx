@@ -168,7 +168,7 @@ const LocationAutocomplete: React.FC<LocationAutocompleteProps> = ({
         placement="bottom-start"
         style={{ width: anchorEl?.clientWidth, zIndex: 1300 }}
       >
-        <Paper elevation={3} sx={{ mt: 1, maxHeight: 300, overflow: 'auto', bgcolor: '#F7F3E8' }}>
+        <Paper elevation={3} className="zpc-overlay-scroll" sx={{ mt: 1, maxHeight: 300, overflow: 'auto', bgcolor: '#F7F3E8' }}>
           {searchError ? (
             <Box p={2}>
               <Typography color="error">{searchError}</Typography>

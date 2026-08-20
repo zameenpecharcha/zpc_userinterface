@@ -102,7 +102,9 @@ const SearchPage: React.FC = () => {
   const [postPropType, setPostPropType] = useState(params.get('postPropertyType') || '');
 
   const parsed = useMemo(() => parseSearchQuery(qParam), [qParam]);
+  const browseProperties = tabParam === 'properties';
   const hasQuery = Boolean(parsed.apiQuery || peopleRole || propCity || propType || listingType || postLocation || postPropType);
+  const showResults = hasQuery || browseProperties;
 
   const [runPeople, peopleState] = useLazyQuery(SEARCH_USERS_LIGHT, { fetchPolicy: 'network-only', errorPolicy: 'all' });
   const [runPosts, postsState] = useLazyQuery(SEARCH_POSTS_LIGHT, { fetchPolicy: 'network-only', errorPolicy: 'all' });
@@ -140,13 +142,13 @@ const SearchPage: React.FC = () => {
           },
         });
       }
-      if (needProps && (apiQ || propCity || propType || listingType)) {
-        const cityGuess = propCity || apiQ.split(/\s+/)[0] || undefined;
+      if (needProps && (apiQ || propCity || propType || listingType || tab === 'properties')) {
         runProps({
           variables: {
             page: 1,
             limit: tab === 'all' ? 8 : 30,
-            city: cityGuess || null,
+            city: propCity || null,
+            search: apiQ || null,
             propertyType: propType || null,
             listingType: listingType || null,
           },
@@ -174,7 +176,7 @@ const SearchPage: React.FC = () => {
   }, [qParam]);
 
   useEffect(() => {
-    if (!hasQuery) return;
+    if (!hasQuery && !browseProperties) return;
     runSearch();
   }, [
     qParam,
@@ -187,6 +189,7 @@ const SearchPage: React.FC = () => {
     postLocation,
     postPropType,
     hasQuery,
+    browseProperties,
     runSearch,
   ]);
 
@@ -307,7 +310,7 @@ const SearchPage: React.FC = () => {
     });
   }
 
-  const openProfile = (id: string) => navigate('/home', { state: { openProfileId: id } });
+  const openProfile = (id: string) => navigate(`/profile/${id}`);
 
   const FilterSelect = ({
     label,
@@ -757,7 +760,7 @@ const SearchPage: React.FC = () => {
       </Box>
 
       <Box sx={{ position: 'relative', zIndex: 1, maxWidth: 920, mx: 'auto', px: { xs: 1.25, sm: 2 }, py: 2.5 }}>
-        {!hasQuery ? (
+        {!showResults ? (
           <Box sx={{ ...MATTE_PANEL, borderRadius: CARD_RADIUS, p: 3 }}>
             <Typography sx={{ fontWeight: 800, fontSize: 20, color: '#16302A', mb: 1, ...displayFont }}>
               Search ZPC
@@ -780,7 +783,11 @@ const SearchPage: React.FC = () => {
         ) : (
           <TabEnter tabKey={tabParam}>
             <Typography sx={{ mb: 2, color: '#5C675F', fontSize: 13.5 }}>
-              Results for <strong style={{ color: '#16302A' }}>{qParam || 'filters'}</strong>
+              {qParam
+                ? <>Results for <strong style={{ color: '#16302A' }}>{qParam}</strong></>
+                : tabParam === 'properties'
+                  ? 'Published listings'
+                  : <>Results for <strong style={{ color: '#16302A' }}>filters</strong></>}
               {loading ? ' · searching…' : ''}
             </Typography>
             {(peopleState.error || postsState.error || propsState.error) && (

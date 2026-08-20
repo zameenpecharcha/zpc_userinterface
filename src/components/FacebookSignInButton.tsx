@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Box, Button, CircularProgress, IconButton, Tooltip, Typography } from '@mui/material';
 import FacebookIcon from '@mui/icons-material/Facebook';
+import { SOCIAL_ICON_MOTION } from './GoogleSignInButton';
 
 interface FacebookSignInButtonProps {
   onAccessToken: (accessToken: string) => void;
@@ -154,7 +155,11 @@ const FacebookSignInButton: React.FC<FacebookSignInButtonProps> = ({
             bgcolor: '#1877F2',
             color: '#fff',
             boxShadow: '0 2px 8px rgba(24,119,242,0.35)',
-            '&:hover': { bgcolor: '#166FE5' },
+            ...SOCIAL_ICON_MOTION,
+            '&:hover': {
+              ...SOCIAL_ICON_MOTION['&:hover'],
+              bgcolor: '#166FE5',
+            },
             '&.Mui-disabled': { bgcolor: '#1877F2', color: '#fff', opacity: showLoading ? 1 : 0.55 },
           }}
         >

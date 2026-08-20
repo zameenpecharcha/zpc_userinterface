@@ -38,6 +38,11 @@ declare global {
               width?: string | number;
             }
           ) => void;
+          prompt?: (momentListener?: (notification: {
+            isNotDisplayed: () => boolean;
+            isSkippedMoment: () => boolean;
+            isDismissedMoment: () => boolean;
+          }) => void) => void;
         };
       };
     };
@@ -108,6 +113,20 @@ const blurActiveIfInside = (root: HTMLElement | null) => {
     active.blur();
   }
 };
+
+const SOCIAL_ICON_MOTION = {
+  transition:
+    'transform 0.22s cubic-bezier(0.22,1,0.36,1), box-shadow 0.22s ease, background-color 0.22s ease, border-color 0.22s ease',
+  '&:hover': {
+    transform: 'translateY(-4px) scale(1.08)',
+    boxShadow: '0 10px 22px rgba(10,18,16,0.22)',
+  },
+  '&:active': {
+    transform: 'translateY(-1px) scale(1.03)',
+  },
+} as const;
+
+export { SOCIAL_ICON_MOTION };
 
 const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
   onCredential,
@@ -247,60 +266,70 @@ const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
   }
 
   if (isIcon) {
-    // Always paint our Google "G"; GIS button sits transparent on top for the real click/login.
-    // Do NOT put aria-hidden on the GIS host while its iframe can receive focus (browser warning + stuck UX).
+    const triggerGoogle = () => {
+      if (disabled || showLoading) return;
+      setPickerError('');
+      setAwaitingPicker(true);
+      const gisButton = buttonRef.current?.querySelector('div[role="button"]') as HTMLElement | null;
+      const prompt = window.google?.accounts?.id?.prompt;
+      if (typeof prompt === 'function') {
+        prompt((notification) => {
+          if (notification.isNotDisplayed() || notification.isSkippedMoment() || notification.isDismissedMoment()) {
+            if (gisButton) gisButton.click();
+            else setAwaitingPicker(false);
+          }
+        });
+        return;
+      }
+      if (gisButton) {
+        gisButton.click();
+        return;
+      }
+      setAwaitingPicker(false);
+    };
+
     return (
-      <Box ref={hostRef} sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <Box ref={hostRef} sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+        <Box
+          ref={buttonRef}
+          aria-hidden
+          sx={{
+            position: 'absolute',
+            width: 1,
+            height: 1,
+            overflow: 'hidden',
+            opacity: 0,
+            pointerEvents: 'none',
+            clip: 'rect(0 0 0 0)',
+          }}
+        />
         <Tooltip title={showLoading ? 'Signing in with Google…' : 'Continue with Google'}>
-          <Box
-            sx={{
-              position: 'relative',
-              width: 48,
-              height: 48,
-              borderRadius: '50%',
-              overflow: 'hidden',
-              bgcolor: '#fff',
-              border: '1px solid rgba(0,0,0,0.12)',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-              opacity: disabled && !showLoading ? 0.55 : 1,
-              pointerEvents: disabled || showLoading ? 'none' : 'auto',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            {showLoading ? (
-              <CircularProgress size={22} thickness={4} sx={{ color: '#4285F4' }} />
-            ) : (
-              <GoogleGIcon size={22} />
-            )}
-            <Box
-              ref={buttonRef}
-              // Visually hide GIS chrome; never aria-hide while iframe can hold focus.
+          <span>
+            <IconButton
+              disabled={disabled || showLoading}
+              onClick={triggerGoogle}
+              aria-label="Continue with Google"
               sx={{
-                position: 'absolute',
-                inset: 0,
-                opacity: showLoading ? 0 : 0.02,
-                pointerEvents: showLoading ? 'none' : 'auto',
-                cursor: 'pointer',
-                overflow: 'hidden',
-                ...(showLoading ? { visibility: 'hidden' as const } : {}),
-                '& > div': {
-                  width: '100% !important',
-                  height: '100% !important',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
+                width: 48,
+                height: 48,
+                bgcolor: '#fff',
+                border: '1px solid rgba(0,0,0,0.12)',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                ...SOCIAL_ICON_MOTION,
+                '&:hover': {
+                  ...SOCIAL_ICON_MOTION['&:hover'],
+                  bgcolor: '#fff',
                 },
-                '& iframe': {
-                  width: '48px !important',
-                  height: '48px !important',
-                  minWidth: '48px !important',
-                },
+                '&.Mui-disabled': { bgcolor: '#fff', opacity: showLoading ? 1 : 0.55 },
               }}
-            />
-          </Box>
+            >
+              {showLoading ? (
+                <CircularProgress size={22} thickness={4} sx={{ color: '#4285F4' }} />
+              ) : (
+                <GoogleGIcon size={22} />
+              )}
+            </IconButton>
+          </span>
         </Tooltip>
         {pickerError ? (
           <Typography

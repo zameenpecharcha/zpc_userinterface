@@ -1,11 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  AppBar,
   Box,
   Button,
   Chip,
   CircularProgress,
-  Container,
   Dialog,
   DialogActions,
   DialogContent,
@@ -14,8 +14,11 @@ import {
   LinearProgress,
   Rating,
   Snackbar,
+  Stack,
   TextField,
+  Toolbar,
   Typography,
+  useMediaQuery,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import FavoriteIcon from '@mui/icons-material/Favorite';
@@ -25,7 +28,6 @@ import CloseIcon from '@mui/icons-material/Close';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
-import AddIcon from '@mui/icons-material/Add';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useApolloClient } from '@apollo/client';
@@ -36,26 +38,43 @@ import {
   REMOVE_SAVED_PROPERTY,
   SAVE_PROPERTY,
 } from '../graphql/property';
+import { GET_PROPERTY_POSTS, CREATE_POST } from '../graphql/posts';
 import { Property, PropertyRating } from '../types/property';
 import { PropertyService } from '../services/propertyService';
 import { useAuth } from '../contexts/AuthContext';
-import { MATTE_SURFACE, PAGE_ATMOSPHERE } from '../theme/surfaces';
-import { ZPC_COLORS, ZPC_FONTS } from '../theme/zpcTheme';
+import CreatePost from './CreatePost';
+import { MATTE_SURFACE, MATTE_HEADER, PAGE_ATMOSPHERE, MATTE_INSET } from '../theme/surfaces';
 import ShareSymbol from './icons/ShareSymbol';
 import { ZpcNavLogo } from './brand/ZpcNavLogo';
 import HeaderLogoutButton from './HeaderLogoutButton';
+import AdminBackground from './admin/AdminBackground';
+import { formatRelativeTime } from '../utils/datetime';
+import { postCategoryLabel, categoryFromTitle } from '../constants/postCategories';
 
 const COVER_FALLBACK =
   'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=1400&h=420&fit=crop';
+const API_GATEWAY_URL = (process.env.REACT_APP_API_GATEWAY_URL || 'http://localhost:8080').replace(/\/$/, '');
+
+const CARD_RADIUS = 2;
+const interFont = {
+  fontFamily: "'DM Sans', 'Source Sans 3', system-ui, sans-serif",
+};
+const displayFont = {
+  fontFamily: "'Source Serif 4', 'Source Serif Pro', Georgia, serif",
+};
 
 const PropertyPage: React.FC = () => {
   const navigate = useNavigate();
   const { propertyId } = useParams<{ propertyId: string }>();
   const { user } = useAuth();
   const client = useApolloClient();
+  const isMobile = useMediaQuery('(max-width:900px)');
   const propertyService = useMemo(() => new PropertyService(client), [client]);
 
   const [saved, setSaved] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [cpSubmitting, setCpSubmitting] = useState(false);
+  const [cpError, setCpError] = useState<string | null>(null);
   const [ratingDialogOpen, setRatingDialogOpen] = useState(false);
   const [ratingValue, setRatingValue] = useState<number | null>(null);
   const [ratingTitle, setRatingTitle] = useState('');
@@ -77,9 +96,22 @@ const PropertyPage: React.FC = () => {
     skip: !propertyId,
   });
 
+  const {
+    data: postsData,
+    loading: postsLoading,
+    fetchMore: fetchMorePosts,
+    refetch: refetchPosts,
+  } = useQuery(GET_PROPERTY_POSTS, {
+    variables: { propertyId: propertyId || '', page: 1, limit: 8 },
+    skip: !propertyId,
+    fetchPolicy: 'cache-and-network',
+    errorPolicy: 'ignore',
+  });
+
   const [saveProperty] = useMutation(SAVE_PROPERTY);
   const [removeSavedProperty] = useMutation(REMOVE_SAVED_PROPERTY);
   const [createPropertyRating] = useMutation(CREATE_PROPERTY_RATING);
+  const [createPostMutation] = useMutation(CREATE_POST);
 
   useEffect(() => {
     if (propertyId && user?.id) {
@@ -89,13 +121,17 @@ const PropertyPage: React.FC = () => {
 
   const property: Property | undefined = data?.property;
   const ratings: PropertyRating[] = ratingsData?.propertyRatings || [];
+  const propertyPosts = postsData?.propertyPosts?.posts || [];
+  const postsPage = postsData?.propertyPosts?.page || 1;
+  const postsTotalPages = postsData?.propertyPosts?.totalPages || 1;
+  const postsHasMore = postsPage < postsTotalPages;
+  const [loadingMorePosts, setLoadingMorePosts] = useState(false);
   const isOwner = !!user?.id && !!property?.createdBy && String(user.id) === String(property.createdBy);
   const underReview = ['UNDER_REVIEW', 'PENDING_VERIFICATION', 'PENDING'].includes(
     String(property?.status || '').toUpperCase()
   ) || String(property?.verificationStatus || '').toUpperCase() === 'UNDER_REVIEW';
 
   const documentFeatures = useMemo(() => {
-    // Features aren't on GET_PROPERTY yet — parse from description lines until get-media exists
     const lines = String(property?.description || '').split('\n');
     const docs: string[] = [];
     for (const line of lines) {
@@ -142,12 +178,105 @@ const PropertyPage: React.FC = () => {
       } else {
         await saveProperty({ variables: { propertyId } });
         setSaved(true);
-        setSnackbar({ open: true, message: 'Property saved', severity: 'success' });
+        setSnackbar({ open: true, message: 'Saved. Open Saved properties from the profile menu.', severity: 'success' });
       }
     } catch {
       setSnackbar({ open: true, message: 'Failed to update saved status', severity: 'error' });
     }
   };
+
+  const handleCreatePost = useCallback(async (postData: any) => {
+    if (!user?.id) {
+      setCpError('You must be signed in to create a post.');
+      return;
+    }
+    setCpError(null);
+    setCpSubmitting(true);
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('No authorization token found. Please sign in again.');
+
+      const uploadedMedia: { name: string; url: string; contentType: string }[] = [];
+      if (postData.media && postData.media.length > 0) {
+        for (const file of postData.media) {
+          const qs = new URLSearchParams({
+            fileName: file.name,
+            contentType: file.type || 'application/octet-stream',
+          }).toString();
+          const presignRes = await fetch(`${API_GATEWAY_URL}/api/v1/uploads/presign-post-media?${qs}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (!presignRes.ok) {
+            const errorText = await presignRes.text();
+            throw new Error(`Failed to get upload URL: ${presignRes.status} ${errorText}`);
+          }
+          const { url, publicUrl } = await presignRes.json();
+          if (!url || !publicUrl) throw new Error('Upload service returned an incomplete response.');
+          const putRes = await fetch(url, {
+            method: 'PUT',
+            headers: { 'Content-Type': file.type || 'application/octet-stream' },
+            body: file,
+          });
+          if (!putRes.ok) {
+            const errorText = await putRes.text();
+            throw new Error(`Failed to upload media: ${putRes.status} ${errorText}`);
+          }
+          uploadedMedia.push({
+            name: file.name,
+            url: publicUrl,
+            contentType: file.type || 'application/octet-stream',
+          });
+        }
+      }
+
+      const { data, errors } = await createPostMutation({
+        variables: {
+          userId: String(user.id),
+          title: postData.title,
+          content: postData.content,
+          visibility: postData.visibility || 'public',
+          propertyType: postData.type,
+          location: postData.location || property?.location || property?.city || '',
+          price: 0,
+          status: 'active',
+          latitude: postData.latitude ?? null,
+          longitude: postData.longitude ?? null,
+          propertyId: propertyId || postData.propertyId || null,
+          media:
+            uploadedMedia.length > 0
+              ? uploadedMedia.map((media, index) => ({
+                  mediaType: media.contentType.startsWith('video/') ? 'VIDEO' : 'IMAGE',
+                  mediaOrder: index + 1,
+                  filePath: media.url,
+                  fileName: media.name,
+                  contentType: media.contentType,
+                }))
+              : null,
+        },
+        errorPolicy: 'all',
+      });
+
+      if (errors?.length && !data?.createPost?.success) {
+        throw new Error(errors.map((e: any) => e.message).join('; ') || 'Failed to create post');
+      }
+      if (!data?.createPost?.success) {
+        throw new Error(data?.createPost?.message || 'Failed to create post');
+      }
+
+      setCreateOpen(false);
+      setCpError(null);
+      setSnackbar({ open: true, message: 'Post published', severity: 'success' });
+      try {
+        await refetchPosts();
+      } catch {
+        /* keep the created post even if refresh fails */
+      }
+    } catch (error: any) {
+      setCpError(error?.message || 'Failed to create post');
+    } finally {
+      setCpSubmitting(false);
+    }
+  }, [user?.id, createPostMutation, propertyId, property?.location, property?.city, refetchPosts]);
 
   const handleSubmitRating = async () => {
     if (!ratingValue || !propertyId) return;
@@ -172,311 +301,538 @@ const PropertyPage: React.FC = () => {
     }
   };
 
-  if (loading) {
+  const loadMorePosts = async () => {
+    if (!propertyId || loadingMorePosts || !postsHasMore) return;
+    setLoadingMorePosts(true);
+    try {
+      await fetchMorePosts({
+        variables: { propertyId, page: postsPage + 1, limit: 8 },
+        updateQuery: (prev: any, { fetchMoreResult }: any) => {
+          const incoming = fetchMoreResult?.propertyPosts;
+          if (!incoming) return prev;
+          const existing = prev?.propertyPosts?.posts || [];
+          const seen = new Set(existing.map((p: any) => String(p.id)));
+          const appended = (incoming.posts || []).filter((p: any) => !seen.has(String(p.id)));
+          return {
+            ...prev,
+            propertyPosts: {
+              ...incoming,
+              posts: [...existing, ...appended],
+            },
+          };
+        },
+      });
+    } finally {
+      setLoadingMorePosts(false);
+    }
+  };
+
+  const goBack = () => navigate(-1);
+
+  if (loading && !property) {
     return (
-      <Box sx={{ minHeight: '100vh', ...PAGE_ATMOSPHERE, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <CircularProgress />
+      <Box sx={{ ...PAGE_ATMOSPHERE, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', ...interFont }}>
+        <Box sx={{ textAlign: 'center' }}>
+          <CircularProgress size={48} sx={{ color: '#16302A', mb: 2 }} />
+          <Typography sx={{ color: '#6B7280' }}>Loading property...</Typography>
+        </Box>
       </Box>
     );
   }
 
   if (error || !property) {
     return (
-      <Container sx={{ py: 8, textAlign: 'center' }}>
-        <Typography color="error" sx={{ mb: 2 }}>Property not found</Typography>
-        <Button onClick={() => navigate(-1)}>Go Back</Button>
-      </Container>
+      <Box sx={{ ...PAGE_ATMOSPHERE, minHeight: '100vh', ...interFont }}>
+        <AppBar position="fixed" elevation={0} sx={{ ...MATTE_HEADER, borderRadius: 0, zIndex: 1201 }}>
+          <Toolbar sx={{ justifyContent: 'flex-start', px: { xs: 1, sm: 2 }, minHeight: { xs: 56, sm: 64 }, gap: 1, bgcolor: 'transparent' }}>
+            <ZpcNavLogo size={isMobile ? 32 : 36} animateStroke={false} onNavigate={goBack} />
+            <IconButton onClick={goBack} size={isMobile ? 'small' : 'medium'} sx={{ color: '#EBE6D4' }}>
+              <ArrowBackIcon />
+            </IconButton>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: '#EBE6D4', fontSize: { xs: '1rem', sm: '1.25rem' }, flex: 1 }}>
+              Property
+            </Typography>
+            <HeaderLogoutButton ink="light" size={isMobile ? 'small' : 'medium'} />
+          </Toolbar>
+        </AppBar>
+        <Box sx={{ pt: { xs: 9, sm: 10 }, px: { xs: 1.25, sm: 2 }, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 'calc(100vh - 80px)' }}>
+          <Alert severity="error" sx={{ maxWidth: 400, width: '100%' }}>
+            Property not found
+          </Alert>
+        </Box>
+      </Box>
     );
   }
 
   const locationLabel = [property.city, property.state].filter(Boolean).join(', ') || 'Location TBD';
   const builder = property.builderName || `${property.creatorFirstName || ''} ${property.creatorLastName || ''}`.trim() || 'Builder';
+  const avgRating = property.averageRating || 0;
+  const reviewCount = property.ratingCount ?? ratings.length;
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: '#F1F5F4', animation: 'zpcPageIn 340ms cubic-bezier(0.22,1,0.36,1) both' }}>
-      {/* Cover */}
-      <Box sx={{ position: 'relative', height: { xs: 180, sm: 260 }, overflow: 'hidden' }}>
-        <Box
-          component="img"
-          src={COVER_FALLBACK}
-          alt=""
-          sx={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'saturate(0.85)' }}
-        />
-        <Box sx={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(10,18,16,0.25) 0%, rgba(10,18,16,0.05) 50%, rgba(241,245,244,1) 100%)' }} />
-        <Box sx={{ position: 'absolute', top: 10, left: 10, display: 'flex', alignItems: 'center', gap: 0.75 }}>
-          <Box sx={{ bgcolor: 'rgba(10,18,16,0.55)', borderRadius: 2, px: 0.35, py: 0.2, lineHeight: 0 }}>
-            <ZpcNavLogo size={36} animateStroke={false} />
-          </Box>
-          <IconButton
-            onClick={() => navigate(-1)}
-            sx={{ bgcolor: 'rgba(255,255,255,0.88)', '&:hover': { bgcolor: '#fff' } }}
-          >
+    <Box sx={{ ...PAGE_ATMOSPHERE, minHeight: '100vh', position: 'relative', ...interFont }}>
+      <AdminBackground />
+      <AppBar position="fixed" elevation={0} sx={{ ...MATTE_HEADER, borderRadius: 0, zIndex: 1201 }}>
+        <Toolbar sx={{ justifyContent: 'flex-start', px: { xs: 1, sm: 2 }, minHeight: { xs: 56, sm: 64 }, gap: 1, bgcolor: 'transparent' }}>
+          <ZpcNavLogo size={isMobile ? 32 : 36} animateStroke={false} onNavigate={() => navigate('/home')} />
+          <IconButton onClick={goBack} size={isMobile ? 'small' : 'medium'} sx={{ color: '#EBE6D4' }}>
             <ArrowBackIcon />
           </IconButton>
-        </Box>
-        <Box sx={{ position: 'absolute', top: 12, right: 12, display: 'flex', gap: 0.75, alignItems: 'center' }}>
-          <IconButton onClick={() => navigator.clipboard.writeText(window.location.href)} sx={{ bgcolor: 'rgba(255,255,255,0.88)' }}>
-            <ShareSymbol />
-          </IconButton>
-          <IconButton onClick={handleSaveToggle} sx={{ bgcolor: 'rgba(255,255,255,0.88)' }}>
-            {saved ? <FavoriteIcon sx={{ color: '#EF4444' }} /> : <FavoriteBorderIcon />}
-          </IconButton>
-          <Box sx={{ bgcolor: 'rgba(255,255,255,0.88)', borderRadius: '50%' }}>
-            <HeaderLogoutButton ink="dark" size="small" />
+          <Typography variant="h6" sx={{ fontWeight: 700, color: '#EBE6D4', fontSize: { xs: '1rem', sm: '1.25rem' }, flex: 1 }}>
+            Property
+          </Typography>
+          <HeaderLogoutButton ink="light" size={isMobile ? 'small' : 'medium'} />
+        </Toolbar>
+      </AppBar>
+
+      <Box sx={{ position: 'relative', zIndex: 1, pt: { xs: 9, sm: 10 }, px: { xs: 1.25, sm: 2 }, pb: { xs: 3, sm: 4 } }}>
+        <Box sx={{ maxWidth: 1128, mx: 'auto' }}>
+          <Box sx={{ ...MATTE_SURFACE, borderRadius: CARD_RADIUS, overflow: 'hidden', mb: 1.5 }}>
+            <Box
+              component="img"
+              src={COVER_FALLBACK}
+              alt=""
+              sx={{
+                width: '100%',
+                height: { xs: 120, sm: 160, md: 200 },
+                objectFit: 'cover',
+                display: 'block',
+              }}
+            />
+
+            <Box sx={{ px: { xs: 1.5, sm: 2.5 }, pb: { xs: 1.5, sm: 2 }, pt: 0 }}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexDirection: { xs: 'column', sm: 'row' },
+                  alignItems: { xs: 'stretch', sm: 'flex-start' },
+                  justifyContent: 'space-between',
+                  gap: 1.5,
+                  mb: 1.25,
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: { xs: 1.5, sm: 2 }, minWidth: 0, mt: { xs: -5, sm: -7 } }}>
+                  <Box
+                    component="img"
+                    src={COVER_FALLBACK}
+                    alt=""
+                    sx={{
+                      width: { xs: 88, sm: 112 },
+                      height: { xs: 88, sm: 112 },
+                      borderRadius: CARD_RADIUS,
+                      objectFit: 'cover',
+                      border: '4px solid #EBE6D4',
+                      boxShadow: '0 4px 12px rgba(10,18,16,0.18)',
+                      flexShrink: 0,
+                      bgcolor: '#EBE6D4',
+                    }}
+                  />
+                </Box>
+
+                <Box
+                  sx={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 1,
+                    width: { xs: '100%', sm: 'auto' },
+                    flexShrink: 0,
+                    justifyContent: { xs: 'stretch', sm: 'flex-end' },
+                    mt: { xs: 0.5, sm: 1.5 },
+                  }}
+                >
+                  <Button
+                    variant="outlined"
+                    size={isMobile ? 'small' : 'medium'}
+                    startIcon={<ShareSymbol />}
+                    onClick={() => {
+                      navigator.clipboard.writeText(window.location.href);
+                      setSnackbar({ open: true, message: 'Link copied', severity: 'success' });
+                    }}
+                    sx={{
+                      borderColor: '#16302A',
+                      color: '#16302A',
+                      textTransform: 'none',
+                      fontWeight: 700,
+                      borderRadius: 999,
+                      flex: { xs: '1 1 auto', sm: '0 0 auto' },
+                    }}
+                  >
+                    Share
+                  </Button>
+                  {!isOwner && (
+                  <Button
+                    variant={saved ? 'outlined' : 'contained'}
+                    size={isMobile ? 'small' : 'medium'}
+                    startIcon={saved ? <FavoriteIcon sx={{ color: '#EF4444' }} /> : <FavoriteBorderIcon />}
+                    onClick={handleSaveToggle}
+                    sx={{
+                      bgcolor: saved ? 'transparent' : '#16302A',
+                      borderColor: '#16302A',
+                      color: saved ? '#16302A' : '#fff',
+                      textTransform: 'none',
+                      fontWeight: 700,
+                      borderRadius: 999,
+                      flex: { xs: '1 1 auto', sm: '0 0 auto' },
+                      '&:hover': { bgcolor: saved ? 'rgba(22, 48, 42, 0.08)' : '#0A1C18' },
+                    }}
+                  >
+                    {saved ? 'Saved' : 'Save'}
+                  </Button>
+                  )}
+                  {isOwner && (
+                    <Button
+                      variant="outlined"
+                      size={isMobile ? 'small' : 'medium'}
+                      onClick={() => navigate(`/create-property?edit=${property.id}`)}
+                      sx={{
+                        borderColor: '#16302A',
+                        color: '#16302A',
+                        textTransform: 'none',
+                        fontWeight: 700,
+                        borderRadius: 999,
+                        flex: { xs: '1 1 auto', sm: '0 0 auto' },
+                      }}
+                    >
+                      Edit details
+                    </Button>
+                  )}
+                </Box>
+              </Box>
+
+              <Box sx={{ minWidth: 0, mt: { xs: 0.5, sm: 0 } }}>
+                <Box sx={{ display: 'flex', gap: 0.75, mb: 0.75, flexWrap: 'wrap' }}>
+                  {underReview && (
+                    <Chip label="Under Review" size="small" sx={{ bgcolor: 'rgba(180,83,9,0.12)', color: '#B45309', fontWeight: 700, height: 22 }} />
+                  )}
+                  <Chip
+                    label={property.status}
+                    size="small"
+                    variant="outlined"
+                    sx={{ height: 22, borderColor: 'rgba(22,48,42,0.28)', color: '#16302A', fontWeight: 650 }}
+                  />
+                  <Chip
+                    label={property.listingType || 'Listing'}
+                    size="small"
+                    variant="outlined"
+                    sx={{ height: 22, borderColor: 'rgba(22,48,42,0.28)', color: '#16302A', fontWeight: 650 }}
+                  />
+                </Box>
+                <Typography
+                  sx={{
+                    fontWeight: 750,
+                    color: '#16302A',
+                    mb: 0.35,
+                    fontSize: { xs: '1.35rem', sm: '1.65rem' },
+                    lineHeight: 1.2,
+                    wordBreak: 'break-word',
+                    ...displayFont,
+                  }}
+                >
+                  {property.title}
+                </Typography>
+                <Typography
+                  onClick={() => property.createdBy && navigate(`/profile/${property.createdBy}`)}
+                  sx={{
+                    color: '#3A4540',
+                    mb: 0.35,
+                    fontSize: { xs: '0.95rem', sm: '1.05rem' },
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.3,
+                    cursor: property.createdBy ? 'pointer' : 'default',
+                    '&:hover': property.createdBy ? { textDecoration: 'underline' } : undefined,
+                  }}
+                >
+                  {builder}
+                </Typography>
+                <Typography sx={{ color: '#5C675F', fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <LocationOnIcon sx={{ fontSize: 16 }} /> {locationLabel}
+                </Typography>
+                <Typography sx={{ color: '#5C675F', fontSize: '0.875rem', mt: 0.25 }}>
+                  {String(property.propertyType || 'Residential').replace(/_/g, ' ')} · {formatPrice(property.price)}
+                </Typography>
+                {property.description ? (
+                  <Typography sx={{ color: '#3A4540', fontSize: '0.9rem', mt: 0.75, maxWidth: 560, lineHeight: 1.45 }}>
+                    {property.description.split('\n').filter((line) => !line.toLowerCase().startsWith('documents attached:')).join('\n').trim()}
+                  </Typography>
+                ) : null}
+              </Box>
+
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  gap: { xs: 1.25, sm: 2 },
+                  pt: 1.5,
+                  mt: 1.25,
+                  borderTop: '1px solid rgba(22,48,42,0.1)',
+                }}
+              >
+                <Typography sx={{ fontSize: 14, color: '#5C675F' }}>
+                  <Box component="span" sx={{ color: '#16302A', fontWeight: 750 }}>{(property.saveCount ?? 0).toLocaleString()}</Box> followers
+                </Typography>
+                <Typography sx={{ fontSize: 14, color: '#5C675F' }}>
+                  <Box component="span" sx={{ color: '#16302A', fontWeight: 750 }}>{property.reraId?.trim() || '—'}</Box> RERA
+                </Typography>
+                <Typography sx={{ fontSize: 14, color: '#5C675F' }}>
+                  <Box component="span" sx={{ color: '#16302A', fontWeight: 750 }}>{avgRating > 0 ? avgRating.toFixed(1) : '—'}</Box> rating
+                  <Box component="span" sx={{ mx: 0.75, color: 'rgba(22,48,42,0.35)' }}>·</Box>
+                  <Box component="span" sx={{ color: '#16302A', fontWeight: 750 }}>{reviewCount}</Box> reviews
+                </Typography>
+              </Box>
+            </Box>
+          </Box>
+
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) 300px' }, gap: 1.5, alignItems: 'start' }}>
+            <Box sx={{ minWidth: 0 }}>
+              <Box sx={{ ...MATTE_SURFACE, borderRadius: CARD_RADIUS, px: { xs: 1.5, sm: 2 }, py: 1.5, mb: 1.25, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
+                <Box>
+                <Typography sx={{ fontWeight: 750, color: '#16302A', fontSize: 18, ...displayFont }}>
+                  Activity
+                </Typography>
+                <Typography sx={{ fontSize: 13, color: '#5C675F', mt: 0.25 }}>
+                  Updates for this property
+                </Typography>
+                </Box>
+                {isOwner && (
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => setCreateOpen(true)}
+                    sx={{
+                      textTransform: 'none',
+                      fontWeight: 700,
+                      borderRadius: 999,
+                      borderColor: '#16302A',
+                      color: '#16302A',
+                      flexShrink: 0,
+                    }}
+                  >
+                    Create post
+                  </Button>
+                )}
+              </Box>
+
+              {postsLoading && propertyPosts.length === 0 ? (
+                <Box sx={{ ...MATTE_SURFACE, borderRadius: CARD_RADIUS, py: 4, textAlign: 'center' }}>
+                  <CircularProgress size={28} sx={{ color: '#16302A', mb: 1 }} />
+                  <Typography sx={{ color: '#5C675F', fontSize: 13.5 }}>Loading posts...</Typography>
+                </Box>
+              ) : propertyPosts.length === 0 ? (
+                <Box sx={{ ...MATTE_SURFACE, borderRadius: CARD_RADIUS, p: { xs: 2.5, sm: 3.5 }, textAlign: 'center' }}>
+                  <Typography sx={{ color: '#16302A', fontWeight: 750, mb: 0.5, fontSize: 16, ...displayFont }}>
+                    No posts yet
+                  </Typography>
+                  <Typography sx={{ color: '#5C675F', fontSize: 13.5 }}>
+                    {isOwner
+                      ? "When you share an update for this property, it will show up here."
+                      : 'No updates have been posted for this property yet.'}
+                  </Typography>
+                </Box>
+              ) : (
+                <Stack spacing={1.25}>
+                  {propertyPosts.map((post: any) => {
+                    const postType =
+                      postCategoryLabel(post.propertyType) || categoryFromTitle(String(post.title || ''));
+                    return (
+                    <Box key={post.id} sx={{ ...MATTE_SURFACE, borderRadius: CARD_RADIUS, p: { xs: 1.5, sm: 2 }, position: 'relative' }}>
+                      {postType ? (
+                        <Chip
+                          label={postType}
+                          size="small"
+                          sx={{
+                            position: 'absolute',
+                            top: 10,
+                            right: 10,
+                            height: 22,
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: '#16302A',
+                            bgcolor: 'rgba(22,48,42,0.08)',
+                            border: '1px solid rgba(22,48,42,0.16)',
+                          }}
+                        />
+                      ) : null}
+                      <Typography sx={{ fontWeight: 700, color: '#16302A', fontSize: 15, mb: 0.35, pr: 10 }}>
+                        {post.title || 'Update'}
+                      </Typography>
+                      {post.content ? (
+                        <Typography sx={{ color: '#3A4540', fontSize: 13.5, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
+                          {post.content}
+                        </Typography>
+                      ) : null}
+                      <Typography sx={{ color: '#5C675F', fontSize: 12, mt: 0.75 }}>
+                        {`${post.userFirstName || ''} ${post.userLastName || ''}`.trim() || builder}
+                        {post.createdAt ? ` · ${formatRelativeTime(post.createdAt)}` : ''}
+                      </Typography>
+                    </Box>
+                    );
+                  })}
+                  {postsHasMore && (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', py: 1 }}>
+                      <Button
+                        variant="text"
+                        size="small"
+                        disabled={loadingMorePosts}
+                        onClick={loadMorePosts}
+                        sx={{ textTransform: 'none', color: '#16302A', fontWeight: 600 }}
+                      >
+                        {loadingMorePosts ? 'Loading...' : 'Load more posts'}
+                      </Button>
+                    </Box>
+                  )}
+                </Stack>
+              )}
+
+              <Box sx={{ ...MATTE_SURFACE, borderRadius: CARD_RADIUS, p: { xs: 1.5, sm: 2 }, mt: 1.25 }}>
+                <Typography sx={{ fontWeight: 750, color: '#16302A', fontSize: 16, mb: 1.25, ...displayFont }}>
+                  Property documents
+                </Typography>
+                {documentFeatures.length === 0 ? (
+                  <Typography sx={{ color: '#5C675F', fontSize: 13.5, mb: 1.25 }}>No documents uploaded yet.</Typography>
+                ) : (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.25, mb: 1.25 }}>
+                    {documentFeatures.map((name) => (
+                      <Box
+                        key={name}
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 1,
+                          borderRadius: CARD_RADIUS,
+                          px: 1.25,
+                          py: 1,
+                          minWidth: 160,
+                          ...MATTE_INSET,
+                        }}
+                      >
+                        {name.toLowerCase().includes('pdf') ? (
+                          <PictureAsPdfIcon sx={{ color: '#DC2626' }} />
+                        ) : (
+                          <InsertDriveFileIcon sx={{ color: '#16302A' }} />
+                        )}
+                        <Typography sx={{ fontSize: 13, fontWeight: 600 }} noWrap>{name}</Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+                {isOwner && (
+                  <Box
+                    sx={{
+                      border: '1.5px dashed rgba(22,48,42,0.22)',
+                      borderRadius: CARD_RADIUS,
+                      py: 2,
+                      textAlign: 'center',
+                      color: '#5C675F',
+                    }}
+                  >
+                    <CloudUploadIcon />
+                    <Typography sx={{ fontSize: 13 }}>Upload new</Typography>
+                  </Box>
+                )}
+              </Box>
+            </Box>
+
+            <Box sx={{ minWidth: 0, position: { lg: 'sticky' }, top: { lg: 80 } }}>
+              <Box sx={{ ...MATTE_SURFACE, borderRadius: CARD_RADIUS, p: { xs: 1.5, sm: 2 } }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                  <Typography sx={{ fontWeight: 750, color: '#16302A', fontSize: 16, ...displayFont }}>
+                    Ratings & Reviews
+                  </Typography>
+                  {!isOwner && user?.id && (
+                    <Button
+                      size={isMobile ? 'small' : 'medium'}
+                      onClick={() => setRatingDialogOpen(true)}
+                      sx={{ color: '#16302A', textTransform: 'none', fontWeight: 600 }}
+                    >
+                      Add review
+                    </Button>
+                  )}
+                </Box>
+
+                <Box sx={{ textAlign: 'center', mb: 2 }}>
+                  <Typography
+                    sx={{
+                      fontWeight: 700,
+                      color: '#16302A',
+                      mb: 1,
+                      fontSize: avgRating > 0 ? { xs: '2rem', sm: '3.75rem' } : { xs: '1.35rem', sm: '1.75rem' },
+                      lineHeight: 1.15,
+                    }}
+                  >
+                    {avgRating > 0 ? avgRating.toFixed(1) : 'No Ratings'}
+                  </Typography>
+                  <Rating
+                    value={avgRating}
+                    readOnly
+                    precision={0.5}
+                    emptyIcon={<StarBorderIcon fontSize="inherit" />}
+                  />
+                  <Typography sx={{ color: '#5C675F', fontSize: 12.5, mt: 0.5 }}>
+                    Based on {reviewCount} reviews
+                  </Typography>
+                </Box>
+
+                <Box sx={{ display: 'grid', gap: 1, mb: 2 }}>
+                  {ratingBuckets.map((b) => (
+                    <Box key={b.stars} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Typography sx={{ width: 42, fontSize: 12, color: '#5C675F' }}>{b.stars} star</Typography>
+                      <LinearProgress
+                        variant="determinate"
+                        value={ratings.length ? b.pct : 0}
+                        sx={{
+                          flex: 1,
+                          height: 6,
+                          borderRadius: 99,
+                          bgcolor: 'rgba(22,48,42,0.1)',
+                          '& .MuiLinearProgress-bar': { bgcolor: '#16302A', borderRadius: 99 },
+                        }}
+                      />
+                      <Typography sx={{ width: 32, fontSize: 12, color: '#5C675F', textAlign: 'right' }}>{b.pct}%</Typography>
+                    </Box>
+                  ))}
+                </Box>
+
+                {ratings.length === 0 ? (
+                  <Typography sx={{ textAlign: 'center', color: '#5C675F', fontSize: 13, py: 1 }}>No reviews yet.</Typography>
+                ) : (
+                  <Box sx={{ display: 'grid', gap: 1.25 }}>
+                    {ratings.map((r) => (
+                      <Box key={r.id} sx={{ ...MATTE_INSET, borderRadius: CARD_RADIUS, p: 1.25 }}>
+                        <Rating value={r.overallRating} readOnly size="small" />
+                        <Typography sx={{ fontWeight: 650, fontSize: 13.5, mt: 0.35, color: '#16302A' }}>{r.title || 'Review'}</Typography>
+                        <Typography sx={{ color: '#5C675F', fontSize: 13 }}>{r.review}</Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+              </Box>
+            </Box>
           </Box>
         </Box>
       </Box>
 
-      <Container maxWidth="lg" sx={{ mt: { xs: -4, sm: -6 }, pb: 6, position: 'relative', zIndex: 1 }}>
-        {/* Title card */}
-        <Box
-          sx={{
-            ...MATTE_SURFACE,
-            bgcolor: '#fff',
-            borderRadius: 3,
-            p: { xs: 2, sm: 2.5 },
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: 2,
-            alignItems: 'center',
-            mb: 2,
-            boxShadow: '0 10px 30px rgba(10,18,16,0.08)',
-          }}
-        >
-          <Box
-            component="img"
-            src={COVER_FALLBACK}
-            alt=""
-            sx={{ width: 84, height: 84, borderRadius: 2, objectFit: 'cover', flexShrink: 0 }}
-          />
-          <Box sx={{ flex: 1, minWidth: 200 }}>
-            <Box sx={{ display: 'flex', gap: 1, mb: 0.75, flexWrap: 'wrap' }}>
-              {underReview && (
-                <Chip label="Under Review" size="small" sx={{ bgcolor: '#FEF3C7', color: '#B45309', fontWeight: 700 }} />
-              )}
-              <Chip label={property.status} size="small" variant="outlined" />
-              <Chip label={property.listingType || 'Listing'} size="small" variant="outlined" />
-            </Box>
-            <Typography sx={{ fontFamily: ZPC_FONTS.display, fontWeight: 700, fontSize: { xs: 20, sm: 24 }, color: ZPC_COLORS.primary }}>
-              {property.title}
-            </Typography>
-            <Typography sx={{ color: '#6B7280', fontSize: 13, mt: 0.35, textTransform: 'uppercase', letterSpacing: 0.4 }}>
-              {builder}
-            </Typography>
-            <Typography sx={{ color: '#6B7280', fontSize: 13.5, display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.35 }}>
-              <LocationOnIcon sx={{ fontSize: 16 }} /> {locationLabel}
-            </Typography>
-            <Typography sx={{ color: '#9CA3AF', fontSize: 12.5, mt: 0.25 }}>
-              {property.propertyType || 'Residential Project'} · {formatPrice(property.price)}
-            </Typography>
-          </Box>
-          {isOwner && (
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button variant="outlined" sx={{ textTransform: 'none', borderRadius: 2 }} disabled>
-                Change Photo
-              </Button>
-              <Button
-                variant="contained"
-                sx={{ textTransform: 'none', borderRadius: 2, bgcolor: ZPC_COLORS.primary }}
-                onClick={() => setSnackbar({ open: true, message: 'Edit details coming soon', severity: 'info' })}
-              >
-                Edit Details
-              </Button>
-            </Box>
-          )}
-        </Box>
-
-        {/* Stats */}
-        <Box
-          sx={{
-            bgcolor: '#fff',
-            borderRadius: 3,
-            display: 'grid',
-            gridTemplateColumns: 'repeat(4, 1fr)',
-            mb: 2.5,
-            overflow: 'hidden',
-            boxShadow: '0 4px 16px rgba(10,18,16,0.05)',
-          }}
-        >
-          {[
-            { value: String(property.saveCount ?? 0), label: 'Followers' },
-            { value: property.reraId?.trim() || '—', label: 'RERA NO' },
-            { value: property.averageRating ? property.averageRating.toFixed(1) : 'N/A', label: 'Rating' },
-            { value: String(property.ratingCount ?? ratings.length), label: 'Reviews' },
-          ].map((stat, idx) => (
-            <Box
-              key={stat.label}
-              sx={{
-                py: 2,
-                px: 1,
-                textAlign: 'center',
-                borderRight: idx < 3 ? '1px solid #E5E7EB' : 'none',
-              }}
-            >
-              <Typography sx={{ fontWeight: 800, color: ZPC_COLORS.primary, fontSize: { xs: 14, sm: 18 }, wordBreak: 'break-all' }}>
-                {stat.value}
-              </Typography>
-              <Typography sx={{ color: '#9CA3AF', fontSize: 12, mt: 0.25 }}>{stat.label}</Typography>
-            </Box>
-          ))}
-        </Box>
-
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1.7fr 1fr' }, gap: 2.5 }}>
-          <Box sx={{ display: 'grid', gap: 2.5 }}>
-            {/* Documents */}
-            <Box sx={{ bgcolor: '#fff', borderRadius: 3, p: 2.25, boxShadow: '0 4px 16px rgba(10,18,16,0.05)' }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.75 }}>
-                <Typography sx={{ fontWeight: 700, color: ZPC_COLORS.primary, fontFamily: ZPC_FONTS.display }}>
-                  Property Documents
-                </Typography>
-                {isOwner && (
-                  <Button size="small" startIcon={<AddIcon />} sx={{ textTransform: 'none' }} disabled>
-                    Add Document
-                  </Button>
-                )}
-              </Box>
-              {documentFeatures.length === 0 ? (
-                <Typography sx={{ color: '#9CA3AF', fontSize: 13.5, mb: 1.5 }}>No documents uploaded yet.</Typography>
-              ) : (
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.25, mb: 1.5 }}>
-                  {documentFeatures.map((name) => (
-                    <Box
-                      key={name}
-                      sx={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 1,
-                        border: '1px solid #E5E7EB',
-                        borderRadius: 2,
-                        px: 1.25,
-                        py: 1,
-                        minWidth: 180,
-                      }}
-                    >
-                      {name.toLowerCase().includes('pdf') ? (
-                        <PictureAsPdfIcon sx={{ color: '#DC2626' }} />
-                      ) : (
-                        <InsertDriveFileIcon sx={{ color: ZPC_COLORS.primary }} />
-                      )}
-                      <Typography sx={{ fontSize: 13, fontWeight: 600 }} noWrap>{name}</Typography>
-                    </Box>
-                  ))}
-                </Box>
-              )}
-              <Box
-                sx={{
-                  border: '1.5px dashed #D1D5DB',
-                  borderRadius: 2,
-                  py: 2.5,
-                  textAlign: 'center',
-                  color: '#9CA3AF',
-                }}
-              >
-                <CloudUploadIcon />
-                <Typography sx={{ fontSize: 13 }}>Upload New</Typography>
-              </Box>
-            </Box>
-
-            {/* Updates */}
-            <Box sx={{ bgcolor: '#fff', borderRadius: 3, p: 2.25, boxShadow: '0 4px 16px rgba(10,18,16,0.05)', minHeight: 220 }}>
-              <Typography sx={{ fontWeight: 700, color: ZPC_COLORS.primary, fontFamily: ZPC_FONTS.display, mb: 3 }}>
-                Updates
-              </Typography>
-              <Box sx={{ textAlign: 'center', py: 3 }}>
-                <Typography sx={{ fontWeight: 750, color: '#111827', mb: 0.75 }}>No Updates Yet</Typography>
-                <Typography sx={{ color: '#9CA3AF', fontSize: 13.5, mb: 2 }}>
-                  You haven&apos;t posted any updates for this property yet.
-                </Typography>
-                {isOwner && (
-                  <Button
-                    variant="outlined"
-                    sx={{ textTransform: 'none', borderRadius: 2, borderColor: ZPC_COLORS.primary, color: ZPC_COLORS.primary }}
-                    onClick={() => navigate('/home')}
-                  >
-                    Create Post
-                  </Button>
-                )}
-              </Box>
-            </Box>
-
-            {/* Description */}
-            <Box sx={{ bgcolor: '#fff', borderRadius: 3, p: 2.25, boxShadow: '0 4px 16px rgba(10,18,16,0.05)' }}>
-              <Typography sx={{ fontWeight: 700, color: ZPC_COLORS.primary, fontFamily: ZPC_FONTS.display, mb: 1 }}>
-                About
-              </Typography>
-              <Typography sx={{ color: '#4B5563', lineHeight: 1.7, whiteSpace: 'pre-wrap', fontSize: 14 }}>
-                {property.description || 'No description provided.'}
-              </Typography>
-            </Box>
-          </Box>
-
-          {/* Ratings sidebar */}
-          <Box sx={{ bgcolor: '#fff', borderRadius: 3, p: 2.25, boxShadow: '0 4px 16px rgba(10,18,16,0.05)', alignSelf: 'start' }}>
-            <Typography sx={{ fontWeight: 700, color: ZPC_COLORS.primary, fontFamily: ZPC_FONTS.display, mb: 1.5 }}>
-              Ratings & Reviews
-            </Typography>
-            <Typography sx={{ fontSize: 36, fontWeight: 800, color: ZPC_COLORS.primary, lineHeight: 1 }}>
-              {property.averageRating ? property.averageRating.toFixed(1) : 'N/A'}
-            </Typography>
-            <Rating
-              value={property.averageRating || 0}
-              readOnly
-              precision={0.5}
-              emptyIcon={<StarBorderIcon fontSize="inherit" />}
-              sx={{ my: 0.75 }}
-            />
-            <Typography sx={{ color: '#9CA3AF', fontSize: 12.5, mb: 2 }}>
-              Based on {property.ratingCount ?? ratings.length} reviews
-            </Typography>
-
-            <Box sx={{ display: 'grid', gap: 1, mb: 2 }}>
-              {ratingBuckets.map((b) => (
-                <Box key={b.stars} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography sx={{ width: 42, fontSize: 12, color: '#6B7280' }}>{b.stars} star</Typography>
-                  <LinearProgress
-                    variant="determinate"
-                    value={ratings.length ? b.pct : 0}
-                    sx={{
-                      flex: 1,
-                      height: 6,
-                      borderRadius: 99,
-                      bgcolor: '#E5E7EB',
-                      '& .MuiLinearProgress-bar': { bgcolor: ZPC_COLORS.primary, borderRadius: 99 },
-                    }}
-                  />
-                  <Typography sx={{ width: 32, fontSize: 12, color: '#9CA3AF', textAlign: 'right' }}>{b.pct}%</Typography>
-                </Box>
-              ))}
-            </Box>
-
-            <Button
-              fullWidth
-              variant="contained"
-              onClick={() => setRatingDialogOpen(true)}
-              sx={{ textTransform: 'none', borderRadius: 2, bgcolor: ZPC_COLORS.primary, mb: 2 }}
-            >
-              Add Review
-            </Button>
-
-            {ratings.length === 0 ? (
-              <Typography sx={{ textAlign: 'center', color: '#9CA3AF', fontSize: 13, py: 1 }}>No reviews yet.</Typography>
-            ) : (
-              <Box sx={{ display: 'grid', gap: 1.25, maxHeight: 320, overflow: 'auto' }}>
-                {ratings.map((r) => (
-                  <Box key={r.id} sx={{ border: '1px solid #E5E7EB', borderRadius: 2, p: 1.25 }}>
-                    <Rating value={r.overallRating} readOnly size="small" />
-                    <Typography sx={{ fontWeight: 650, fontSize: 13.5, mt: 0.35 }}>{r.title || 'Review'}</Typography>
-                    <Typography sx={{ color: '#6B7280', fontSize: 13 }}>{r.review}</Typography>
-                  </Box>
-                ))}
-              </Box>
-            )}
-          </Box>
-        </Box>
-      </Container>
+      <CreatePost
+        open={createOpen}
+        onClose={() => {
+          if (!cpSubmitting) {
+            setCreateOpen(false);
+            setCpError(null);
+          }
+        }}
+        onSubmit={handleCreatePost}
+        loading={cpSubmitting}
+        error={cpError}
+        seed={{
+          location: property.location || [property.city, property.state].filter(Boolean).join(', '),
+          propertyId: property.id,
+          propertyTitle: property.title,
+        }}
+      />
 
       <Dialog open={ratingDialogOpen} onClose={() => setRatingDialogOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between' }}>
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', color: '#16302A' }}>
           Rate Property
           <IconButton onClick={() => setRatingDialogOpen(false)}><CloseIcon /></IconButton>
         </DialogTitle>
@@ -486,8 +842,15 @@ const PropertyPage: React.FC = () => {
           <TextField fullWidth label="Review" multiline rows={4} value={ratingReview} onChange={(e) => setRatingReview(e.target.value)} />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setRatingDialogOpen(false)}>Cancel</Button>
-          <Button variant="contained" disabled={!ratingValue} onClick={handleSubmitRating}>Submit</Button>
+          <Button onClick={() => setRatingDialogOpen(false)} sx={{ textTransform: 'none' }}>Cancel</Button>
+          <Button
+            variant="contained"
+            disabled={!ratingValue}
+            onClick={handleSubmitRating}
+            sx={{ textTransform: 'none', bgcolor: '#16302A', '&:hover': { bgcolor: '#0A1C18' } }}
+          >
+            Submit
+          </Button>
         </DialogActions>
       </Dialog>
 

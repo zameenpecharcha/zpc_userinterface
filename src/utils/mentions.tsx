@@ -256,7 +256,7 @@ export function renderMentionContent(
 /** Match trailing @query for autocomplete (Teams-style). */
 export function getActiveMentionQuery(text: string, cursorPos: number): { start: number; query: string } | null {
   const before = text.slice(0, cursorPos);
-  const m = before.match(/@([\w.\s-]{0,40})$/);
+  const m = before.match(/@([\p{L}\w.\s'-]{0,60})$/u);
   if (!m) return null;
   // Don't trigger inside an existing completed token
   if (/@\[[^\]]*$/.test(before)) return null;

@@ -3,6 +3,7 @@ import { useApolloClient } from '@apollo/client';
 import {
   Box, Typography, TextField, IconButton, Avatar, Menu, MenuItem,
   Popover, CircularProgress, InputAdornment, Drawer, Divider, useMediaQuery,
+  Snackbar, Alert,
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import SendIcon from '@mui/icons-material/Send';
@@ -34,6 +35,10 @@ import {
   mentionedIdsInContent,
 } from '../utils/notifyChatMessage';
 import { MATTE_SURFACE, MATTE_INSET } from '../theme/surfaces';
+import ConfirmDialog from './ConfirmDialog';
+import MentionPicker, { mentionKeyHandler } from './mentions/MentionPicker';
+import { useMentionSearch } from '../hooks/useMentionSearch';
+import type { MentionItem } from '../utils/mentionMatch';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -177,6 +182,7 @@ const Chat: React.FC<ChatProps> = ({
   const [mentionStart, setMentionStart] = useState<number | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
   const mentionedUserNamesRef = useRef<Map<string, string>>(new Map());
+  const mentionedPropertyNamesRef = useRef<Map<string, string>>(new Map());
   const [connected, setConnected] = useState(false);
   const [typingSet, setTypingSet] = useState<Set<string>>(new Set());
   const [msgMenu, setMsgMenu] = useState<{
@@ -191,6 +197,12 @@ const Chat: React.FC<ChatProps> = ({
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [pendingPreview, setPendingPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [toast, setToast] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' }>({
+    open: false,
+    message: '',
+    severity: 'info',
+  });
+  const [pendingDeleteMsg, setPendingDeleteMsg] = useState<ChatMessage | null>(null);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -390,13 +402,16 @@ const Chat: React.FC<ChatProps> = ({
     return Array.from(byId.entries()).map(([id, name]) => ({ id, name }));
   }, [mentionCandidates, userNames, userId, messages, peerDisplayName]);
 
-  const filteredMentions = useMemo(() => {
-    const q = mentionQuery.trim().toLowerCase();
-    const list = resolvedMentionCandidates.filter((c) =>
-      !q || c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q)
-    );
-    return list.slice(0, 8);
-  }, [resolvedMentionCandidates, mentionQuery]);
+  const localPeople = useMemo(
+    () => resolvedMentionCandidates.map((person) => ({ id: person.id, name: person.name })),
+    [resolvedMentionCandidates],
+  );
+
+  const { people, properties, items, loadingPeople, loadingProperties } = useMentionSearch({
+    query: mentionQuery,
+    open: mentionOpen,
+    localPeople,
+  });
 
   const authorDisplayName = useMemo(() => {
     return userNames?.[userId] || 'Someone';
@@ -462,25 +477,37 @@ const Chat: React.FC<ChatProps> = ({
     }
   };
 
-  const selectMention = useCallback(
-    (person: { id: string; name: string }) => {
+  const selectMentionItem = useCallback(
+    (item: MentionItem) => {
       if (mentionStart === null) return;
       const el = inputRef.current;
       const cursor = el?.selectionStart ?? input.length;
-      const label = (person.name || 'User').replace(/[\[\]]/g, '').slice(0, 40);
-      // Composer shows pretty @Name; expand to @[id:Name] only on send.
-      const token = `@${label}`;
-      const { text, cursor: nextCursor } = insertMentionToken(input, cursor, mentionStart, token);
-      mentionedUserNamesRef.current.set(label, String(person.id));
-      setInput(text);
+      if (item.kind === 'person') {
+        const label = (item.person.name || 'User').replace(/[\[\]]/g, '').slice(0, 40);
+        const token = `@${label}`;
+        const { text, cursor: nextCursor } = insertMentionToken(input, cursor, mentionStart, token);
+        mentionedUserNamesRef.current.set(label, String(item.person.id));
+        setInput(text);
+        setTimeout(() => {
+          if (!inputRef.current) return;
+          inputRef.current.focus();
+          inputRef.current.setSelectionRange(nextCursor, nextCursor);
+        }, 0);
+      } else {
+        const label = (item.property.title || 'Property').replace(/[\[\]]/g, '').slice(0, 40);
+        const token = `@${label}`;
+        const { text, cursor: nextCursor } = insertMentionToken(input, cursor, mentionStart, token);
+        mentionedPropertyNamesRef.current.set(label, String(item.property.id));
+        setInput(text);
+        setTimeout(() => {
+          if (!inputRef.current) return;
+          inputRef.current.focus();
+          inputRef.current.setSelectionRange(nextCursor, nextCursor);
+        }, 0);
+      }
       setMentionOpen(false);
       setMentionQuery('');
       setMentionStart(null);
-      setTimeout(() => {
-        if (!inputRef.current) return;
-        inputRef.current.focus();
-        inputRef.current.setSelectionRange(nextCursor, nextCursor);
-      }, 0);
     },
     [input, mentionStart]
   );
@@ -523,7 +550,11 @@ const Chat: React.FC<ChatProps> = ({
   // ── Send ───────────────────────────────────────────────────────────────────
 
   const send = useCallback(async () => {
-    const text = expandPrettyMentions(input.trim(), mentionedUserNamesRef.current);
+    const text = expandPrettyMentions(
+      input.trim(),
+      mentionedUserNamesRef.current,
+      mentionedPropertyNamesRef.current,
+    );
 
     // Teams-style edit: save via eventType 7 instead of sending a new message
     if (editingMessage) {
@@ -619,7 +650,7 @@ const Chat: React.FC<ChatProps> = ({
         notifyNewChatMessage(text || 'Sent an attachment');
       } catch (err) {
         console.error('Chat media upload failed:', err);
-        window.alert(err instanceof Error ? err.message : 'Failed to upload media');
+        setToast({ open: true, message: err instanceof Error ? err.message : 'Failed to upload media', severity: 'error' });
       } finally {
         setUploading(false);
       }
@@ -646,25 +677,17 @@ const Chat: React.FC<ChatProps> = ({
   ]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (mentionOpen && filteredMentions.length > 0) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        setMentionIndex((i) => (i + 1) % filteredMentions.length);
-        return;
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setMentionIndex((i) => (i - 1 + filteredMentions.length) % filteredMentions.length);
-        return;
-      }
-      if (e.key === 'Enter' || e.key === 'Tab') {
-        e.preventDefault();
-        selectMention(filteredMentions[mentionIndex] || filteredMentions[0]);
-        return;
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        setMentionOpen(false);
+    if (mentionOpen) {
+      if (
+        mentionKeyHandler(
+          e,
+          items,
+          mentionIndex,
+          setMentionIndex,
+          selectMentionItem,
+          () => setMentionOpen(false),
+        )
+      ) {
         return;
       }
     }
@@ -682,7 +705,7 @@ const Chat: React.FC<ChatProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 25 * 1024 * 1024) {
-      window.alert('File is too large (max 25 MB)');
+      setToast({ open: true, message: 'File is too large (max 25 MB)', severity: 'error' });
       e.target.value = '';
       return;
     }
@@ -754,7 +777,7 @@ const Chat: React.FC<ChatProps> = ({
     if (msg.isDeleted || !isOwnMessage(msg)) return;
     // Only text (or caption) edits — media-only stays delete-only
     if (!msg.text?.trim() && (msg.mediaKey || msg.mediaUrl)) {
-      window.alert('Media messages can be deleted, but not edited.');
+      setToast({ open: true, message: 'Media messages can be deleted, but not edited.', severity: 'info' });
       return;
     }
     setEditingMessage(msg);
@@ -770,7 +793,13 @@ const Chat: React.FC<ChatProps> = ({
     setMsgMenu(null);
     setActionSheet(null);
     if (!msg.messageId || msg.isDeleted || !isOwnMessage(msg)) return;
-    if (!window.confirm('Delete this message for everyone?')) return;
+    setPendingDeleteMsg(msg);
+  }, [isOwnMessage]);
+
+  const confirmDeleteMessage = useCallback(() => {
+    const msg = pendingDeleteMsg;
+    setPendingDeleteMsg(null);
+    if (!msg?.messageId || msg.isDeleted || !isOwnMessage(msg)) return;
     const payload = JSON.stringify({
       eventType: 5,
       messageId: msg.messageId,
@@ -787,7 +816,7 @@ const Chat: React.FC<ChatProps> = ({
     } else {
       pendingMessagesRef.current.push(payload);
     }
-  }, [isOwnMessage, editingMessage]);
+  }, [pendingDeleteMsg, isOwnMessage, editingMessage]);
 
   /** Remove for me only — hides any message in this session (Teams-style). */
   const removeForMe = useCallback((msg: ChatMessage) => {
@@ -1245,58 +1274,26 @@ const Chat: React.FC<ChatProps> = ({
             accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip"
             onChange={onPickFile}
           />
-          {mentionOpen && filteredMentions.length > 0 && (
-            <Box
-              sx={{
-                position: 'absolute',
-                left: 12,
-                right: 56,
-                bottom: '100%',
-                mb: 0.5,
-                maxHeight: 220,
-                overflowY: 'auto',
-                bgcolor: '#F7F3E7',
-                border: '1px solid rgba(90,70,50,0.12)',
-                borderRadius: 1.5,
-                boxShadow: '0 8px 24px rgba(10,18,16,0.12)',
-                zIndex: 5,
-              }}
-            >
-              {filteredMentions.map((person, idx) => (
-                <Box
-                  key={person.id}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    selectMention(person);
-                  }}
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 1,
-                    px: 1.25,
-                    py: 0.85,
-                    cursor: 'pointer',
-                    bgcolor: idx === mentionIndex ? 'rgba(22,48,42,0.1)' : 'transparent',
-                    '&:hover': { bgcolor: 'rgba(22,48,42,0.1)' },
-                  }}
-                >
-                  <Avatar
-                    src={userAvatars?.[person.id]}
-                    sx={{
-                      width: 28,
-                      height: 28,
-                      fontSize: 12,
-                      fontWeight: 700,
-                      bgcolor: stringToColor(person.name),
-                    }}
-                  >
-                    {nameInitials(person.name)}
-                  </Avatar>
-                  <Typography fontSize={13} fontWeight={600} color="#0A1210">
-                    {person.name}
-                  </Typography>
-                </Box>
-              ))}
+          {mentionOpen && (
+            <Box sx={{ position: 'absolute', left: 12, right: 56, bottom: '100%', mb: 0.5, zIndex: 8 }}>
+              <MentionPicker
+                open={mentionOpen}
+                query={mentionQuery}
+                items={items}
+                people={people}
+                properties={properties}
+                loadingPeople={loadingPeople}
+                loadingProperties={loadingProperties}
+                selectedIndex={mentionIndex}
+                width="100%"
+                onHoverIndex={setMentionIndex}
+                onSelect={selectMentionItem}
+                onClose={() => {
+                  setMentionOpen(false);
+                  setMentionQuery('');
+                  setMentionStart(null);
+                }}
+              />
             </Box>
           )}
           <TextField
@@ -1313,6 +1310,13 @@ const Chat: React.FC<ChatProps> = ({
             }
             value={input}
             onChange={handleInputChange}
+            onBlur={() => {
+              if (mentionOpen) {
+                setMentionOpen(false);
+                setMentionQuery('');
+                setMentionStart(null);
+              }
+            }}
             onKeyDown={handleKeyDown}
             disabled={uploading}
             variant="outlined"
@@ -1434,6 +1438,28 @@ const Chat: React.FC<ChatProps> = ({
           ))}
         </Box>
       </Popover>
+      <Snackbar
+        open={toast.open}
+        autoHideDuration={4000}
+        onClose={() => setToast((prev) => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setToast((prev) => ({ ...prev, open: false }))}
+          severity={toast.severity}
+          sx={{ borderRadius: 1.5, width: '100%' }}
+        >
+          {toast.message}
+        </Alert>
+      </Snackbar>
+      <ConfirmDialog
+        open={Boolean(pendingDeleteMsg)}
+        title="Delete message"
+        message="Delete this message for everyone?"
+        confirmLabel="Delete"
+        onCancel={() => setPendingDeleteMsg(null)}
+        onConfirm={confirmDeleteMessage}
+      />
     </Box>
   );
 };

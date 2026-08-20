@@ -24,6 +24,7 @@ import {
   ToggleButtonGroup,
   Tooltip,
   Typography,
+  TextField,
   useMediaQuery,
 } from '@mui/material';
 import BarChartIcon from '@mui/icons-material/BarChart';
@@ -34,6 +35,7 @@ import PeopleAltIcon from '@mui/icons-material/PeopleAlt';
 import HomeWorkIcon from '@mui/icons-material/HomeWork';
 import DynamicFeedIcon from '@mui/icons-material/DynamicFeed';
 import TabEnter from '../motion/TabEnter';
+import ConfirmDialog from '../ConfirmDialog';
 import SearchIcon from '@mui/icons-material/Search';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import ViewListIcon from '@mui/icons-material/ViewList';
@@ -407,6 +409,13 @@ const AdminDashboard: React.FC = () => {
     report: any;
     status: 'RESOLVED' | 'REJECTED';
   } | null>(null);
+  const [adminConfirm, setAdminConfirm] = useState<{
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    run: () => Promise<void>;
+  } | null>(null);
+  const [rejectDialog, setRejectDialog] = useState<{ id: string; reason: string } | null>(null);
 
   const users = usersData?.users || [];
   const publicProperties = propsData?.publicProperties?.properties || [];
@@ -536,34 +545,46 @@ const AdminDashboard: React.FC = () => {
     setHeaderSearch('');
   };
 
-  const onDeletePost = async (postId: number | string) => {
-    if (!window.confirm(`Delete post #${postId}? This cannot be undone.`)) return;
-    try {
-      const { data } = await deletePost({ variables: { postId: String(postId) } });
-      if (data?.deletePost?.success) {
-        setActionMsg({ type: 'success', text: `Post #${postId} deleted.` });
-        refetchPosts();
-      } else {
-        setActionMsg({ type: 'error', text: data?.deletePost?.message || 'Delete failed.' });
-      }
-    } catch (e: any) {
-      setActionMsg({ type: 'error', text: e.message || 'Delete failed.' });
-    }
+  const onDeletePost = (postId: number | string) => {
+    setAdminConfirm({
+      title: 'Delete post',
+      message: `Delete post #${postId}? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      run: async () => {
+        try {
+          const { data } = await deletePost({ variables: { postId: String(postId) } });
+          if (data?.deletePost?.success) {
+            setActionMsg({ type: 'success', text: `Post #${postId} deleted.` });
+            refetchPosts();
+          } else {
+            setActionMsg({ type: 'error', text: data?.deletePost?.message || 'Delete failed.' });
+          }
+        } catch (e: any) {
+          setActionMsg({ type: 'error', text: e.message || 'Delete failed.' });
+        }
+      },
+    });
   };
 
-  const onDeleteProperty = async (propertyId: string) => {
-    if (!window.confirm(`Delete property ${propertyId}? This cannot be undone.`)) return;
-    try {
-      const { data } = await deleteProperty({ variables: { propertyId: String(propertyId) } });
-      if (data?.deleteProperty?.success) {
-        setActionMsg({ type: 'success', text: `Property ${propertyId} deleted.` });
-        await Promise.all([refetchProps(), refetchPendingProps()]);
-      } else {
-        setActionMsg({ type: 'error', text: data?.deleteProperty?.message || 'Property delete failed.' });
-      }
-    } catch (e: any) {
-      setActionMsg({ type: 'error', text: e.message || 'Property delete failed.' });
-    }
+  const onDeleteProperty = (propertyId: string) => {
+    setAdminConfirm({
+      title: 'Delete property',
+      message: `Delete property ${propertyId}? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      run: async () => {
+        try {
+          const { data } = await deleteProperty({ variables: { propertyId: String(propertyId) } });
+          if (data?.deleteProperty?.success) {
+            setActionMsg({ type: 'success', text: `Property ${propertyId} deleted.` });
+            await Promise.all([refetchProps(), refetchPendingProps()]);
+          } else {
+            setActionMsg({ type: 'error', text: data?.deleteProperty?.message || 'Property delete failed.' });
+          }
+        } catch (e: any) {
+          setActionMsg({ type: 'error', text: e.message || 'Property delete failed.' });
+        }
+      },
+    });
   };
 
   const onApproveProperty = async (propertyId: string | number) => {
@@ -580,8 +601,14 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  const onRejectProperty = async (propertyId: string | number) => {
-    const reason = window.prompt('Rejection reason (optional):', 'Rejected by admin') || 'Rejected by admin';
+  const onRejectProperty = (propertyId: string | number) => {
+    setRejectDialog({ id: String(propertyId), reason: 'Rejected by admin' });
+  };
+
+  const confirmRejectProperty = async () => {
+    if (!rejectDialog) return;
+    const { id: propertyId, reason } = rejectDialog;
+    setRejectDialog(null);
     try {
       const { data } = await rejectProperty({
         variables: { propertyId: String(propertyId), reason },
@@ -641,29 +668,29 @@ const AdminDashboard: React.FC = () => {
       return;
     }
     const name = userDisplayName(targetUser);
-    if (
-      !window.confirm(
-        `Change ${name} to role "${nextRole}"? They must log out/in for JWT privileges to refresh.`
-      )
-    ) {
-      return;
-    }
-    try {
-      const { data } = await updateUserRole({
-        variables: { userId: String(targetUser.id), role: toApiRole(nextRole) },
-      });
-      if (data?.updateUserRole?.id) {
-        setActionMsg({
-          type: 'success',
-          text: `Updated ${data.updateUserRole.firstName} ${data.updateUserRole.lastName} → ${data.updateUserRole.role}`,
-        });
-        await refetchUsers();
-      } else {
-        setActionMsg({ type: 'error', text: 'Role update failed.' });
-      }
-    } catch (e: any) {
-      setActionMsg({ type: 'error', text: e.message || 'Role update failed.' });
-    }
+    setAdminConfirm({
+      title: 'Change role',
+      message: `Change ${name} to role "${nextRole}"? They must log out/in for JWT privileges to refresh.`,
+      confirmLabel: 'Change role',
+      run: async () => {
+        try {
+          const { data } = await updateUserRole({
+            variables: { userId: String(targetUser.id), role: toApiRole(nextRole) },
+          });
+          if (data?.updateUserRole?.id) {
+            setActionMsg({
+              type: 'success',
+              text: `Updated ${data.updateUserRole.firstName} ${data.updateUserRole.lastName} → ${data.updateUserRole.role}`,
+            });
+            await refetchUsers();
+          } else {
+            setActionMsg({ type: 'error', text: 'Role update failed.' });
+          }
+        } catch (e: any) {
+          setActionMsg({ type: 'error', text: e.message || 'Role update failed.' });
+        }
+      },
+    });
   };
 
   const handleLogout = () => {
@@ -1288,7 +1315,7 @@ const AdminDashboard: React.FC = () => {
                     <Button
                       size="small"
                       sx={{ textTransform: 'none', fontWeight: 600, color: '#00796B' }}
-                      onClick={() => navigate('/profile', { state: { userId: u.id } })}
+                      onClick={() => navigate(`/profile/${u.id}`)}
                     >
                       Open
                     </Button>
@@ -1384,7 +1411,7 @@ const AdminDashboard: React.FC = () => {
                 size="small"
                 variant="outlined"
                 sx={{ textTransform: 'none', fontWeight: 600, borderColor: '#E2E8F0', color: '#00796B' }}
-                onClick={() => navigate('/profile', { state: { userId: u.id } })}
+                onClick={() => navigate(`/profile/${u.id}`)}
               >
                 Open profile
               </Button>
@@ -2479,6 +2506,52 @@ const AdminDashboard: React.FC = () => {
           <TabEnter tabKey={tab}>{renderContent()}</TabEnter>
         </Box>
       </Box>
+
+      <ConfirmDialog
+        open={Boolean(adminConfirm)}
+        title={adminConfirm?.title || ''}
+        message={adminConfirm?.message || ''}
+        confirmLabel={adminConfirm?.confirmLabel || 'Confirm'}
+        busy={deletingPost || deletingProperty || updatingRole}
+        onCancel={() => setAdminConfirm(null)}
+        onConfirm={async () => {
+          const run = adminConfirm?.run;
+          setAdminConfirm(null);
+          if (run) await run();
+        }}
+      />
+
+      <Dialog
+        open={Boolean(rejectDialog)}
+        onClose={() => !rejectingProperty && setRejectDialog(null)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Reject property</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            label="Rejection reason"
+            value={rejectDialog?.reason || ''}
+            onChange={(e) => setRejectDialog((prev) => (prev ? { ...prev, reason: e.target.value } : prev))}
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRejectDialog(null)} disabled={rejectingProperty} sx={{ textTransform: 'none' }}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => { void confirmRejectProperty(); }}
+            disabled={rejectingProperty}
+            sx={{ textTransform: 'none' }}
+          >
+            Reject
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog
         open={!!reportConfirm}

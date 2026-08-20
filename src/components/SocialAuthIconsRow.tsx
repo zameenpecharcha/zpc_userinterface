@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Box, CircularProgress, IconButton, Tooltip, Typography } from '@mui/material';
 import PhoneIphoneIcon from '@mui/icons-material/PhoneIphone';
-import GoogleSignInButton from './GoogleSignInButton';
+import GoogleSignInButton, { SOCIAL_ICON_MOTION } from './GoogleSignInButton';
 import FacebookSignInButton from './FacebookSignInButton';
 
 type SocialAuthIconsRowProps = {
@@ -43,7 +43,12 @@ const SocialAuthIconsRow: React.FC<SocialAuthIconsRowProps> = ({
           color: '#EBE6D4',
           bgcolor: 'rgba(235,230,212,0.12)',
           border: '1px solid rgba(235,230,212,0.35)',
-          '&:hover': { bgcolor: 'rgba(235,230,212,0.2)' },
+          ...SOCIAL_ICON_MOTION,
+          '&:hover': {
+            ...SOCIAL_ICON_MOTION['&:hover'],
+            bgcolor: 'rgba(235,230,212,0.28)',
+            borderColor: 'rgba(235,230,212,0.55)',
+          },
           '&.Mui-disabled': { color: '#EBE6D4', opacity: mobileBusy ? 1 : 0.55 },
         }
       : {
@@ -52,7 +57,11 @@ const SocialAuthIconsRow: React.FC<SocialAuthIconsRowProps> = ({
           color: '#16302A',
           bgcolor: 'rgba(235,230,212,0.65)',
           border: '1px solid rgba(22,48,42,0.2)',
-          '&:hover': { bgcolor: 'rgba(235,230,212,0.9)' },
+          ...SOCIAL_ICON_MOTION,
+          '&:hover': {
+            ...SOCIAL_ICON_MOTION['&:hover'],
+            bgcolor: 'rgba(235,230,212,0.95)',
+          },
           '&.Mui-disabled': { color: '#16302A', opacity: mobileBusy ? 1 : 0.55 },
         };
 
@@ -75,7 +84,7 @@ const SocialAuthIconsRow: React.FC<SocialAuthIconsRowProps> = ({
           justifyContent: 'center',
           gap: 1.75,
           width: '100%',
-          py: 0.25,
+          py: 1.25,
         }}
       >
         {onGoogleCredential && (

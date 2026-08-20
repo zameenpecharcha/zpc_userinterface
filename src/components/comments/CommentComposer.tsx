@@ -1,31 +1,23 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useLazyQuery } from '@apollo/client';
 import {
-  Avatar,
   Box,
   Button,
   ClickAwayListener,
   IconButton,
   InputBase,
-  List,
-  ListItemAvatar,
-  ListItemButton,
-  ListItemText,
   Menu,
   MenuItem,
-  Paper,
   Popper,
-  Typography,
 } from '@mui/material';
 import SendRoundedIcon from '@mui/icons-material/SendRounded';
 import SentimentSatisfiedAltIcon from '@mui/icons-material/SentimentSatisfiedAlt';
-import { SEARCH_USERS_LIGHT } from '../../graphql/user';
+import MentionPicker, { mentionKeyHandler } from '../mentions/MentionPicker';
+import { useMentionSearch } from '../../hooks/useMentionSearch';
+import type { MentionItem } from '../../utils/mentionMatch';
 import {
   getActiveMentionQuery,
   insertMentionToken,
   expandPrettyMentions,
-  nameInitials,
-  stringToColor,
 } from '../../utils/mentions';
 import { COMMENT_COMPOSER_EMOJIS } from './commentReactions';
 
@@ -89,13 +81,13 @@ const CommentComposer: React.FC<CommentComposerProps> = ({
   const [mentionIndex, setMentionIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const fieldWrapRef = useRef<HTMLDivElement | null>(null);
-  const mentionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mentionedUserNamesRef = useRef<Map<string, string>>(mapsFromSeed(seedUserNameToId));
+  const mentionedPropertyNamesRef = useRef<Map<string, string>>(new Map());
 
-  const [searchUsers, { data: mentionData, loading: mentionLoading }] = useLazyQuery(
-    SEARCH_USERS_LIGHT,
-    { fetchPolicy: 'network-only', nextFetchPolicy: 'cache-first' }
-  );
+  const { people, properties, items, loadingPeople, loadingProperties } = useMentionSearch({
+    query: mentionQuery,
+    open: mentionOpen,
+  });
 
   useEffect(() => {
     mentionedUserNamesRef.current = mapsFromSeed(seedUserNameToId);
@@ -105,15 +97,6 @@ const CommentComposer: React.FC<CommentComposerProps> = ({
     if (controlled) return;
     // keep uncontrolled reset path only
   }, [controlled]);
-
-  useEffect(() => {
-    return () => {
-      if (mentionTimerRef.current) clearTimeout(mentionTimerRef.current);
-    };
-  }, []);
-
-  const mentionUsers: Array<{ id: number | string; firstName: string; lastName?: string }> =
-    mentionData?.users ?? [];
 
   const busy = submitting || submittingExternal;
 
@@ -141,13 +124,6 @@ const CommentComposer: React.FC<CommentComposerProps> = ({
       setMentionQuery(active.query);
       setMentionStart(active.start);
       setMentionIndex(0);
-      if (mentionTimerRef.current) clearTimeout(mentionTimerRef.current);
-      mentionTimerRef.current = setTimeout(() => {
-        const term = active.query.trim();
-        // Search from 1 character so "@v…" works immediately
-        if (term.length < 1) return;
-        searchUsers({ variables: { search: term, page: 1, limit: 8 }, errorPolicy: 'all' });
-      }, 180);
     } else {
       setMentionOpen(false);
       setMentionQuery('');
@@ -155,36 +131,52 @@ const CommentComposer: React.FC<CommentComposerProps> = ({
     }
   };
 
-  const selectMention = (user: { id: number | string; firstName: string; lastName?: string }) => {
+  const selectMentionItem = (item: MentionItem) => {
     if (mentionStart === null) return;
     const el = inputRef.current;
     const cursor = el?.selectionStart ?? text.length;
-    const label =
-      `${user.firstName || ''} ${user.lastName || ''}`.trim().replace(/[\[\]]/g, '').slice(0, 40) ||
-      'User';
-    const token = `@${label}`;
-    const { text: next, cursor: nextCursor } = insertMentionToken(text, cursor, mentionStart, token);
-    mentionedUserNamesRef.current.set(label, String(user.id));
-    setText(next);
+    if (item.kind === 'person') {
+      const label = item.person.name.replace(/[\[\]]/g, '').slice(0, 40) || 'User';
+      const token = `@${label}`;
+      const { text: next, cursor: nextCursor } = insertMentionToken(text, cursor, mentionStart, token);
+      mentionedUserNamesRef.current.set(label, String(item.person.id));
+      setText(next);
+      requestAnimationFrame(() => {
+        if (!inputRef.current) return;
+        inputRef.current.focus();
+        inputRef.current.setSelectionRange?.(nextCursor, nextCursor);
+      });
+    } else {
+      const label = item.property.title.replace(/[\[\]]/g, '').slice(0, 40) || 'Property';
+      const token = `@${label}`;
+      const { text: next, cursor: nextCursor } = insertMentionToken(text, cursor, mentionStart, token);
+      mentionedPropertyNamesRef.current.set(label, String(item.property.id));
+      setText(next);
+      requestAnimationFrame(() => {
+        if (!inputRef.current) return;
+        inputRef.current.focus();
+        inputRef.current.setSelectionRange?.(nextCursor, nextCursor);
+      });
+    }
     setMentionOpen(false);
     setMentionQuery('');
     setMentionStart(null);
-    requestAnimationFrame(() => {
-      if (!inputRef.current) return;
-      inputRef.current.focus();
-      inputRef.current.setSelectionRange?.(nextCursor, nextCursor);
-    });
   };
 
   const handleSubmit = async () => {
     if (!text.trim() || busy) return;
     setSubmitting(true);
     try {
-      const content = expandPrettyMentions(text.trim(), mentionedUserNamesRef.current);
+      const content = expandPrettyMentions(
+        text.trim(),
+        mentionedUserNamesRef.current,
+        mentionedPropertyNamesRef.current,
+      );
       await onSubmit(content);
       if (!controlled) {
         setInnerText('');
         mentionedUserNamesRef.current = mapsFromSeed(seedUserNameToId);
+        mentionedPropertyNamesRef.current = new Map();
       }
       setMentionOpen(false);
     } finally {
@@ -210,56 +202,26 @@ const CommentComposer: React.FC<CommentComposerProps> = ({
             setMentionOpen(false);
           }}
         >
-          <Paper
-            elevation={8}
-            sx={{
-              width: fieldWrapRef.current?.offsetWidth || 280,
-              maxWidth: 'min(360px, 92vw)',
-              maxHeight: 220,
-              overflowY: 'auto',
-              borderRadius: 2,
-              border: '1px solid rgba(90,70,50,0.12)',
-              bgcolor: '#FFFCF0',
-            }}
-          >
-            <List dense disablePadding>
-              {mentionLoading && (
-                <Box sx={{ px: 1.5, py: 1 }}>
-                  <Typography fontSize={12} color="#3A4540">Searching…</Typography>
-                </Box>
-              )}
-              {!mentionLoading && mentionUsers.length === 0 && (
-                <Box sx={{ px: 1.5, py: 1 }}>
-                  <Typography fontSize={12} color="#3A4540">
-                    {mentionQuery.trim() ? 'No people found' : 'Type a name after @'}
-                  </Typography>
-                </Box>
-              )}
-              {mentionUsers.map((user, idx) => {
-                const name = [user.firstName, user.lastName].filter(Boolean).join(' ');
-                return (
-                  <ListItemButton
-                    key={String(user.id)}
-                    selected={idx === mentionIndex}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      selectMention(user);
-                    }}
-                  >
-                    <ListItemAvatar sx={{ minWidth: 40 }}>
-                      <Avatar sx={{ width: 28, height: 28, fontSize: 12, bgcolor: stringToColor(name) }}>
-                        {nameInitials(name)}
-                      </Avatar>
-                    </ListItemAvatar>
-                    <ListItemText
-                      primary={name || `User ${user.id}`}
-                      primaryTypographyProps={{ fontSize: 13, fontWeight: 600 }}
-                    />
-                  </ListItemButton>
-                );
-              })}
-            </List>
-          </Paper>
+          <Box>
+            <MentionPicker
+              open={mentionOpen}
+              query={mentionQuery}
+              items={items}
+              people={people}
+              properties={properties}
+              loadingPeople={loadingPeople}
+              loadingProperties={loadingProperties}
+              selectedIndex={mentionIndex}
+              width={fieldWrapRef.current?.offsetWidth || 320}
+              onHoverIndex={setMentionIndex}
+              onSelect={selectMentionItem}
+              onClose={() => {
+                setMentionOpen(false);
+                setMentionQuery('');
+                setMentionStart(null);
+              }}
+            />
+          </Box>
         </ClickAwayListener>
       </Popper>
       <Box
@@ -295,25 +257,17 @@ const CommentComposer: React.FC<CommentComposerProps> = ({
           minRows={minRows}
           maxRows={maxRows}
           onKeyDown={(e) => {
-            if (mentionOpen && mentionUsers.length > 0) {
-              if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                setMentionIndex((i) => (i + 1) % mentionUsers.length);
-                return;
-              }
-              if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                setMentionIndex((i) => (i - 1 + mentionUsers.length) % mentionUsers.length);
-                return;
-              }
-              if (e.key === 'Enter' || e.key === 'Tab') {
-                e.preventDefault();
-                selectMention(mentionUsers[mentionIndex] || mentionUsers[0]);
-                return;
-              }
-              if (e.key === 'Escape') {
-                e.preventDefault();
-                setMentionOpen(false);
+            if (mentionOpen) {
+              if (
+                mentionKeyHandler(
+                  e,
+                  items,
+                  mentionIndex,
+                  setMentionIndex,
+                  selectMentionItem,
+                  () => setMentionOpen(false),
+                )
+              ) {
                 return;
               }
             }

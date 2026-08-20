@@ -27,6 +27,71 @@ body,
   background: transparent !important;
 }
 
+/*
+ * Overlay scrollbar (WhatsApp-style): hidden until you hover the popup.
+ * Beats the global hide above via class/MUI specificity + !important.
+ */
+.zpc-overlay-scroll,
+.MuiDialogContent-root,
+.MuiDrawer-paper,
+.MuiMenu-paper,
+.MuiPopover-paper {
+  scrollbar-width: thin !important;
+  scrollbar-color: transparent transparent !important;
+}
+
+.zpc-overlay-scroll:hover,
+.zpc-overlay-scroll:focus-within,
+.zpc-overlay-host:hover .zpc-overlay-scroll,
+.MuiDialog-paper:hover .MuiDialogContent-root,
+.MuiDialogContent-root:hover,
+.MuiDialogContent-root:focus-within,
+.MuiDrawer-paper:hover,
+.MuiDrawer-paper:focus-within {
+  scrollbar-color: rgba(22, 48, 42, 0.4) transparent !important;
+}
+
+.zpc-overlay-scroll::-webkit-scrollbar,
+.MuiDialogContent-root::-webkit-scrollbar,
+.MuiDrawer-paper::-webkit-scrollbar {
+  width: 6px !important;
+  height: 6px !important;
+  display: block !important;
+  background: transparent !important;
+}
+
+.zpc-overlay-scroll::-webkit-scrollbar-track,
+.MuiDialogContent-root::-webkit-scrollbar-track,
+.MuiDrawer-paper::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+.zpc-overlay-scroll::-webkit-scrollbar-thumb,
+.MuiDialogContent-root::-webkit-scrollbar-thumb,
+.MuiDrawer-paper::-webkit-scrollbar-thumb {
+  background-color: transparent !important;
+  border-radius: 99px !important;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+.zpc-overlay-scroll:hover::-webkit-scrollbar-thumb,
+.zpc-overlay-scroll:focus-within::-webkit-scrollbar-thumb,
+.zpc-overlay-host:hover .zpc-overlay-scroll::-webkit-scrollbar-thumb,
+.MuiDialog-paper:hover .MuiDialogContent-root::-webkit-scrollbar-thumb,
+.MuiDialogContent-root:hover::-webkit-scrollbar-thumb,
+.MuiDialogContent-root:focus-within::-webkit-scrollbar-thumb,
+.MuiDrawer-paper:hover::-webkit-scrollbar-thumb,
+.MuiDrawer-paper:focus-within::-webkit-scrollbar-thumb {
+  background-color: rgba(22, 48, 42, 0.38) !important;
+}
+
+.zpc-overlay-scroll::-webkit-scrollbar-thumb:hover,
+.MuiDialogContent-root::-webkit-scrollbar-thumb:hover,
+.MuiDrawer-paper::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(22, 48, 42, 0.55) !important;
+}
+
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;

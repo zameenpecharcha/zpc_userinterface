@@ -2,14 +2,31 @@
 
 import { ZPC_COLORS, ZPC_GLASS } from './zpcTheme';
 
-/** Invisible scrollbars (scroll still works) — used by modal bodies. */
+/**
+ * Overlay scrollbar for popups — hidden until hover (pair with className
+ * `zpc-overlay-scroll`; parent popup may use `zpc-overlay-host`).
+ */
 export const THIN_CREAM_SCROLLBAR = {
-  scrollbarWidth: 'none' as const,
-  msOverflowStyle: 'none' as const,
+  scrollbarWidth: 'thin' as const,
+  scrollbarColor: 'transparent transparent',
+  '&:hover, &:focus-within': {
+    scrollbarColor: 'rgba(22, 48, 42, 0.4) transparent',
+  },
   '&::-webkit-scrollbar': {
-    width: 0,
-    height: 0,
-    display: 'none',
+    width: '6px !important',
+    height: '6px !important',
+    display: 'block !important',
+    background: 'transparent !important',
+  },
+  '&::-webkit-scrollbar-track': {
+    background: 'transparent !important',
+  },
+  '&::-webkit-scrollbar-thumb': {
+    backgroundColor: 'transparent !important',
+    borderRadius: '99px',
+  },
+  '&:hover::-webkit-scrollbar-thumb, &:focus-within::-webkit-scrollbar-thumb': {
+    backgroundColor: 'rgba(22, 48, 42, 0.38) !important',
   },
 } as const;
 

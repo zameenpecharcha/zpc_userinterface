@@ -19,6 +19,7 @@ export const PROPERTY_FIELDS = gql`
     price
     currency
     city
+    location
     state
     country
     status
@@ -35,6 +36,15 @@ export const PROPERTY_FIELDS = gql`
 export const CREATE_PROPERTY = gql`
   mutation CreateProperty($input: CreatePropertyInput!) {
     createProperty(input: $input) {
+      ...PropertyFields
+    }
+  }
+  ${PROPERTY_FIELDS}
+`;
+
+export const UPDATE_PROPERTY = gql`
+  mutation UpdateProperty($input: UpdatePropertyInput!) {
+    updateProperty(input: $input) {
       ...PropertyFields
     }
   }
@@ -64,6 +74,7 @@ export const PUBLIC_PROPERTIES = gql`
     $page: Int
     $limit: Int
     $city: String
+    $search: String
     $propertyType: String
     $listingType: String
   ) {
@@ -71,6 +82,7 @@ export const PUBLIC_PROPERTIES = gql`
       page: $page
       limit: $limit
       city: $city
+      search: $search
       propertyType: $propertyType
       listingType: $listingType
     ) {

@@ -68,6 +68,20 @@ export const GET_POSTS_BY_USER = gql`
   ${POST_FIELDS}
 `;
 
+export const GET_PROPERTY_POSTS = gql`
+  query GetPropertyPosts($propertyId: String!, $page: Int = 1, $limit: Int = 8) {
+    propertyPosts(propertyId: $propertyId, page: $page, limit: $limit) {
+      posts {
+        ...PostFields
+      }
+      totalCount
+      page
+      totalPages
+    }
+  }
+  ${POST_FIELDS}
+`;
+
 export const SEARCH_POSTS = gql`
   query SearchPosts(
     $page: Int = 1
@@ -272,6 +286,7 @@ export const CREATE_POST = gql`
     $status: String!
     $latitude: Float
     $longitude: Float
+    $propertyId: String
     $media: [PostMediaInput!]
   ) {
     createPost(
@@ -285,6 +300,7 @@ export const CREATE_POST = gql`
       status: $status
       latitude: $latitude
       longitude: $longitude
+      propertyId: $propertyId
       media: $media
     ) {
       success

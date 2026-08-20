@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -28,10 +28,11 @@ import BadgeIcon from '@mui/icons-material/Badge';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import SendIcon from '@mui/icons-material/Send';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
-import { useNavigate } from 'react-router-dom';
-import { useApolloClient } from '@apollo/client';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useApolloClient, useQuery } from '@apollo/client';
 import { PropertyService, mapFormDataToPropertyInput } from '../services/propertyService';
 import { PropertyType, ListingType, Property } from '../types/property';
+import { GET_PROPERTY } from '../graphql/property';
 import LocationAutocomplete from './LocationAutocomplete';
 import { MATTE_SURFACE, THIN_CREAM_SCROLLBAR } from '../theme/surfaces';
 import { ZPC_COLORS, ZPC_FONTS } from '../theme/zpcTheme';
@@ -46,10 +47,18 @@ const fieldSx = {
 
 const CreateProperty: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const editId = (searchParams.get('edit') || '').trim();
   const client = useApolloClient();
   const propertyService = useMemo(() => new PropertyService(client), [client]);
   const docInputRef = useRef<HTMLInputElement | null>(null);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
+
+  const { data: editData } = useQuery(GET_PROPERTY, {
+    variables: { propertyId: editId },
+    skip: !editId,
+    fetchPolicy: 'network-only',
+  });
 
   const [formData, setFormData] = useState({
     title: '',
@@ -77,6 +86,36 @@ const CreateProperty: React.FC = () => {
     message: '',
     severity: 'success',
   });
+
+  useEffect(() => {
+    const prop = editData?.property;
+    if (!editId || !prop) return;
+    const rawDescription = String(prop.description || '');
+    const description = rawDescription
+      .split('\n')
+      .filter((line: string) => {
+        const lower = line.toLowerCase();
+        return !lower.startsWith('documents attached:') && !lower.startsWith('photos selected:');
+      })
+      .join('\n')
+      .trim();
+    setFormData({
+      title: prop.title || '',
+      description,
+      propertyType: prop.propertyType || PropertyType.APARTMENT,
+      listingType: prop.listingType || ListingType.SALE,
+      price: prop.price ? String(prop.price) : '',
+      location: prop.location || [prop.city, prop.state].filter(Boolean).join(', '),
+      bedrooms: '',
+      bathrooms: '',
+      city: prop.city || '',
+      state: prop.state || '',
+      country: prop.country || 'India',
+      builderName: prop.builderName || '',
+      projectName: prop.projectName || '',
+      reraId: prop.reraId || '',
+    });
+  }, [editId, editData]);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -107,18 +146,19 @@ const CreateProperty: React.FC = () => {
         photos.length ? `Photos selected: ${photos.length}` : '',
       ].filter(Boolean);
 
-      const createdProp = await propertyService.createProperty(
-        mapFormDataToPropertyInput({
-          ...formData,
-          description: descBits.join('\n\n') || formData.title,
-        })
-      );
+      const payload = mapFormDataToPropertyInput({
+        ...formData,
+        description: descBits.join('\n\n') || formData.title,
+      });
 
-      // Persist document filenames as features for now (media upload pipeline TBD)
+      const savedProp = editId
+        ? await propertyService.updateProperty({ propertyId: editId, ...payload })
+        : await propertyService.createProperty(payload);
+
       if (documents.length) {
         try {
           await propertyService.addPropertyFeatures(
-            createdProp.id,
+            savedProp.id,
             documents.map((doc, i) => ({
               featureName: 'DOCUMENT',
               featureValue: `${doc.name} (${Math.max(1, Math.round(doc.size / 1024))} KB)`,
@@ -130,10 +170,15 @@ const CreateProperty: React.FC = () => {
         }
       }
 
-      setCreated(createdProp);
+      setCreated(savedProp);
+      if (editId) {
+        setSnackbar({ open: true, message: 'Property details updated', severity: 'success' });
+        navigate(`/property/${savedProp.id}`);
+        return;
+      }
       setShowReviewModal(true);
     } catch (error: any) {
-      setSnackbar({ open: true, message: error.message || 'Failed to create property', severity: 'error' });
+      setSnackbar({ open: true, message: error.message || (editId ? 'Failed to update property' : 'Failed to create property'), severity: 'error' });
     } finally {
       setLoading(false);
     }
@@ -160,6 +205,7 @@ const CreateProperty: React.FC = () => {
         <Box
           component="form"
           onSubmit={handleSubmit}
+          className="zpc-overlay-host"
           sx={{
             width: '100%',
             maxWidth: 720,
@@ -178,10 +224,10 @@ const CreateProperty: React.FC = () => {
               <ZpcNavLogo size={40} animateStroke={false} ink="dark" onLightBg />
               <Box>
                 <Typography sx={{ fontFamily: ZPC_FONTS.display, fontWeight: 700, fontSize: 22, color: '#0A1210' }}>
-                  Add New Property
+                  {editId ? 'Edit Property' : 'Add New Property'}
                 </Typography>
                 <Typography sx={{ color: '#6B7280', fontSize: 13.5, mt: 0.25 }}>
-                  Provide details to list your property on ZPC
+                  {editId ? 'Update the listing details on ZPC' : 'Provide details to list your property on ZPC'}
                 </Typography>
               </Box>
             </Box>
@@ -197,7 +243,7 @@ const CreateProperty: React.FC = () => {
             </Box>
           </Box>
 
-          <Box sx={{ px: 3, pb: 2, display: 'grid', gap: 2.25, flex: 1, minHeight: 0, overflow: 'auto', ...THIN_CREAM_SCROLLBAR }}>
+          <Box className="zpc-overlay-scroll" sx={{ px: 3, pb: 2, display: 'grid', gap: 2.25, flex: 1, minHeight: 0, overflow: 'auto', ...THIN_CREAM_SCROLLBAR }}>
             <Box>
               <Typography sx={{ fontWeight: 600, fontSize: 13.5, mb: 0.75, color: '#1F2937' }}>Property Name</Typography>
               <TextField
@@ -382,9 +428,11 @@ const CreateProperty: React.FC = () => {
               )}
             </Box>
 
+            {!editId && (
             <Alert severity="info" sx={{ borderRadius: 2 }}>
               Your listing will be submitted for review. Admins will verify details before it goes live.
             </Alert>
+            )}
           </Box>
 
           <Box
@@ -419,7 +467,7 @@ const CreateProperty: React.FC = () => {
                 '&:hover': { bgcolor: ZPC_COLORS.primaryHover },
               }}
             >
-              {loading ? <CircularProgress size={20} color="inherit" /> : 'Submit Property'}
+              {loading ? <CircularProgress size={20} color="inherit" /> : editId ? 'Save changes' : 'Submit Property'}
             </Button>
           </Box>
         </Box>

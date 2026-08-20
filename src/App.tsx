@@ -10,6 +10,7 @@ import ResetPassword from './components/ResetPassword';
 import Profile from './components/Profile';
 import CreateProperty from './components/CreateProperty';
 import MyProperties from './components/MyProperties';
+import SavedProperties from './components/SavedProperties';
 import PropertyPage from './components/PropertyPage';
 import ChatPage from './components/ChatPage';
 import AdminDashboard from './components/admin/AdminDashboard';
@@ -445,6 +446,14 @@ function AppRoutes() {
         }
       />
       <Route
+        path="/profile/:userId"
+        element={
+          <ProtectedRoute>
+            <Profile />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/create-property"
         element={
           <RoleProtectedRoute allowedRoles={['agent', 'builder']}>
@@ -458,6 +467,14 @@ function AppRoutes() {
           <RoleProtectedRoute allowedRoles={['agent', 'builder']}>
             <MyProperties />
           </RoleProtectedRoute>
+        }
+      />
+      <Route
+        path="/saved-properties"
+        element={
+          <ProtectedRoute>
+            <SavedProperties />
+          </ProtectedRoute>
         }
       />
       <Route
