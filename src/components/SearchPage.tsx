@@ -28,9 +28,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import PeopleIcon from '@mui/icons-material/People';
 import HomeWorkOutlinedIcon from '@mui/icons-material/HomeWorkOutlined';
 import ArticleOutlinedIcon from '@mui/icons-material/ArticleOutlined';
-import { SEARCH_USERS_LIGHT } from '../graphql/user';
-import { SEARCH_POSTS_LIGHT } from '../graphql/posts';
-import { PUBLIC_PROPERTIES } from '../graphql/property';
+import { GLOBAL_SEARCH } from '../graphql/search';
 import TabEnter from './motion/TabEnter';
 import { MATTE_PANEL, MATTE_SURFACE, MATTE_HEADER, PAGE_ATMOSPHERE } from '../theme/surfaces';
 import AdminBackground from './admin/AdminBackground';
@@ -44,12 +42,26 @@ const interFont = { fontFamily: "'DM Sans', 'Source Sans 3', system-ui, sans-ser
 const displayFont = { fontFamily: "'Source Serif 4', 'Source Serif Pro', Georgia, serif" };
 
 type SearchTab = 'all' | 'people' | 'properties' | 'posts';
+type SearchEntityType = 'USER' | 'POST' | 'PROPERTY' | 'COMMENT';
+
+type SearchHit = {
+  id: string;
+  entityType: SearchEntityType;
+  title: string;
+  bio?: string | null;
+  description?: string | null;
+  imageUrl?: string | null;
+  location?: string | null;
+};
 
 const ROLE_OPTIONS = [
   { value: '', label: 'Any role' },
-  { value: 'agent', label: 'Agent' },
-  { value: 'builder', label: 'Builder' },
-  { value: 'general', label: 'General' },
+  { value: 'USER', label: 'User' },
+  { value: 'AGENT', label: 'Agent' },
+  { value: 'BUILDER', label: 'Builder' },
+  { value: 'ADMIN', label: 'Admin' },
+  { value: 'LAWYER', label: 'Lawyer' },
+  { value: 'INVESTOR', label: 'Investor' },
 ];
 
 const PROPERTY_TYPES = [
@@ -77,6 +89,21 @@ const POST_PROPERTY_TYPES = [
 
 const CARD_RADIUS = 2;
 
+const TAB_ENTITY_TYPES: Record<SearchTab, SearchEntityType[] | null> = {
+  all: ['USER', 'POST', 'PROPERTY'],
+  people: ['USER'],
+  properties: ['PROPERTY'],
+  posts: ['POST'],
+};
+
+function buildKeyword(parts: Array<string | undefined | null>): string {
+  return parts
+    .map((p) => String(p || '').trim())
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+}
+
 const SearchPage: React.FC = () => {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -88,72 +115,81 @@ const SearchPage: React.FC = () => {
   const [draft, setDraft] = useState(qParam);
   const [showAllFilters, setShowAllFilters] = useState(false);
 
-  // People filters
   const [peopleRole, setPeopleRole] = useState(params.get('role') || '');
   const [peopleLocation, setPeopleLocation] = useState(params.get('peopleLocation') || '');
 
-  // Property filters
   const [propCity, setPropCity] = useState(params.get('city') || '');
   const [propType, setPropType] = useState(params.get('propertyType') || '');
   const [listingType, setListingType] = useState(params.get('listingType') || '');
 
-  // Post filters
   const [postLocation, setPostLocation] = useState(params.get('postLocation') || '');
   const [postPropType, setPostPropType] = useState(params.get('postPropertyType') || '');
 
   const parsed = useMemo(() => parseSearchQuery(qParam), [qParam]);
-  const browseProperties = tabParam === 'properties';
-  const hasQuery = Boolean(parsed.apiQuery || peopleRole || propCity || propType || listingType || postLocation || postPropType);
-  const showResults = hasQuery || browseProperties;
+  const hasQuery = Boolean(
+    parsed.apiQuery || peopleRole || propCity || propType || listingType || postLocation || postPropType || peopleLocation
+  );
 
-  const [runPeople, peopleState] = useLazyQuery(SEARCH_USERS_LIGHT, { fetchPolicy: 'network-only', errorPolicy: 'all' });
-  const [runPosts, postsState] = useLazyQuery(SEARCH_POSTS_LIGHT, { fetchPolicy: 'network-only', errorPolicy: 'all' });
-  const [runProps, propsState] = useLazyQuery(PUBLIC_PROPERTIES, { fetchPolicy: 'network-only', errorPolicy: 'all' });
+  const [runGlobalSearch, searchState] = useLazyQuery(GLOBAL_SEARCH, {
+    fetchPolicy: 'network-only',
+    errorPolicy: 'all',
+  });
+
+  const openUser = useCallback(
+    (userId: string) => {
+      const id = String(userId || '').trim();
+      if (!id) return;
+      navigate(`/profile/${id}`);
+    },
+    [navigate]
+  );
+
+  const openProperty = useCallback(
+    (propertyId: string) => {
+      const id = String(propertyId || '').trim();
+      if (!id) return;
+      navigate(`/property/${id}`);
+    },
+    [navigate]
+  );
+
+  const openPost = useCallback(
+    (postId: string) => {
+      const id = String(postId || '').trim();
+      if (!id) return;
+      navigate(`/home?post=${encodeURIComponent(id)}`);
+    },
+    [navigate]
+  );
 
   const runSearch = useCallback(
     (override?: { q?: string; tab?: SearchTab }) => {
       const q = override?.q ?? qParam;
       const tab = override?.tab ?? tabParam;
       const parsedQ = parseSearchQuery(q);
-      const apiQ = parsedQ.apiQuery;
+      const keyword = buildKeyword([
+        parsedQ.apiQuery,
+        peopleLocation,
+        propCity,
+        propType,
+        listingType,
+        postLocation,
+        postPropType,
+        peopleRole,
+      ]);
+      if (!keyword) return;
 
-      const needPeople = tab === 'all' || tab === 'people';
-      const needPosts = tab === 'all' || tab === 'posts';
-      const needProps = tab === 'all' || tab === 'properties';
-
-      if (needPeople && (apiQ || peopleRole || peopleLocation)) {
-        runPeople({
-          variables: {
-            search: apiQ || peopleLocation || '',
-            role: peopleRole || null,
-            page: 1,
-            limit: tab === 'all' ? 8 : 40,
+      const size = tab === 'all' ? 40 : 50;
+      runGlobalSearch({
+        variables: {
+          request: {
+            keyword,
+            entityTypes: TAB_ENTITY_TYPES[tab],
+            pagination: { page: 0, size },
+            sortBy: 'RELEVANCE',
           },
-        });
-      }
-      if (needPosts && (apiQ || postLocation || postPropType)) {
-        runPosts({
-          variables: {
-            query: apiQ || null,
-            location: postLocation || null,
-            propertyType: postPropType || null,
-            page: 1,
-            limit: tab === 'all' ? 8 : 30,
-          },
-        });
-      }
-      if (needProps && (apiQ || propCity || propType || listingType || tab === 'properties')) {
-        runProps({
-          variables: {
-            page: 1,
-            limit: tab === 'all' ? 8 : 30,
-            city: propCity || null,
-            search: apiQ || null,
-            propertyType: propType || null,
-            listingType: listingType || null,
-          },
-        });
-      }
+        },
+      });
     },
     [
       qParam,
@@ -165,9 +201,7 @@ const SearchPage: React.FC = () => {
       propCity,
       propType,
       listingType,
-      runPeople,
-      runPosts,
-      runProps,
+      runGlobalSearch,
     ]
   );
 
@@ -176,7 +210,7 @@ const SearchPage: React.FC = () => {
   }, [qParam]);
 
   useEffect(() => {
-    if (!hasQuery && !browseProperties) return;
+    if (!hasQuery) return;
     runSearch();
   }, [
     qParam,
@@ -189,7 +223,6 @@ const SearchPage: React.FC = () => {
     postLocation,
     postPropType,
     hasQuery,
-    browseProperties,
     runSearch,
   ]);
 
@@ -225,39 +258,49 @@ const SearchPage: React.FC = () => {
     setParams(next);
   };
 
-  const peopleRaw = peopleState.data?.users || [];
+  const results: SearchHit[] = useMemo(
+    () => searchState.data?.globalSearch?.results || [],
+    [searchState.data?.globalSearch?.results]
+  );
+
   const people = useMemo(() => {
-    const q = (parsed.apiQuery || '').trim().toLowerCase();
-    return peopleRaw.filter((u: any) => {
-      if (peopleRole && String(u.role || '').toLowerCase() !== peopleRole.toLowerCase()) {
+    return results.filter((r) => {
+      if (r.entityType !== 'USER') return false;
+      if (peopleRole && String(r.bio || '').toUpperCase() !== peopleRole.toUpperCase()) return false;
+      if (peopleLocation && !String(r.location || '').toLowerCase().includes(peopleLocation.toLowerCase())) {
         return false;
       }
-      if (peopleLocation && !String(u.address || '').toLowerCase().includes(peopleLocation.toLowerCase())) {
-        return false;
-      }
-      // Trust backend substring search for the keyword; only apply optional filters above.
-      if (!q) return true;
-      const blob = `${u.firstName || ''} ${u.lastName || ''} ${u.email || ''} ${u.role || ''} ${u.bio || ''}`.toLowerCase();
-      return blob.includes(q) || q.split(/\s+/).filter((t) => t.length >= 2).every((t) => blob.includes(t));
+      return true;
     });
-  }, [peopleRaw, peopleLocation, peopleRole, parsed.apiQuery]);
+  }, [results, peopleRole, peopleLocation]);
 
-  const postsRaw = postsState.data?.searchPosts || [];
+  const properties = useMemo(() => {
+    return results.filter((r) => {
+      if (r.entityType !== 'PROPERTY') return false;
+      if (propCity && !String(r.location || '').toLowerCase().includes(propCity.toLowerCase())) return false;
+      const blob = `${r.title || ''} ${r.description || ''} ${r.location || ''}`.toLowerCase();
+      if (propType && !blob.includes(propType.toLowerCase())) return false;
+      if (listingType && !blob.includes(listingType.toLowerCase())) return false;
+      return true;
+    });
+  }, [results, propCity, propType, listingType]);
+
   const posts = useMemo(() => {
-    const q = (parsed.apiQuery || '').trim().toLowerCase();
-    if (!q) return postsRaw;
-    return postsRaw.filter((p: any) => {
-      const blob = `${p.title || ''} ${p.content || ''} ${p.location || ''} ${p.propertyType || ''} ${p.userFirstName || ''} ${p.userLastName || ''}`.toLowerCase();
-      return blob.includes(q);
+    return results.filter((r) => {
+      if (r.entityType !== 'POST') return false;
+      if (postLocation && !String(r.location || '').toLowerCase().includes(postLocation.toLowerCase())) {
+        return false;
+      }
+      if (postPropType) {
+        const blob = `${r.title || ''} ${r.description || ''} ${r.location || ''}`.toLowerCase();
+        if (!blob.includes(postPropType.toLowerCase())) return false;
+      }
+      return true;
     });
-  }, [postsRaw, parsed.apiQuery]);
+  }, [results, postLocation, postPropType]);
 
-  const properties = propsState.data?.publicProperties?.properties || [];
-
-  const loading =
-    (tabParam === 'all' || tabParam === 'people') && peopleState.loading ||
-    (tabParam === 'all' || tabParam === 'posts') && postsState.loading ||
-    (tabParam === 'all' || tabParam === 'properties') && propsState.loading;
+  const loading = searchState.loading;
+  const totalHits = searchState.data?.globalSearch?.totalHits ?? 0;
 
   const activeFilterChips: { key: string; label: string; clear: () => void }[] = [];
   if (peopleRole && (tabParam === 'all' || tabParam === 'people')) {
@@ -310,7 +353,7 @@ const SearchPage: React.FC = () => {
     });
   }
 
-  const openProfile = (id: string) => navigate(`/profile/${id}`);
+  const openProfile = (id: string) => openUser(id);
 
   const FilterSelect = ({
     label,
@@ -348,7 +391,7 @@ const SearchPage: React.FC = () => {
 
   const renderPeople = (limit?: number) => {
     const list = typeof limit === 'number' ? people.slice(0, limit) : people;
-    if (peopleState.loading && !peopleRaw.length) {
+    if (loading && !results.length) {
       return (
         <Box sx={{ py: 4, textAlign: 'center' }}>
           <CircularProgress size={28} sx={{ color: '#16302A' }} />
@@ -364,9 +407,9 @@ const SearchPage: React.FC = () => {
     }
     return (
       <Stack spacing={1}>
-        {list.map((u: any) => {
-          const name = `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email || 'Member';
-          const photo = u.profilePhotoSignedUrl || u.profilePhoto;
+        {list.map((u) => {
+          const name = u.title || 'Member';
+          const photo = u.imageUrl || undefined;
           return (
             <Box
               key={u.id}
@@ -393,9 +436,9 @@ const SearchPage: React.FC = () => {
                   {name}
                 </Typography>
                 <Typography sx={{ fontSize: 12.5, color: '#5C675F' }}>
-                  {[u.role, u.address].filter(Boolean).join(' · ') || u.email}
+                  {[u.bio, u.location].filter(Boolean).join(' · ') || 'Member'}
                 </Typography>
-                {u.bio && (
+                {u.description && (
                   <Typography
                     sx={{
                       fontSize: 12,
@@ -406,13 +449,13 @@ const SearchPage: React.FC = () => {
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    {u.bio}
+                    {u.description}
                   </Typography>
                 )}
               </Box>
               <Chip
                 size="small"
-                label={u.role || 'member'}
+                label={u.bio || 'member'}
                 sx={{ textTransform: 'capitalize', bgcolor: 'rgba(22,48,42,0.08)', fontWeight: 600 }}
               />
             </Box>
@@ -424,7 +467,7 @@ const SearchPage: React.FC = () => {
 
   const renderProperties = (limit?: number) => {
     const list = typeof limit === 'number' ? properties.slice(0, limit) : properties;
-    if (propsState.loading && !properties.length) {
+    if (loading && !results.length) {
       return (
         <Box sx={{ py: 4, textAlign: 'center' }}>
           <CircularProgress size={28} sx={{ color: '#16302A' }} />
@@ -440,10 +483,10 @@ const SearchPage: React.FC = () => {
     }
     return (
       <Stack spacing={1}>
-        {list.map((p: any) => (
+        {list.map((p) => (
           <Box
             key={p.id}
-            onClick={() => navigate(`/property/${p.id}`)}
+            onClick={() => openProperty(String(p.id))}
             sx={{
               ...MATTE_SURFACE,
               borderRadius: CARD_RADIUS,
@@ -453,15 +496,24 @@ const SearchPage: React.FC = () => {
             }}
           >
             <Typography sx={{ fontWeight: 750, color: '#16302A', fontSize: 15, ...displayFont }}>
-              {p.title || p.projectName || 'Property'}
+              {p.title || 'Property'}
             </Typography>
             <Typography sx={{ fontSize: 12.5, color: '#5C675F', mt: 0.35 }}>
-              {[p.propertyType, p.listingType, p.city, p.state].filter(Boolean).join(' · ')}
+              {p.location || 'Location not set'}
             </Typography>
-            {p.price != null && (
-              <Typography sx={{ fontSize: 13.5, fontWeight: 700, color: '#16302A', mt: 0.5 }}>
-                {p.currency || '₹'}
-                {Number(p.price).toLocaleString('en-IN')}
+            {p.description && (
+              <Typography
+                sx={{
+                  fontSize: 13,
+                  color: '#3A4540',
+                  mt: 0.5,
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
+                }}
+              >
+                {p.description}
               </Typography>
             )}
           </Box>
@@ -472,7 +524,7 @@ const SearchPage: React.FC = () => {
 
   const renderPosts = (limit?: number) => {
     const list = typeof limit === 'number' ? posts.slice(0, limit) : posts;
-    if (postsState.loading && !postsRaw.length) {
+    if (loading && !results.length) {
       return (
         <Box sx={{ py: 4, textAlign: 'center' }}>
           <CircularProgress size={28} sx={{ color: '#16302A' }} />
@@ -488,10 +540,10 @@ const SearchPage: React.FC = () => {
     }
     return (
       <Stack spacing={1}>
-        {list.map((p: any) => (
+        {list.map((p) => (
           <Box
             key={p.id}
-            onClick={() => navigate('/home', { state: { focusPostId: p.id } })}
+            onClick={() => openPost(String(p.id))}
             sx={{
               ...MATTE_SURFACE,
               borderRadius: CARD_RADIUS,
@@ -501,14 +553,15 @@ const SearchPage: React.FC = () => {
             }}
           >
             <Typography sx={{ fontSize: 12, color: '#5C675F', mb: 0.35 }}>
-              {[p.userFirstName, p.userLastName].filter(Boolean).join(' ')}
-              {categoryFromTitle(p.title) ? ` · ${categoryFromTitle(p.title)}` : ''}
-              {p.location ? ` · ${p.location}` : ''}
+              {categoryFromTitle(p.title) ? `${categoryFromTitle(p.title)} · ` : ''}
+              {p.location || 'Post'}
             </Typography>
             <Typography sx={{ fontWeight: 750, color: '#16302A', fontSize: 15, ...displayFont }}>
-              {stripCategoryPrefix(p.title || '') || collapseMentionTokens(p.content || '').slice(0, 80) || 'Post'}
+              {stripCategoryPrefix(p.title || '') ||
+                collapseMentionTokens(p.description || '').slice(0, 80) ||
+                'Post'}
             </Typography>
-            {p.content && (
+            {p.description && (
               <Typography
                 sx={{
                   fontSize: 13,
@@ -520,7 +573,7 @@ const SearchPage: React.FC = () => {
                   overflow: 'hidden',
                 }}
               >
-                {collapseMentionTokens(p.content)}
+                {collapseMentionTokens(p.description)}
               </Typography>
             )}
           </Box>
@@ -649,7 +702,6 @@ const SearchPage: React.FC = () => {
         </Box>
       </AppBar>
 
-      {/* Filter bar — LinkedIn style above results */}
       <Box
         sx={{
           position: 'sticky',
@@ -760,7 +812,7 @@ const SearchPage: React.FC = () => {
       </Box>
 
       <Box sx={{ position: 'relative', zIndex: 1, maxWidth: 920, mx: 'auto', px: { xs: 1.25, sm: 2 }, py: 2.5 }}>
-        {!showResults ? (
+        {!hasQuery ? (
           <Box sx={{ ...MATTE_PANEL, borderRadius: CARD_RADIUS, p: 3 }}>
             <Typography sx={{ fontWeight: 800, fontSize: 20, color: '#16302A', mb: 1, ...displayFont }}>
               Search ZPC
@@ -783,18 +835,13 @@ const SearchPage: React.FC = () => {
         ) : (
           <TabEnter tabKey={tabParam}>
             <Typography sx={{ mb: 2, color: '#5C675F', fontSize: 13.5 }}>
-              {qParam
-                ? <>Results for <strong style={{ color: '#16302A' }}>{qParam}</strong></>
-                : tabParam === 'properties'
-                  ? 'Published listings'
-                  : <>Results for <strong style={{ color: '#16302A' }}>filters</strong></>}
-              {loading ? ' · searching…' : ''}
+              Results for <strong style={{ color: '#16302A' }}>{qParam || 'filters'}</strong>
+              {loading ? ' · searching…' : totalHits ? ` · ${totalHits} hit${totalHits === 1 ? '' : 's'}` : ''}
             </Typography>
-            {(peopleState.error || postsState.error || propsState.error) && (
+            {searchState.error && (
               <Alert severity="error" sx={{ mb: 2, borderRadius: 1.5 }}>
-                Search request failed
-                {peopleState.error ? `: ${peopleState.error.message}` : ''}
-                . Check that the API gateway is running and you are logged in.
+                Search request failed: {searchState.error.message}. Check that the API gateway is running and you are
+                logged in.
               </Alert>
             )}
 
