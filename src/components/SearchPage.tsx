@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useLazyQuery } from '@apollo/client';
+import { useLazyQuery, useQuery } from '@apollo/client';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Alert,
@@ -29,6 +29,7 @@ import PeopleIcon from '@mui/icons-material/People';
 import HomeWorkOutlinedIcon from '@mui/icons-material/HomeWorkOutlined';
 import ArticleOutlinedIcon from '@mui/icons-material/ArticleOutlined';
 import { GLOBAL_SEARCH } from '../graphql/search';
+import { PUBLIC_PROPERTIES } from '../graphql/property';
 import TabEnter from './motion/TabEnter';
 import { MATTE_PANEL, MATTE_SURFACE, MATTE_HEADER, PAGE_ATMOSPHERE } from '../theme/surfaces';
 import ScrollablePageShell from './layout/ScrollablePageShell';
@@ -88,6 +89,8 @@ const POST_PROPERTY_TYPES = [
 ];
 
 const CARD_RADIUS = 2;
+/** Same page size as Home / Profile post feed. */
+const PROPERTY_PAGE_SIZE = 12;
 
 const TAB_ENTITY_TYPES: Record<SearchTab, SearchEntityType[] | null> = {
   all: ['USER', 'POST', 'PROPERTY'],
@@ -134,6 +137,32 @@ const SearchPage: React.FC = () => {
     fetchPolicy: 'network-only',
     errorPolicy: 'all',
   });
+
+  const propertySearchKeyword = useMemo(
+    () => buildKeyword([parsed.apiQuery, propCity]),
+    [parsed.apiQuery, propCity]
+  );
+
+  const {
+    data: publicPropsData,
+    loading: publicPropsLoading,
+    networkStatus: publicPropsNetworkStatus,
+    fetchMore: fetchMorePublicProperties,
+    error: publicPropsError,
+  } = useQuery(PUBLIC_PROPERTIES, {
+    variables: {
+      page: 1,
+      limit: PROPERTY_PAGE_SIZE,
+      search: propertySearchKeyword || undefined,
+      propertyType: propType || undefined,
+      listingType: listingType || undefined,
+    },
+    skip: tabParam !== 'properties',
+    fetchPolicy: 'cache-and-network',
+    notifyOnNetworkStatusChange: true,
+  });
+
+  const [loadingMoreProperties, setLoadingMoreProperties] = useState(false);
 
   const openUser = useCallback(
     (userId: string) => {
@@ -210,6 +239,8 @@ const SearchPage: React.FC = () => {
   }, [qParam]);
 
   useEffect(() => {
+    // Properties tab browses Postgres via publicProperties (no OpenSearch required).
+    if (tabParam === 'properties') return;
     if (!hasQuery) return;
     runSearch();
   }, [
@@ -255,8 +286,55 @@ const SearchPage: React.FC = () => {
   const setTab = (tab: SearchTab) => {
     const next = new URLSearchParams(params);
     next.set('tab', tab);
+    // Keep each tab focused: drop filters that belong to other entity types.
+    if (tab === 'properties') {
+      setPeopleRole('');
+      setPeopleLocation('');
+      setPostLocation('');
+      setPostPropType('');
+      next.delete('role');
+      next.delete('peopleLocation');
+      next.delete('postLocation');
+      next.delete('postPropertyType');
+      setShowAllFilters(false);
+    } else if (tab === 'people') {
+      setPropCity('');
+      setPropType('');
+      setListingType('');
+      setPostLocation('');
+      setPostPropType('');
+      next.delete('city');
+      next.delete('propertyType');
+      next.delete('listingType');
+      next.delete('postLocation');
+      next.delete('postPropertyType');
+      setShowAllFilters(false);
+    } else if (tab === 'posts') {
+      setPeopleRole('');
+      setPeopleLocation('');
+      setPropCity('');
+      setPropType('');
+      setListingType('');
+      next.delete('role');
+      next.delete('peopleLocation');
+      next.delete('city');
+      next.delete('propertyType');
+      next.delete('listingType');
+      setShowAllFilters(false);
+    }
     setParams(next);
   };
+
+  const searchPlaceholder =
+    tabParam === 'properties'
+      ? 'Search properties by city, project, or builder'
+      : tabParam === 'people'
+        ? 'Search people by name, role, or location'
+        : tabParam === 'posts'
+          ? 'Search posts by keyword or location'
+          : 'Search people, properties, posts — try "Hyderabad" OR builder';
+
+  const propertyTabQuery = Boolean(parsed.apiQuery || propCity || propType || listingType);
 
   const results: SearchHit[] = useMemo(
     () => searchState.data?.globalSearch?.results || [],
@@ -274,7 +352,7 @@ const SearchPage: React.FC = () => {
     });
   }, [results, peopleRole, peopleLocation]);
 
-  const properties = useMemo(() => {
+  const searchProperties = useMemo(() => {
     return results.filter((r) => {
       if (r.entityType !== 'PROPERTY') return false;
       if (propCity && !String(r.location || '').toLowerCase().includes(propCity.toLowerCase())) return false;
@@ -284,6 +362,66 @@ const SearchPage: React.FC = () => {
       return true;
     });
   }, [results, propCity, propType, listingType]);
+
+  const browsedProperties: SearchHit[] = useMemo(() => {
+    const rows = publicPropsData?.publicProperties?.properties || [];
+    return rows.map((p: any) => ({
+      id: String(p.id),
+      entityType: 'PROPERTY' as const,
+      title: p.title || 'Property',
+      bio: [p.propertyType, p.listingType].filter(Boolean).join(' · ') || null,
+      description: p.description || null,
+      imageUrl: null,
+      location: [p.city, p.state].filter(Boolean).join(', ') || p.location || null,
+    }));
+  }, [publicPropsData]);
+
+  const properties = tabParam === 'properties' ? browsedProperties : searchProperties;
+  const propertyTotal = publicPropsData?.publicProperties?.total ?? properties.length;
+  const propertyHasMore =
+    tabParam === 'properties' && browsedProperties.length < (publicPropsData?.publicProperties?.total || 0);
+
+  const loadMoreProperties = useCallback(async () => {
+    if (loadingMoreProperties || !propertyHasMore) return;
+    const nextPage = Math.floor(browsedProperties.length / PROPERTY_PAGE_SIZE) + 1;
+    setLoadingMoreProperties(true);
+    try {
+      await fetchMorePublicProperties({
+        variables: {
+          page: nextPage,
+          limit: PROPERTY_PAGE_SIZE,
+          search: propertySearchKeyword || undefined,
+          propertyType: propType || undefined,
+          listingType: listingType || undefined,
+        },
+        updateQuery: (prev: any, { fetchMoreResult }: any) => {
+          if (!fetchMoreResult?.publicProperties) return prev;
+          const existing = prev?.publicProperties?.properties || [];
+          const seen = new Set(existing.map((x: any) => String(x.id)));
+          const appended = (fetchMoreResult.publicProperties.properties || []).filter(
+            (x: any) => !seen.has(String(x.id))
+          );
+          return {
+            ...prev,
+            publicProperties: {
+              ...fetchMoreResult.publicProperties,
+              properties: [...existing, ...appended],
+            },
+          };
+        },
+      });
+    } finally {
+      setLoadingMoreProperties(false);
+    }
+  }, [
+    loadingMoreProperties,
+    propertyHasMore,
+    browsedProperties.length,
+    fetchMorePublicProperties,
+    propertySearchKeyword,
+    propType,
+    listingType,
+  ]);
 
   const posts = useMemo(() => {
     return results.filter((r) => {
@@ -299,8 +437,11 @@ const SearchPage: React.FC = () => {
     });
   }, [results, postLocation, postPropType]);
 
-  const loading = searchState.loading;
-  const totalHits = searchState.data?.globalSearch?.totalHits ?? 0;
+  const loading = tabParam === 'properties' ? publicPropsLoading && !browsedProperties.length : searchState.loading;
+  const totalHits =
+    tabParam === 'properties'
+      ? propertyTotal
+      : searchState.data?.globalSearch?.totalHits ?? 0;
 
   const activeFilterChips: { key: string; label: string; clear: () => void }[] = [];
   if (peopleRole && (tabParam === 'all' || tabParam === 'people')) {
@@ -352,8 +493,6 @@ const SearchPage: React.FC = () => {
       clear: () => setPostPropType(''),
     });
   }
-
-  const openProfile = (id: string) => openUser(id);
 
   const FilterSelect = ({
     label,
@@ -413,7 +552,7 @@ const SearchPage: React.FC = () => {
           return (
             <Box
               key={u.id}
-              onClick={() => openProfile(String(u.id))}
+              onClick={() => openUser(String(u.id))}
               sx={{
                 ...MATTE_SURFACE,
                 borderRadius: CARD_RADIUS,
@@ -467,17 +606,28 @@ const SearchPage: React.FC = () => {
 
   const renderProperties = (limit?: number) => {
     const list = typeof limit === 'number' ? properties.slice(0, limit) : properties;
-    if (loading && !results.length) {
+    const propsLoading =
+      tabParam === 'properties'
+        ? publicPropsLoading && !browsedProperties.length
+        : loading && !results.length;
+    if (propsLoading) {
       return (
         <Box sx={{ py: 4, textAlign: 'center' }}>
           <CircularProgress size={28} sx={{ color: '#16302A' }} />
         </Box>
       );
     }
+    if (tabParam === 'properties' && publicPropsError) {
+      return (
+        <Alert severity="error" sx={{ borderRadius: 1.5 }}>
+          Could not load properties: {publicPropsError.message}
+        </Alert>
+      );
+    }
     if (!list.length) {
       return (
         <Typography sx={{ color: '#5C675F', fontSize: 14, py: 2 }}>
-          No properties found. Filter by city (e.g. Hyderabad) and type.
+          No properties found. Try another city, type, or listing filter.
         </Typography>
       );
     }
@@ -499,7 +649,7 @@ const SearchPage: React.FC = () => {
               {p.title || 'Property'}
             </Typography>
             <Typography sx={{ fontSize: 12.5, color: '#5C675F', mt: 0.35 }}>
-              {p.location || 'Location not set'}
+              {[p.location, p.bio].filter(Boolean).join(' · ') || 'Location not set'}
             </Typography>
             {p.description && (
               <Typography
@@ -635,7 +785,7 @@ const SearchPage: React.FC = () => {
               onKeyDown={(e) => {
                 if (e.key === 'Enter') commitSearch();
               }}
-              placeholder='Search people, properties, posts — try "Hyderabad" OR builder'
+              placeholder={searchPlaceholder}
               sx={{
                 fontSize: 14.5,
                 color: '#EBE6D4',
@@ -776,13 +926,15 @@ const SearchPage: React.FC = () => {
             </>
           )}
 
-          <Button
-            startIcon={<FilterListIcon />}
-            onClick={() => setShowAllFilters((v) => !v)}
-            sx={{ textTransform: 'none', fontWeight: 700, color: '#16302A', ml: { sm: 'auto' } }}
-          >
-            {showAllFilters ? 'Fewer filters' : 'All filters'}
-          </Button>
+          {tabParam === 'all' && (
+            <Button
+              startIcon={<FilterListIcon />}
+              onClick={() => setShowAllFilters((v) => !v)}
+              sx={{ textTransform: 'none', fontWeight: 700, color: '#16302A', ml: { sm: 'auto' } }}
+            >
+              {showAllFilters ? 'Fewer filters' : 'All filters'}
+            </Button>
+          )}
           <Button
             onClick={() => commitSearch()}
             sx={{
@@ -792,9 +944,10 @@ const SearchPage: React.FC = () => {
               color: '#16302A',
               borderRadius: 999,
               px: 1.75,
+              ml: tabParam === 'all' ? 0 : { sm: 'auto' },
             }}
           >
-            Apply
+            {tabParam === 'properties' ? 'Filter' : 'Apply'}
           </Button>
         </Box>
 
@@ -814,7 +967,7 @@ const SearchPage: React.FC = () => {
       </Box>
 
       <Box sx={{ position: 'relative', zIndex: 1, maxWidth: 920, mx: 'auto', px: { xs: 1.25, sm: 2 }, py: 2.5 }}>
-        {!hasQuery ? (
+        {!hasQuery && tabParam !== 'properties' ? (
           <Box sx={{ ...MATTE_PANEL, borderRadius: CARD_RADIUS, p: 3 }}>
             <Typography sx={{ fontWeight: 800, fontSize: 20, color: '#16302A', mb: 1, ...displayFont }}>
               Search ZPC
@@ -832,15 +985,43 @@ const SearchPage: React.FC = () => {
               <div>
                 Exclude: <code>apartment -rent</code>
               </div>
+              <div>
+                Or open the <strong>Properties</strong> tab to browse the latest listings.
+              </div>
             </Stack>
           </Box>
         ) : (
           <TabEnter tabKey={tabParam}>
             <Typography sx={{ mb: 2, color: '#5C675F', fontSize: 13.5 }}>
-              Results for <strong style={{ color: '#16302A' }}>{qParam || 'filters'}</strong>
-              {loading ? ' · searching…' : totalHits ? ` · ${totalHits} hit${totalHits === 1 ? '' : 's'}` : ''}
+              {tabParam === 'properties' ? (
+                <>
+                  {propertyTabQuery ? (
+                    <>
+                      Filtered properties
+                      {qParam ? (
+                        <>
+                          {' '}
+                          for <strong style={{ color: '#16302A' }}>{qParam}</strong>
+                        </>
+                      ) : null}
+                    </>
+                  ) : (
+                    'Latest properties'
+                  )}
+                  {loading
+                    ? ' · loading…'
+                    : totalHits
+                      ? ` · showing ${properties.length} of ${totalHits}`
+                      : ''}
+                </>
+              ) : (
+                <>
+                  Results for <strong style={{ color: '#16302A' }}>{qParam || 'filters'}</strong>
+                  {loading ? ' · searching…' : totalHits ? ` · ${totalHits} hit${totalHits === 1 ? '' : 's'}` : ''}
+                </>
+              )}
             </Typography>
-            {searchState.error && (
+            {tabParam !== 'properties' && searchState.error && (
               <Alert severity="error" sx={{ mb: 2, borderRadius: 1.5 }}>
                 Search request failed: {searchState.error.message}. Check that the API gateway is running and you are
                 logged in.
@@ -873,7 +1054,29 @@ const SearchPage: React.FC = () => {
               <Box sx={{ ...MATTE_PANEL, borderRadius: CARD_RADIUS, p: 1.75 }}>{renderPeople()}</Box>
             )}
             {tabParam === 'properties' && (
-              <Box sx={{ ...MATTE_PANEL, borderRadius: CARD_RADIUS, p: 1.75 }}>{renderProperties()}</Box>
+              <Box sx={{ ...MATTE_PANEL, borderRadius: CARD_RADIUS, p: 1.75 }}>
+                {renderProperties()}
+                {propertyHasMore && (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+                    <Button
+                      onClick={() => {
+                        void loadMoreProperties();
+                      }}
+                      disabled={loadingMoreProperties}
+                      sx={{
+                        textTransform: 'none',
+                        fontWeight: 700,
+                        color: '#16302A',
+                        bgcolor: 'rgba(22,48,42,0.08)',
+                        borderRadius: 999,
+                        px: 2.5,
+                      }}
+                    >
+                      {loadingMoreProperties ? 'Loading…' : 'Load more properties'}
+                    </Button>
+                  </Box>
+                )}
+              </Box>
             )}
             {tabParam === 'posts' && (
               <Box sx={{ ...MATTE_PANEL, borderRadius: CARD_RADIUS, p: 1.75 }}>{renderPosts()}</Box>
@@ -883,7 +1086,7 @@ const SearchPage: React.FC = () => {
 
         <Divider sx={{ my: 3, borderColor: 'rgba(22,48,42,0.08)' }} />
         <Typography sx={{ fontSize: 12, color: 'rgba(22,48,42,0.5)', textAlign: 'center' }}>
-          ZPC search · People · Properties · Posts
+          {tabParam === 'properties' ? 'Browse published properties' : 'ZPC search · People · Properties · Posts'}
         </Typography>
       </Box>
     </ScrollablePageShell>
