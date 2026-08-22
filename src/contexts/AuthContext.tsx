@@ -1,6 +1,16 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { UserInfo } from '../types/auth';
 
+const LOGOUT_QUERY =
+  'mutation Logout($token: String!, $refreshToken: String) { logout(token: $token, refreshToken: $refreshToken) { success message } }';
+
+function logoutGraphqlUrl(): string {
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return `${window.location.origin}/api/v1/graphql`;
+  }
+  return process.env.REACT_APP_GRAPHQL_URL || 'http://localhost:8080/api/v1/graphql';
+}
+
 interface AuthContextType {
   isAuthenticated: boolean;
   user: UserInfo | null;
@@ -10,6 +20,7 @@ interface AuthContextType {
   setAuth: (token: string, refreshToken: string, user: UserInfo) => void;
   updateUser: (partial: Partial<UserInfo>) => void;
   clearAuth: () => void;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -21,6 +32,7 @@ const AuthContext = createContext<AuthContextType>({
   setAuth: () => {},
   updateUser: () => {},
   clearAuth: () => {},
+  logout: async () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -136,6 +148,40 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setIsAuthenticated(false);
   };
 
+  const logout = async () => {
+    const access = localStorage.getItem('token') || token;
+    const refresh = localStorage.getItem('refreshToken') || refreshToken;
+    if (!access) {
+      console.warn('AuthProvider: Logout skipped — no access token in storage or memory');
+      clearAuth();
+      return;
+    }
+    const payload = JSON.stringify({
+      operationName: 'Logout',
+      query: LOGOUT_QUERY,
+      variables: { token: access, refreshToken: refresh || null },
+    });
+    const url = logoutGraphqlUrl();
+    try {
+      console.info('AuthProvider: sending Logout mutation', url);
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+        keepalive: true,
+        credentials: 'omit',
+        cache: 'no-store',
+      });
+      if (!res.ok) {
+        console.error('AuthProvider: Logout HTTP', res.status);
+      }
+    } catch (error) {
+      console.error('AuthProvider: Logout API failed', error);
+    } finally {
+      clearAuth();
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -147,6 +193,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setAuth,
         updateUser,
         clearAuth,
+        logout,
       }}
     >
       {children}

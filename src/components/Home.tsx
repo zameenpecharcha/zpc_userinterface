@@ -921,7 +921,7 @@ const REPORT_REASONS = [
 const Home = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user: authUser, isAuthenticated, clearAuth } = useAuth();
+  const { user: authUser, isAuthenticated, logout } = useAuth();
   const { data, loading, error, refetch, fetchMore } = useQuery(SEARCH_POSTS, {
     variables: { page: 1, limit: FEED_PAGE_SIZE },
     fetchPolicy: 'cache-and-network',
@@ -2505,10 +2505,10 @@ const Home = () => {
                 </MenuItem>
               )}
               <MenuItem
-                onClick={() => {
+                onClick={async () => {
                   handleClose();
-                  clearAuth();
-                  window.location.href = '/';
+                  await logout();
+                  navigate('/');
                 }}
               >
                 Logout
@@ -2974,10 +2974,10 @@ const Home = () => {
               </Box>
             ))}
             <Box
-              onClick={() => {
+              onClick={async () => {
                 setMobileMenuOpen(false);
-                clearAuth();
-                window.location.href = '/';
+                await logout();
+                navigate('/');
               }}
               sx={{
                 display: 'flex',

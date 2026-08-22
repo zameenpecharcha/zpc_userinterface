@@ -414,7 +414,7 @@ const KpiCard: React.FC<{
 const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
   const isMobile = useMediaQuery('(max-width:900px)');
-  const { user, clearAuth } = useAuth();
+  const { user, logout } = useAuth();
 
   const [tab, setTab] = useState<TabId>('overview');
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('list');
@@ -871,8 +871,8 @@ const AdminDashboard: React.FC = () => {
     });
   };
 
-  const handleLogout = () => {
-    clearAuth();
+  const handleLogout = async () => {
+    await logout();
     navigate('/');
   };
 
