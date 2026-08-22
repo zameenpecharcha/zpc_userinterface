@@ -347,17 +347,17 @@ const ChatPage: React.FC<ChatPageProps> = ({
   onClose,
   initialRoomId = null,
 }) => {
-  const { user, clearAuth } = useAuth();
+  const { user, logout } = useAuth();
   const navigate  = useNavigate();
   const location  = useLocation();
   const isWide = useMediaQuery('(min-width:901px)');
   // Dock on desktop when embedded on Home, or when somehow rendered wide in-page
   const isDesktopDock = embedded || isWide;
 
-  const handleLogout = useCallback(() => {
-    clearAuth();
-    window.location.href = '/';
-  }, [clearAuth]);
+  const handleLogout = useCallback(async () => {
+    await logout();
+    navigate('/');
+  }, [logout, navigate]);
 
   const userId      = user ? String(user.id) : '';
   const shouldRedirectToHomeDock = !embedded && isWide;

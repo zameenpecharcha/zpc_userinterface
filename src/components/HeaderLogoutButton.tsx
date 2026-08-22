@@ -17,13 +17,13 @@ type Props = {
  * Shared header logout control for authenticated app pages.
  */
 const HeaderLogoutButton: React.FC<Props> = ({ ink = 'light', size = 'medium', sx }) => {
-  const { clearAuth } = useAuth();
+  const { logout } = useAuth();
   const navigate = useNavigate();
 
-  const onLogout = useCallback(() => {
-    clearAuth();
-    navigate('/');
-  }, [clearAuth, navigate]);
+  const onLogout = useCallback(async () => {
+    await logout();
+    navigate('/', { replace: true });
+  }, [logout, navigate]);
 
   const light = ink === 'light';
 

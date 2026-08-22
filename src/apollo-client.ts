@@ -19,7 +19,12 @@ const errorLink = onError(({ graphQLErrors, networkError, operation, forward }) 
       );
       
       // If we get an authentication error, clear the tokens and redirect to login
-      if (message.includes('not logged in') || message.includes('not authenticated') || message.toLowerCase().includes('expired') || message.toLowerCase().includes('token')) {
+      // Do not treat the Logout mutation itself as a forced session kill.
+      const opName = operation?.operationName || '';
+      if (
+        opName !== 'Logout' &&
+        (message.includes('not logged in') || message.includes('not authenticated') || message.toLowerCase().includes('expired') || message.toLowerCase().includes('token'))
+      ) {
         localStorage.removeItem('token');
         localStorage.removeItem('refreshToken');
         localStorage.removeItem('user');
