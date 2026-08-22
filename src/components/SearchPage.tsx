@@ -31,7 +31,7 @@ import ArticleOutlinedIcon from '@mui/icons-material/ArticleOutlined';
 import { GLOBAL_SEARCH } from '../graphql/search';
 import TabEnter from './motion/TabEnter';
 import { MATTE_PANEL, MATTE_SURFACE, MATTE_HEADER, PAGE_ATMOSPHERE } from '../theme/surfaces';
-import AdminBackground from './admin/AdminBackground';
+import ScrollablePageShell from './layout/ScrollablePageShell';
 import { ZpcNavLogo } from './brand/ZpcNavLogo';
 import HeaderLogoutButton from './HeaderLogoutButton';
 import { nameInitials, stringToColor, collapseMentionTokens } from '../utils/mentions';
@@ -598,10 +598,11 @@ const SearchPage: React.FC = () => {
   );
 
   return (
-    <Box sx={{ minHeight: '100vh', position: 'relative', ...PAGE_ATMOSPHERE }}>
-      <AdminBackground />
+    <ScrollablePageShell
+      sx={{ ...interFont }}
+      header={(
       <AppBar
-        position="sticky"
+        position="static"
         elevation={0}
         sx={{
           ...MATTE_HEADER,
@@ -701,11 +702,12 @@ const SearchPage: React.FC = () => {
           </Tabs>
         </Box>
       </AppBar>
-
+      )}
+    >
       <Box
         sx={{
           position: 'sticky',
-          top: isMobile ? 112 : 108,
+          top: 0,
           zIndex: 10,
           borderBottom: '1px solid rgba(22,48,42,0.1)',
           bgcolor: 'rgba(235,230,212,0.82)',
@@ -884,7 +886,7 @@ const SearchPage: React.FC = () => {
           ZPC search · People · Properties · Posts
         </Typography>
       </Box>
-    </Box>
+    </ScrollablePageShell>
   );
 };
 

@@ -909,7 +909,7 @@ const ChatPage: React.FC<ChatPageProps> = ({
         </Box>
 
         {/* List */}
-        <Box sx={{ flex: 1, overflowY: 'auto' }}>
+        <Box className="zpc-page-scroll-region" sx={{ flex: 1, overflowY: 'auto' }}>
           {roomsLoading && conversations.length === 0 && !isSearching ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', mt: 8 }}>
               <CircularProgress size={28} sx={{ color: LI_BLUE }} />

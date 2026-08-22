@@ -77,6 +77,7 @@ import HeaderLogoutButton from './HeaderLogoutButton';
 import PostMediaCarousel from './PostMediaCarousel';
 import PostLikeCount from './PostLikeCount';
 import { canManageProperties as roleCanManageProperties, isAdminRole } from '../utils/roles';
+import ScrollablePageShell from './layout/ScrollablePageShell';
 
 const GRAPHQL_URL = process.env.REACT_APP_GRAPHQL_URL || 'http://localhost:8080/api/v1/graphql';
 const API_GATEWAY_URL = (process.env.REACT_APP_API_GATEWAY_URL || 'http://localhost:8080').replace(/\/$/, '');
@@ -933,6 +934,10 @@ const Home = () => {
   const [pendingFocusPostId, setPendingFocusPostId] = useState<string | null>(null);
   const loadMoreLock = useRef(false);
   const feedSentinelRef = useRef<HTMLDivElement | null>(null);
+  const pageScrollRef = useRef<HTMLElement | null>(null);
+  const scrollFeedTop = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    pageScrollRef.current?.scrollTo({ top: 0, behavior });
+  }, []);
 
   const { data: trendingData, loading: trendingLoading } = useQuery(TRENDING_POSTS, {
     variables: { limit: 5 },
@@ -1029,10 +1034,11 @@ const Home = () => {
 
   useEffect(() => {
     const el = feedSentinelRef.current;
+    const root = pageScrollRef.current;
     if (!el || feedExhausted || loading) return;
     const obs = new IntersectionObserver((entries) => {
       if (entries[0]?.isIntersecting) loadMorePostsRef.current();
-    }, { rootMargin: '480px 0px' });
+    }, { root, rootMargin: '480px 0px' });
     obs.observe(el);
     return () => obs.disconnect();
   }, [feedExhausted, data?.searchPosts?.length, loading]);
@@ -2117,18 +2123,12 @@ const Home = () => {
 
   // Render Home Page
   return (
-    <Box
-      sx={{
-        position: 'relative',
-        minHeight: '100vh',
-        ...interFont,
-        ...PAGE_ATMOSPHERE,
-      }}
-    >
-      <AdminBackground />
-      {/* LinkedIn-style top bar — forest green frosted glass */}
+    <>
+      <ScrollablePageShell
+        scrollRef={pageScrollRef}
+        header={(
       <AppBar
-        position="fixed"
+        position="static"
         elevation={0}
         sx={{
           ...MATTE_HEADER,
@@ -2157,7 +2157,7 @@ const Home = () => {
                 onNavigate={() => {
                   if (currentPage !== 'home') setCurrentPage('home');
                   setSelectedProfileId(null);
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                  scrollFeedTop();
                 }}
               />
             </Box>
@@ -2212,7 +2212,7 @@ const Home = () => {
                   <Box
                     key={item.label}
                     onClick={() => {
-                      if (item.label === 'Home') window.scrollTo({ top: 0, behavior: 'smooth' });
+                      if (item.label === 'Home') scrollFeedTop();
                       else if (item.label === 'My Network') {
                         setFindFriendsOpen(true);
                         refetchSuggested();
@@ -2549,6 +2549,8 @@ const Home = () => {
           </Box>
         )}
       </AppBar>
+        )}
+      >
 
       {/* LinkedIn-like 3-column shell */}
       <Box
@@ -2557,9 +2559,9 @@ const Home = () => {
           zIndex: 1,
           maxWidth: 1320,
           mx: 'auto',
-          pt: { xs: isMobile ? 14 : 9, sm: 9 },
           px: { xs: 0, sm: 2 },
           pb: 4,
+          ...interFont,
           display: 'grid',
           gridTemplateColumns: {
             xs: '1fr',
@@ -2572,7 +2574,7 @@ const Home = () => {
       >
         {/* Left: mini profile + ratings / views */}
         {!isMobile && (
-          <Box sx={{ position: 'sticky', top: 72, display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <Box sx={{ position: 'sticky', top: 16, display: 'flex', flexDirection: 'column', gap: 1 }}>
             <Box sx={{ ...MATTE_PANEL, borderRadius: CARD_RADIUS, overflow: 'hidden', p: 0 }}>
               <Box
                 key={currentUserData?.coverImage || 'no-cover'}
@@ -2799,7 +2801,7 @@ const Home = () => {
 
         {/* Right rail */}
         {!isMobile && (
-          <Box sx={{ position: 'sticky', top: 72, display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <Box sx={{ position: 'sticky', top: 16, display: 'flex', flexDirection: 'column', gap: 1 }}>
             <Box sx={{ ...MATTE_PANEL, borderRadius: CARD_RADIUS, p: 1.75 }}>
               <Typography sx={{ fontWeight: 750, mb: 1.25, color: '#16302A', fontSize: 15, ...displayFont }}>
                 ZPC News
@@ -2894,6 +2896,7 @@ const Home = () => {
           </Box>
         )}
       </Box>
+      </ScrollablePageShell>
 
       {/* Mobile: left nav drawer (replaces left sidebar) */}
       <Drawer
@@ -2922,7 +2925,7 @@ const Home = () => {
                 setMobileMenuOpen(false);
                 setCurrentPage('home');
                 setSelectedProfileId(null);
-                window.scrollTo({ top: 0, behavior: 'smooth' });
+                scrollFeedTop();
               }}
             />
           </Box>
@@ -2947,7 +2950,7 @@ const Home = () => {
                 onClick={() => {
                   setMobileMenuOpen(false);
                   if (item.label === 'Home') {
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                    scrollFeedTop();
                   } else if (item.label === 'My Network') {
                     setFindFriendsOpen(true);
                     refetchSuggested();
@@ -3411,7 +3414,7 @@ const Home = () => {
         post={sharePostTarget}
         onClose={() => setSharePostTarget(null)}
       />
-    </Box>
+    </>
   );
 };
 

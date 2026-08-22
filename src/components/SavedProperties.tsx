@@ -25,6 +25,7 @@ import { Property } from '../types/property';
 import { ZpcNavLogo } from './brand/ZpcNavLogo';
 import HeaderLogoutButton from './HeaderLogoutButton';
 import { MATTE_SURFACE, MATTE_HEADER, PAGE_ATMOSPHERE } from '../theme/surfaces';
+import ScrollablePageShell from './layout/ScrollablePageShell';
 
 const formatPrice = (price: number) => {
   if (!price) return 'Price on request';
@@ -77,21 +78,23 @@ const SavedProperties: React.FC = () => {
     );
   }
 
-  return (
-    <Box sx={{ minHeight: '100vh', ...PAGE_ATMOSPHERE }}>
-      <AppBar position="static" elevation={0} sx={{ ...MATTE_HEADER }}>
-        <Toolbar sx={{ gap: 1 }}>
-          <ZpcNavLogo size={40} animateStroke={false} onNavigate={() => navigate('/home')} />
-          <IconButton onClick={() => navigate('/home')} sx={{ color: '#EBE6D4' }}>
-            <ArrowBackIcon />
-          </IconButton>
-          <Typography variant="h6" sx={{ flex: 1, fontWeight: 600, color: '#EBE6D4' }}>
-            Saved properties
-          </Typography>
-          <HeaderLogoutButton ink="light" />
-        </Toolbar>
-      </AppBar>
+  const listHeader = (
+    <AppBar position="static" elevation={0} sx={{ ...MATTE_HEADER }}>
+      <Toolbar sx={{ gap: 1 }}>
+        <ZpcNavLogo size={40} animateStroke={false} onNavigate={() => navigate('/home')} />
+        <IconButton onClick={() => navigate('/home')} sx={{ color: '#EBE6D4' }}>
+          <ArrowBackIcon />
+        </IconButton>
+        <Typography variant="h6" sx={{ flex: 1, fontWeight: 600, color: '#EBE6D4' }}>
+          Saved properties
+        </Typography>
+        <HeaderLogoutButton ink="light" />
+      </Toolbar>
+    </AppBar>
+  );
 
+  return (
+    <ScrollablePageShell header={listHeader}>
       <Container maxWidth="lg" sx={{ py: 4 }}>
         {properties.length === 0 ? (
           <Box sx={{ textAlign: 'center', py: 8 }}>
@@ -153,7 +156,7 @@ const SavedProperties: React.FC = () => {
       <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={() => setSnackbar((p) => ({ ...p, open: false }))}>
         <Alert severity={snackbar.severity}>{snackbar.message}</Alert>
       </Snackbar>
-    </Box>
+    </ScrollablePageShell>
   );
 };
 

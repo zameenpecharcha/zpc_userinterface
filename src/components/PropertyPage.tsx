@@ -47,7 +47,7 @@ import { MATTE_SURFACE, MATTE_HEADER, PAGE_ATMOSPHERE, MATTE_INSET } from '../th
 import ShareSymbol from './icons/ShareSymbol';
 import { ZpcNavLogo } from './brand/ZpcNavLogo';
 import HeaderLogoutButton from './HeaderLogoutButton';
-import AdminBackground from './admin/AdminBackground';
+import ScrollablePageShell from './layout/ScrollablePageShell';
 import { formatRelativeTime } from '../utils/datetime';
 import { postCategoryLabel, categoryFromTitle } from '../constants/postCategories';
 
@@ -329,6 +329,21 @@ const PropertyPage: React.FC = () => {
 
   const goBack = () => navigate(-1);
 
+  const propertyHeader = (
+    <AppBar position="static" elevation={0} sx={{ ...MATTE_HEADER, borderRadius: 0, zIndex: 1201 }}>
+      <Toolbar sx={{ justifyContent: 'flex-start', px: { xs: 1, sm: 2 }, minHeight: { xs: 56, sm: 64 }, gap: 1, bgcolor: 'transparent' }}>
+        <ZpcNavLogo size={isMobile ? 32 : 36} animateStroke={false} onNavigate={() => navigate('/home')} />
+        <IconButton onClick={goBack} size={isMobile ? 'small' : 'medium'} sx={{ color: '#EBE6D4' }}>
+          <ArrowBackIcon />
+        </IconButton>
+        <Typography variant="h6" sx={{ fontWeight: 700, color: '#EBE6D4', fontSize: { xs: '1rem', sm: '1.25rem' }, flex: 1 }}>
+          Property
+        </Typography>
+        <HeaderLogoutButton ink="light" size={isMobile ? 'small' : 'medium'} />
+      </Toolbar>
+    </AppBar>
+  );
+
   if (loading && !property) {
     return (
       <Box sx={{ ...PAGE_ATMOSPHERE, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', ...interFont }}>
@@ -342,25 +357,13 @@ const PropertyPage: React.FC = () => {
 
   if (error || !property) {
     return (
-      <Box sx={{ ...PAGE_ATMOSPHERE, minHeight: '100vh', ...interFont }}>
-        <AppBar position="fixed" elevation={0} sx={{ ...MATTE_HEADER, borderRadius: 0, zIndex: 1201 }}>
-          <Toolbar sx={{ justifyContent: 'flex-start', px: { xs: 1, sm: 2 }, minHeight: { xs: 56, sm: 64 }, gap: 1, bgcolor: 'transparent' }}>
-            <ZpcNavLogo size={isMobile ? 32 : 36} animateStroke={false} onNavigate={goBack} />
-            <IconButton onClick={goBack} size={isMobile ? 'small' : 'medium'} sx={{ color: '#EBE6D4' }}>
-              <ArrowBackIcon />
-            </IconButton>
-            <Typography variant="h6" sx={{ fontWeight: 700, color: '#EBE6D4', fontSize: { xs: '1rem', sm: '1.25rem' }, flex: 1 }}>
-              Property
-            </Typography>
-            <HeaderLogoutButton ink="light" size={isMobile ? 'small' : 'medium'} />
-          </Toolbar>
-        </AppBar>
-        <Box sx={{ pt: { xs: 9, sm: 10 }, px: { xs: 1.25, sm: 2 }, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 'calc(100vh - 80px)' }}>
+      <ScrollablePageShell header={propertyHeader} sx={{ ...interFont }}>
+        <Box sx={{ px: { xs: 1.25, sm: 2 }, py: 4, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100%' }}>
           <Alert severity="error" sx={{ maxWidth: 400, width: '100%' }}>
             Property not found
           </Alert>
         </Box>
-      </Box>
+      </ScrollablePageShell>
     );
   }
 
@@ -370,22 +373,9 @@ const PropertyPage: React.FC = () => {
   const reviewCount = property.ratingCount ?? ratings.length;
 
   return (
-    <Box sx={{ ...PAGE_ATMOSPHERE, minHeight: '100vh', position: 'relative', ...interFont }}>
-      <AdminBackground />
-      <AppBar position="fixed" elevation={0} sx={{ ...MATTE_HEADER, borderRadius: 0, zIndex: 1201 }}>
-        <Toolbar sx={{ justifyContent: 'flex-start', px: { xs: 1, sm: 2 }, minHeight: { xs: 56, sm: 64 }, gap: 1, bgcolor: 'transparent' }}>
-          <ZpcNavLogo size={isMobile ? 32 : 36} animateStroke={false} onNavigate={() => navigate('/home')} />
-          <IconButton onClick={goBack} size={isMobile ? 'small' : 'medium'} sx={{ color: '#EBE6D4' }}>
-            <ArrowBackIcon />
-          </IconButton>
-          <Typography variant="h6" sx={{ fontWeight: 700, color: '#EBE6D4', fontSize: { xs: '1rem', sm: '1.25rem' }, flex: 1 }}>
-            Property
-          </Typography>
-          <HeaderLogoutButton ink="light" size={isMobile ? 'small' : 'medium'} />
-        </Toolbar>
-      </AppBar>
-
-      <Box sx={{ position: 'relative', zIndex: 1, pt: { xs: 9, sm: 10 }, px: { xs: 1.25, sm: 2 }, pb: { xs: 3, sm: 4 } }}>
+    <>
+    <ScrollablePageShell header={propertyHeader} sx={{ ...interFont }}>
+      <Box sx={{ position: 'relative', zIndex: 1, px: { xs: 1.25, sm: 2 }, pb: { xs: 3, sm: 4 } }}>
         <Box sx={{ maxWidth: 1128, mx: 'auto' }}>
           <Box sx={{ ...MATTE_SURFACE, borderRadius: CARD_RADIUS, overflow: 'hidden', mb: 1.5 }}>
             <Box
@@ -812,6 +802,7 @@ const PropertyPage: React.FC = () => {
           </Box>
         </Box>
       </Box>
+    </ScrollablePageShell>
 
       <CreatePost
         open={createOpen}
@@ -857,7 +848,7 @@ const PropertyPage: React.FC = () => {
       <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={() => setSnackbar((p) => ({ ...p, open: false }))}>
         <Alert severity={snackbar.severity}>{snackbar.message}</Alert>
       </Snackbar>
-    </Box>
+    </>
   );
 };
 

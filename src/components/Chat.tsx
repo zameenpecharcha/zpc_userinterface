@@ -858,7 +858,7 @@ const Chat: React.FC<ChatProps> = ({
     }}>
 
       {/* Messages — LinkedIn-style thread */}
-      <Box sx={{
+      <Box className="zpc-page-scroll-region" sx={{
         flex: 1,
         overflowY: 'auto',
         px: 2,
