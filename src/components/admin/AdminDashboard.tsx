@@ -28,6 +28,8 @@ import {
   useMediaQuery,
 } from '@mui/material';
 import BarChartIcon from '@mui/icons-material/BarChart';
+import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import { ZpcNavLogo } from '../brand/ZpcNavLogo';
 import LogoutIcon from '@mui/icons-material/Logout';
 import HomeIcon from '@mui/icons-material/Home';
@@ -43,8 +45,6 @@ import GridViewIcon from '@mui/icons-material/GridView';
 import MenuIcon from '@mui/icons-material/Menu';
 import NotificationsNoneIcon from '@mui/icons-material/NotificationsNone';
 import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
-import FilterListIcon from '@mui/icons-material/FilterList';
-import AddIcon from '@mui/icons-material/Add';
 import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined';
 import FlagOutlinedIcon from '@mui/icons-material/FlagOutlined';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
@@ -64,10 +64,17 @@ import {
   ADMIN_UPDATE_USER_ROLE,
   ADMIN_USERS,
 } from '../../graphql/admin';
+import {
+  COMMENT_ANALYTICS,
+  POST_ANALYTICS,
+  PROPERTY_ANALYTICS,
+  USER_ANALYTICS,
+} from '../../graphql/analytics';
 import { formatDateTime, isRecentlyActive } from '../../utils/datetime';
 
 type TabId = 'overview' | 'users' | 'posts' | 'properties' | 'reports' | 'approvals';
 type LayoutMode = 'list' | 'grid';
+type AnalyticsRange = 7 | 30 | 90;
 
 const SIDEBAR_WIDTH = 248;
 const SIDEBAR_BG = '#00796B';
@@ -145,6 +152,84 @@ function shortId(id?: string | number | null, keep = 8): string {
   if (!s) return '—';
   if (s.length <= keep + 1) return s;
   return `${s.slice(0, keep)}…`;
+}
+
+function analyticsRangeRequest(days: AnalyticsRange) {
+  const to = new Date();
+  const from = new Date();
+  from.setUTCDate(from.getUTCDate() - (days - 1));
+  from.setUTCHours(0, 0, 0, 0);
+  return { fromDate: from.toISOString(), toDate: to.toISOString() };
+}
+
+function formatDayLabel(isoDate: string): string {
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return isoDate;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
+function MiniBars({
+  rows,
+  emptyLabel,
+}: {
+  rows: { label: string; count: number }[];
+  emptyLabel: string;
+}) {
+  const max = Math.max(1, ...rows.map((r) => r.count));
+  if (!rows.length) {
+    return (
+      <Typography sx={{ fontSize: 13, color: '#64748B', py: 4, textAlign: 'center' }}>{emptyLabel}</Typography>
+    );
+  }
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 1, height: 180, px: 0.5 }}>
+      {rows.map((d) => (
+        <Box
+          key={d.label}
+          sx={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 0.75,
+            minWidth: 0,
+          }}
+        >
+          <Typography sx={{ fontSize: 10, fontWeight: 600, color: '#64748B' }}>{d.count}</Typography>
+          <Box
+            sx={{
+              width: '100%',
+              maxWidth: 36,
+              height: `${Math.max(4, (d.count / max) * 140)}px`,
+              bgcolor: '#00796B',
+              borderRadius: '4px 4px 0 0',
+              transition: 'height 0.3s ease',
+            }}
+          />
+          <Typography
+            sx={{
+              fontSize: 9,
+              fontWeight: 500,
+              color: '#94A3B8',
+              textAlign: 'center',
+              lineHeight: 1.2,
+            }}
+          >
+            {d.label}
+          </Typography>
+        </Box>
+      ))}
+    </Box>
+  );
+}
+
+function MetricRow({ label, value }: { label: string; value: number | string }) {
+  return (
+    <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, py: 0.65 }}>
+      <Typography sx={{ fontSize: 13, color: '#64748B', fontFamily: FONT }}>{label}</Typography>
+      <Typography sx={{ fontSize: 13, fontWeight: 700, color: '#0F172A', fontFamily: FONT }}>{value}</Typography>
+    </Box>
+  );
 }
 
 function userDisplayName(u: any): string {
@@ -340,7 +425,70 @@ const AdminDashboard: React.FC = () => {
   const [roleFilter, setRoleFilter] = useState('all');
   const [userStatusFilter, setUserStatusFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [analyticsRange, setAnalyticsRange] = useState<AnalyticsRange>(30);
   const [actionMsg, setActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const analyticsVars = useMemo(
+    () => ({ request: analyticsRangeRequest(analyticsRange) }),
+    [analyticsRange]
+  );
+
+  const {
+    data: userAnalyticsData,
+    loading: userAnalyticsLoading,
+    error: userAnalyticsError,
+    refetch: refetchUserAnalytics,
+  } = useQuery(USER_ANALYTICS, {
+    variables: analyticsVars,
+    fetchPolicy: 'network-only',
+    errorPolicy: 'all',
+    skip: tab !== 'overview',
+  });
+
+  const {
+    data: postAnalyticsData,
+    loading: postAnalyticsLoading,
+    error: postAnalyticsError,
+    refetch: refetchPostAnalytics,
+  } = useQuery(POST_ANALYTICS, {
+    variables: analyticsVars,
+    fetchPolicy: 'network-only',
+    errorPolicy: 'all',
+    skip: tab !== 'overview',
+  });
+
+  const {
+    data: propertyAnalyticsData,
+    loading: propertyAnalyticsLoading,
+    error: propertyAnalyticsError,
+    refetch: refetchPropertyAnalytics,
+  } = useQuery(PROPERTY_ANALYTICS, {
+    variables: analyticsVars,
+    fetchPolicy: 'network-only',
+    errorPolicy: 'all',
+    skip: tab !== 'overview',
+  });
+
+  const {
+    data: commentAnalyticsData,
+    loading: commentAnalyticsLoading,
+    error: commentAnalyticsError,
+    refetch: refetchCommentAnalytics,
+  } = useQuery(COMMENT_ANALYTICS, {
+    variables: analyticsVars,
+    fetchPolicy: 'network-only',
+    errorPolicy: 'all',
+    skip: tab !== 'overview',
+  });
+
+  const userA = userAnalyticsData?.userAnalytics;
+  const postA = postAnalyticsData?.postAnalytics;
+  const propertyA = propertyAnalyticsData?.propertyAnalytics;
+  const commentA = commentAnalyticsData?.commentAnalytics;
+  const analyticsLoading =
+    userAnalyticsLoading || postAnalyticsLoading || propertyAnalyticsLoading || commentAnalyticsLoading;
+  const analyticsError =
+    userAnalyticsError || postAnalyticsError || propertyAnalyticsError || commentAnalyticsError;
 
   const {
     data: usersData,
@@ -481,6 +629,13 @@ const AdminDashboard: React.FC = () => {
   }, [users, properties, posts, pendingReportCount]);
 
   const postsByDay = useMemo(() => {
+    const rows = postA?.viewsByDay || [];
+    if (rows.length) {
+      return rows.map((d: any) => ({
+        label: formatDayLabel(String(d.date)),
+        count: Number(d.count) || 0,
+      }));
+    }
     const days: { label: string; count: number }[] = [];
     for (let i = 13; i >= 0; i--) {
       const d = new Date();
@@ -497,9 +652,32 @@ const AdminDashboard: React.FC = () => {
       days.push({ label, count });
     }
     return days;
-  }, [posts]);
+  }, [postA, posts]);
 
-  const maxPostsDay = Math.max(1, ...postsByDay.map((d) => d.count));
+  const loginByDay = useMemo(
+    () =>
+      (userA?.loginTrends || []).map((d: any) => ({
+        label: formatDayLabel(String(d.date)),
+        count: Number(d.count) || 0,
+      })),
+    [userA]
+  );
+
+  const commentsByDay = useMemo(
+    () =>
+      (commentA?.commentsByDay || []).map((d: any) => ({
+        label: formatDayLabel(String(d.date)),
+        count: Number(d.count) || 0,
+      })),
+    [commentA]
+  );
+
+  const refreshAnalytics = () => {
+    refetchUserAnalytics();
+    refetchPostAnalytics();
+    refetchPropertyAnalytics();
+    refetchCommentAnalytics();
+  };
 
   const effectiveUserSearch = tab === 'users' ? headerSearch || userSearch : userSearch;
   const effectivePropertySearch = tab === 'properties' ? headerSearch || propertySearch : propertySearch;
@@ -893,284 +1071,452 @@ const AdminDashboard: React.FC = () => {
   const renderOverview = () => (
     <Box>
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2.5, alignItems: 'center' }}>
+        <ToggleButtonGroup
+          exclusive
+          size="small"
+          value={analyticsRange}
+          onChange={(_, v) => v && setAnalyticsRange(v)}
+          sx={{
+            bgcolor: '#F1F5F9',
+            borderRadius: '8px',
+            '& .MuiToggleButton-root': {
+              px: 1.5,
+              py: 0.5,
+              border: 'none',
+              textTransform: 'none',
+              fontWeight: 600,
+              fontSize: 12,
+              fontFamily: FONT,
+              color: '#64748B',
+            },
+            '& .Mui-selected': { bgcolor: '#fff !important', color: '#00796B !important' },
+          }}
+        >
+          <ToggleButton value={7}>Last 7 days</ToggleButton>
+          <ToggleButton value={30}>Last 30 days</ToggleButton>
+          <ToggleButton value={90}>Last 90 days</ToggleButton>
+        </ToggleButtonGroup>
         <Chip
-          label="Last 30 Days"
+          icon={<BarChartIcon sx={{ fontSize: '16px !important' }} />}
+          label="Source: ClickHouse activity events"
           sx={{ fontWeight: 600, bgcolor: '#fff', border: '1px solid #E2E8F0', fontFamily: FONT }}
         />
         <Button
-          startIcon={<FilterListIcon />}
+          startIcon={<RefreshIcon />}
           variant="outlined"
           size="small"
+          onClick={refreshAnalytics}
+          disabled={analyticsLoading}
           sx={{
             textTransform: 'none',
             fontWeight: 600,
             borderColor: '#E2E8F0',
             color: '#475569',
             fontFamily: FONT,
+            ml: { xs: 0, sm: 'auto' },
           }}
         >
-          Filters
+          Refresh
         </Button>
       </Box>
 
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 2.5 }}>
-        <KpiCard
-          label="Total Users"
-          value={stats.totalUsers}
-          icon={<PeopleAltIcon sx={{ fontSize: 22 }} />}
-          tileBg="#DBEAFE"
-          tileColor="#2563EB"
-        />
-        <KpiCard
-          label="Active Users"
-          value={stats.activeUsers}
-          hint={stats.liveUsers > 0 ? `+${stats.liveUsers} live online` : undefined}
-          icon={<PeopleAltIcon sx={{ fontSize: 22 }} />}
-          tileBg="#DCFCE7"
-          tileColor="#16A34A"
-        />
-        <KpiCard
-          label="Total Posts"
-          value={stats.totalPosts}
-          icon={<DynamicFeedIcon sx={{ fontSize: 22 }} />}
-          tileBg="#F3E8FF"
-          tileColor="#9333EA"
-        />
-        <KpiCard
-          label="Properties Created"
-          value={stats.totalProperties}
-          icon={<HomeWorkIcon sx={{ fontSize: 22 }} />}
-          tileBg="#FFEDD5"
-          tileColor="#EA580C"
-        />
-        <KpiCard
-          label="Reported Posts"
-          value={stats.reportedPosts}
-          icon={<FlagOutlinedIcon sx={{ fontSize: 22 }} />}
-          tileBg="#FEE2E2"
-          tileColor="#DC2626"
-        />
-      </Box>
+      {analyticsError && (
+        <Alert severity="warning" sx={{ mb: 2, fontFamily: FONT }}>
+          ClickHouse analytics unavailable: {analyticsError.message}. Showing inventory counts where possible.
+        </Alert>
+      )}
 
-      <Box
-        sx={{
-          display: 'grid',
-          gridTemplateColumns: { xs: '1fr', lg: '2fr 1fr' },
-          gap: 2,
-          mb: 2.5,
-        }}
-      >
-        <Box sx={{ ...whiteCardSx, p: 2.5 }}>
-          <Typography sx={{ fontWeight: 700, fontSize: 15, color: '#0F172A', mb: 2, fontFamily: FONT }}>
-            Total Posts Created by Day
-          </Typography>
-          <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 1, height: 180, px: 0.5 }}>
-            {postsByDay.map((d) => (
-              <Box
-                key={d.label}
-                sx={{
-                  flex: 1,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: 0.75,
-                  minWidth: 0,
-                }}
-              >
-                <Typography sx={{ fontSize: 10, fontWeight: 600, color: '#64748B' }}>{d.count}</Typography>
-                <Box
-                  sx={{
-                    width: '100%',
-                    maxWidth: 36,
-                    height: `${Math.max(4, (d.count / maxPostsDay) * 140)}px`,
-                    bgcolor: '#00796B',
-                    borderRadius: '4px 4px 0 0',
-                    transition: 'height 0.3s ease',
-                  }}
-                />
-                <Typography
-                  sx={{
-                    fontSize: 9,
-                    fontWeight: 500,
-                    color: '#94A3B8',
-                    textAlign: 'center',
-                    lineHeight: 1.2,
-                  }}
-                >
-                  {d.label}
-                </Typography>
-              </Box>
-            ))}
-          </Box>
+      {analyticsLoading && !userA && !postA ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+          <CircularProgress sx={{ color: '#00796B' }} />
         </Box>
-
-        <Box sx={{ ...whiteCardSx, p: 2.5 }}>
-          <Typography sx={{ fontWeight: 700, fontSize: 15, color: '#0F172A', mb: 2, fontFamily: FONT }}>
-            User Demographics
-          </Typography>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-            {Object.entries(stats.byRole)
-              .sort((a, b) => b[1] - a[1])
-              .map(([role, count]) => {
-                const pct = stats.totalUsers ? (count / stats.totalUsers) * 100 : 0;
-                return (
-                  <Box key={role}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                      <Typography sx={{ fontSize: 13, fontWeight: 600, color: '#334155', textTransform: 'capitalize' }}>
-                        {role.replace(/_/g, ' ')}
-                      </Typography>
-                      <Typography sx={{ fontSize: 13, fontWeight: 700, color: '#0F172A' }}>{count}</Typography>
-                    </Box>
-                    <Box sx={{ height: 8, bgcolor: '#E2E8F0', borderRadius: 1, overflow: 'hidden' }}>
-                      <Box
-                        sx={{
-                          width: `${pct}%`,
-                          height: '100%',
-                          bgcolor: '#00796B',
-                          borderRadius: 1,
-                          minWidth: count > 0 ? 4 : 0,
-                        }}
-                      />
-                    </Box>
-                  </Box>
-                );
-              })}
-            {Object.keys(stats.byRole).length === 0 && (
-              <Typography sx={{ fontSize: 13, color: '#64748B' }}>No user data loaded.</Typography>
-            )}
+      ) : (
+        <>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 2.5 }}>
+            <KpiCard
+              label="Registered users"
+              value={userA?.totalUsers ?? stats.totalUsers}
+              hint={userA ? `${userA.newRegistrations} new in range` : undefined}
+              icon={<PeopleAltIcon sx={{ fontSize: 22 }} />}
+              tileBg="#DBEAFE"
+              tileColor="#2563EB"
+            />
+            <KpiCard
+              label="Daily active"
+              value={userA?.dailyActiveUsers ?? stats.liveUsers}
+              hint={userA ? `MAU ${userA.monthlyActiveUsers}` : undefined}
+              icon={<PeopleAltIcon sx={{ fontSize: 22 }} />}
+              tileBg="#DCFCE7"
+              tileColor="#16A34A"
+            />
+            <KpiCard
+              label="Posts created"
+              value={postA?.created ?? stats.totalPosts}
+              hint={postA ? `${postA.likes} likes · ${postA.totalViews} views` : undefined}
+              icon={<DynamicFeedIcon sx={{ fontSize: 22 }} />}
+              tileBg="#F3E8FF"
+              tileColor="#9333EA"
+            />
+            <KpiCard
+              label="Properties created"
+              value={propertyA?.created ?? stats.totalProperties}
+              hint={propertyA ? `${propertyA.totalViews} views · ${propertyA.saves} saves` : undefined}
+              icon={<HomeWorkIcon sx={{ fontSize: 22 }} />}
+              tileBg="#FFEDD5"
+              tileColor="#EA580C"
+            />
+            <KpiCard
+              label="Comments"
+              value={commentA?.commentsCreated ?? 0}
+              hint={commentA ? `${commentA.likes} likes · ${commentA.deleted} deleted` : undefined}
+              icon={<ChatBubbleOutlineIcon sx={{ fontSize: 22 }} />}
+              tileBg="#E0F2FE"
+              tileColor="#0284C7"
+            />
+            <KpiCard
+              label="Reports"
+              value={
+                (postA?.reports || 0) + (propertyA?.reports || 0) + (commentA?.reports || 0) ||
+                stats.reportedPosts
+              }
+              icon={<FlagOutlinedIcon sx={{ fontSize: 22 }} />}
+              tileBg="#FEE2E2"
+              tileColor="#DC2626"
+            />
           </Box>
-        </Box>
-      </Box>
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1.5fr 1fr' }, gap: 2 }}>
-        <Box sx={{ ...whiteCardSx, overflow: 'hidden' }}>
-          <Box sx={{ px: 2.5, py: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Typography sx={{ fontWeight: 700, fontSize: 15, color: '#0F172A', fontFamily: FONT }}>
-              Property Suggestions
-            </Typography>
-            {pendingProperties.length > 0 && (
-              <Chip
-                size="small"
-                label={`${pendingProperties.length} pending`}
-                sx={{ bgcolor: '#FEF3C7', color: '#B45309', fontWeight: 700, fontSize: 11 }}
-              />
-            )}
-          </Box>
-          <Box sx={{ overflowX: 'auto' }}>
-            <Box
-              component="table"
-              sx={{
-                width: '100%',
-                borderCollapse: 'collapse',
-                fontFamily: FONT,
-                '& th, & td': {
-                  textAlign: 'left',
-                  px: 2.5,
-                  py: 1.25,
-                  fontSize: 13,
-                  borderBottom: '1px solid #F1F5F9',
-                },
-                '& th': { fontWeight: 700, color: '#64748B', fontSize: 11, letterSpacing: '0.04em' },
-                '& tbody tr': listRowHoverSx,
-              }}
-            >
-              <thead>
-                <tr>
-                  <th>USER</th>
-                  <th>PROPERTY NAME</th>
-                  <th>ACTIONS</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pendingProperties.slice(0, 8).map((p: any) => {
-                  const owner = userById.get(propOwnerId(p));
-                  return (
-                    <tr key={propId(p)}>
-                      <td>
-                        <Typography sx={{ fontWeight: 600, fontSize: 13 }}>{userDisplayName(owner)}</Typography>
-                        <Typography sx={{ fontSize: 11, color: '#94A3B8' }}>#{propOwnerId(p)}</Typography>
-                      </td>
-                      <td>
-                        <Typography sx={{ fontWeight: 600, fontSize: 13 }}>{p.title || 'Untitled'}</Typography>
-                        <Typography sx={{ fontSize: 11, color: '#94A3B8' }}>{p.status}</Typography>
-                      </td>
-                      <td>
-                        <Box sx={{ display: 'flex', gap: 0.75 }}>
-                          <Button
-                            size="small"
-                            variant="contained"
-                            disabled={approvingProperty || rejectingProperty}
-                            onClick={() => onApproveProperty(propId(p))}
-                            sx={{
-                              textTransform: 'none',
-                              fontWeight: 600,
-                              fontSize: 12,
-                              bgcolor: '#00796B',
-                              '&:hover': { bgcolor: '#00695C' },
-                            }}
-                          >
-                            Approve
-                          </Button>
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            color="error"
-                            disabled={approvingProperty || rejectingProperty}
-                            onClick={() => onRejectProperty(propId(p))}
-                            sx={{ textTransform: 'none', fontWeight: 600, fontSize: 12 }}
-                          >
-                            Reject
-                          </Button>
-                        </Box>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </Box>
-            {pendingProperties.length === 0 && (
-              <Typography sx={{ p: 3, textAlign: 'center', color: '#64748B', fontSize: 13 }}>
-                No pending property suggestions.
-              </Typography>
-            )}
-          </Box>
-        </Box>
-
-        <Box
-          sx={{
-            ...whiteCardSx,
-            p: 3,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            minHeight: 220,
-            textAlign: 'center',
-          }}
-        >
-          <BarChartIcon sx={{ fontSize: 48, color: '#CBD5E1', mb: 1.5 }} />
-          <Typography sx={{ fontWeight: 700, fontSize: 15, color: '#0F172A', mb: 0.5, fontFamily: FONT }}>
-            Custom Reports Widget
-          </Typography>
-          <Typography sx={{ fontSize: 13, color: '#64748B', mb: 2, maxWidth: 240 }}>
-            Build custom analytics widgets for your dashboard.
-          </Typography>
-          <Button
-            startIcon={<AddIcon />}
-            variant="outlined"
-            onClick={() => setActionMsg({ type: 'success', text: 'Coming soon — custom report widgets.' })}
+          <Box
             sx={{
-              textTransform: 'none',
-              fontWeight: 600,
-              borderColor: '#E2E8F0',
-              color: '#475569',
-              fontFamily: FONT,
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', lg: '2fr 1fr' },
+              gap: 2,
+              mb: 2.5,
             }}
           >
-            + Add Widget
-          </Button>
-        </Box>
-      </Box>
+            <Box sx={{ ...whiteCardSx, p: 2.5 }}>
+              <Typography sx={{ fontWeight: 700, fontSize: 15, color: '#0F172A', mb: 2, fontFamily: FONT }}>
+                Post activity by day
+              </Typography>
+              <MiniBars rows={postsByDay} emptyLabel="No post activity in this range." />
+            </Box>
+
+            <Box sx={{ ...whiteCardSx, p: 2.5 }}>
+              <Typography sx={{ fontWeight: 700, fontSize: 15, color: '#0F172A', mb: 1, fontFamily: FONT }}>
+                User engagement
+              </Typography>
+              <MetricRow label="Logins" value={userA?.loginCount ?? 0} />
+              <MetricRow label="Sessions started" value={userA?.sessions ?? 0} />
+              <MetricRow label="Logouts" value={userA?.logouts ?? 0} />
+              <MetricRow label="Follows" value={userA?.follows ?? 0} />
+              <MetricRow label="Unfollows" value={userA?.unfollows ?? 0} />
+              <MetricRow label="Platform engaged users" value={userA?.platformEngagedUsers ?? 0} />
+              <MetricRow label="Account deletions" value={userA?.deletions ?? 0} />
+              <Divider sx={{ my: 1.5 }} />
+              <Typography sx={{ fontWeight: 700, fontSize: 13, color: '#0F172A', mb: 1, fontFamily: FONT }}>
+                Login methods
+              </Typography>
+              {(userA?.loginsByMethod || []).length === 0 ? (
+                <Typography sx={{ fontSize: 13, color: '#64748B' }}>No login breakdown yet.</Typography>
+              ) : (
+                (userA?.loginsByMethod || []).map((m: any) => (
+                  <MetricRow key={m.name} label={m.name || 'unknown'} value={m.count} />
+                ))
+              )}
+            </Box>
+          </Box>
+
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' },
+              gap: 2,
+              mb: 2.5,
+            }}
+          >
+            <Box sx={{ ...whiteCardSx, p: 2.5 }}>
+              <Typography sx={{ fontWeight: 700, fontSize: 15, color: '#0F172A', mb: 2, fontFamily: FONT }}>
+                Logins by day
+              </Typography>
+              <MiniBars rows={loginByDay} emptyLabel="No login events in this range." />
+            </Box>
+            <Box sx={{ ...whiteCardSx, p: 2.5 }}>
+              <Typography sx={{ fontWeight: 700, fontSize: 15, color: '#0F172A', mb: 2, fontFamily: FONT }}>
+                Comments by day
+              </Typography>
+              <MiniBars rows={commentsByDay} emptyLabel="No comment events in this range." />
+            </Box>
+          </Box>
+
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', md: '1fr 1fr 1fr' },
+              gap: 2,
+              mb: 2.5,
+            }}
+          >
+            <Box sx={{ ...whiteCardSx, p: 2.5 }}>
+              <Typography sx={{ fontWeight: 700, fontSize: 15, color: '#0F172A', mb: 1, fontFamily: FONT }}>
+                Posts
+              </Typography>
+              <MetricRow label="Created" value={postA?.created ?? 0} />
+              <MetricRow label="Updated" value={postA?.updated ?? 0} />
+              <MetricRow label="Deleted" value={postA?.deleted ?? 0} />
+              <MetricRow label="Views" value={postA?.totalViews ?? 0} />
+              <MetricRow label="Likes / unlikes" value={`${postA?.likes ?? 0} / ${postA?.unlikes ?? 0}`} />
+              <MetricRow label="Comments / shares" value={`${postA?.comments ?? 0} / ${postA?.shares ?? 0}`} />
+            </Box>
+            <Box sx={{ ...whiteCardSx, p: 2.5 }}>
+              <Typography sx={{ fontWeight: 700, fontSize: 15, color: '#0F172A', mb: 1, fontFamily: FONT }}>
+                Properties
+              </Typography>
+              <MetricRow label="Created" value={propertyA?.created ?? 0} />
+              <MetricRow label="Updated" value={propertyA?.updated ?? 0} />
+              <MetricRow label="Deleted" value={propertyA?.deleted ?? 0} />
+              <MetricRow label="Views" value={propertyA?.totalViews ?? 0} />
+              <MetricRow label="Saves / unsaves" value={`${propertyA?.saves ?? 0} / ${propertyA?.unsaves ?? 0}`} />
+              <MetricRow label="Ratings / shares" value={`${propertyA?.ratings ?? 0} / ${propertyA?.shares ?? 0}`} />
+            </Box>
+            <Box sx={{ ...whiteCardSx, p: 2.5 }}>
+              <Typography sx={{ fontWeight: 700, fontSize: 15, color: '#0F172A', mb: 1, fontFamily: FONT }}>
+                Comments
+              </Typography>
+              <MetricRow label="Created" value={commentA?.commentsCreated ?? 0} />
+              <MetricRow label="Updated" value={commentA?.updated ?? 0} />
+              <MetricRow label="Deleted" value={commentA?.deleted ?? 0} />
+              <MetricRow label="Replies" value={commentA?.replies ?? 0} />
+              <MetricRow label="Likes / unlikes" value={`${commentA?.likes ?? 0} / ${commentA?.unlikes ?? 0}`} />
+              <MetricRow label="Reports" value={commentA?.reports ?? 0} />
+            </Box>
+          </Box>
+
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1.5fr 1fr' }, gap: 2 }}>
+            <Box sx={{ ...whiteCardSx, overflow: 'hidden' }}>
+              <Box sx={{ px: 2.5, py: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography sx={{ fontWeight: 700, fontSize: 15, color: '#0F172A', fontFamily: FONT }}>
+                  Top posts by views
+                </Typography>
+              </Box>
+              <Box sx={{ overflowX: 'auto' }}>
+                <Box
+                  component="table"
+                  sx={{
+                    width: '100%',
+                    borderCollapse: 'collapse',
+                    fontFamily: FONT,
+                    '& th, & td': {
+                      textAlign: 'left',
+                      px: 2.5,
+                      py: 1.25,
+                      fontSize: 13,
+                      borderBottom: '1px solid #F1F5F9',
+                    },
+                    '& th': { fontWeight: 700, color: '#64748B', fontSize: 11, letterSpacing: '0.04em' },
+                    '& tbody tr': listRowHoverSx,
+                  }}
+                >
+                  <thead>
+                    <tr>
+                      <th>POST</th>
+                      <th>CITY</th>
+                      <th>VIEWS</th>
+                      <th>LIKES</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(postA?.topPosts || []).map((p: any) => (
+                      <tr key={p.id}>
+                        <td>
+                          <Typography sx={{ fontWeight: 600, fontSize: 13 }}>{p.code || shortId(p.id)}</Typography>
+                          <Typography sx={{ fontSize: 11, color: '#94A3B8' }}>{shortId(p.id, 12)}</Typography>
+                        </td>
+                        <td>{p.city || '—'}</td>
+                        <td>{p.views}</td>
+                        <td>{p.likes}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Box>
+                {!(postA?.topPosts || []).length && (
+                  <Typography sx={{ p: 3, textAlign: 'center', color: '#64748B', fontSize: 13 }}>
+                    No post view rankings yet.
+                  </Typography>
+                )}
+              </Box>
+            </Box>
+
+            <Box sx={{ ...whiteCardSx, overflow: 'hidden' }}>
+              <Box sx={{ px: 2.5, py: 2 }}>
+                <Typography sx={{ fontWeight: 700, fontSize: 15, color: '#0F172A', fontFamily: FONT }}>
+                  Top properties by views
+                </Typography>
+              </Box>
+              <Box sx={{ overflowX: 'auto' }}>
+                <Box
+                  component="table"
+                  sx={{
+                    width: '100%',
+                    borderCollapse: 'collapse',
+                    fontFamily: FONT,
+                    '& th, & td': {
+                      textAlign: 'left',
+                      px: 2.5,
+                      py: 1.25,
+                      fontSize: 13,
+                      borderBottom: '1px solid #F1F5F9',
+                    },
+                    '& th': { fontWeight: 700, color: '#64748B', fontSize: 11, letterSpacing: '0.04em' },
+                    '& tbody tr': listRowHoverSx,
+                  }}
+                >
+                  <thead>
+                    <tr>
+                      <th>PROPERTY</th>
+                      <th>VIEWS</th>
+                      <th>SAVES</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(propertyA?.topProperties || []).map((p: any) => (
+                      <tr key={p.id}>
+                        <td>
+                          <Typography sx={{ fontWeight: 600, fontSize: 13 }}>
+                            {p.name || p.code || shortId(p.id)}
+                          </Typography>
+                          <Typography sx={{ fontSize: 11, color: '#94A3B8' }}>{p.city || '—'}</Typography>
+                        </td>
+                        <td>{p.views}</td>
+                        <td>{p.saves}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Box>
+                {!(propertyA?.topProperties || []).length && (
+                  <Typography sx={{ p: 3, textAlign: 'center', color: '#64748B', fontSize: 13 }}>
+                    No property view rankings yet.
+                  </Typography>
+                )}
+              </Box>
+            </Box>
+          </Box>
+
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1.5fr 1fr' }, gap: 2, mt: 2 }}>
+            <Box sx={{ ...whiteCardSx, overflow: 'hidden' }}>
+              <Box sx={{ px: 2.5, py: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography sx={{ fontWeight: 700, fontSize: 15, color: '#0F172A', fontFamily: FONT }}>
+                  Property Suggestions
+                </Typography>
+                {pendingProperties.length > 0 && (
+                  <Chip
+                    size="small"
+                    label={`${pendingProperties.length} pending`}
+                    sx={{ bgcolor: '#FEF3C7', color: '#B45309', fontWeight: 700, fontSize: 11 }}
+                  />
+                )}
+              </Box>
+              <Box sx={{ overflowX: 'auto' }}>
+                <Box
+                  component="table"
+                  sx={{
+                    width: '100%',
+                    borderCollapse: 'collapse',
+                    fontFamily: FONT,
+                    '& th, & td': {
+                      textAlign: 'left',
+                      px: 2.5,
+                      py: 1.25,
+                      fontSize: 13,
+                      borderBottom: '1px solid #F1F5F9',
+                    },
+                    '& th': { fontWeight: 700, color: '#64748B', fontSize: 11, letterSpacing: '0.04em' },
+                    '& tbody tr': listRowHoverSx,
+                  }}
+                >
+                  <thead>
+                    <tr>
+                      <th>USER</th>
+                      <th>PROPERTY NAME</th>
+                      <th>ACTIONS</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pendingProperties.slice(0, 8).map((p: any) => {
+                      const owner = userById.get(propOwnerId(p));
+                      return (
+                        <tr key={propId(p)}>
+                          <td>
+                            <Typography sx={{ fontWeight: 600, fontSize: 13 }}>{userDisplayName(owner)}</Typography>
+                            <Typography sx={{ fontSize: 11, color: '#94A3B8' }}>#{propOwnerId(p)}</Typography>
+                          </td>
+                          <td>
+                            <Typography sx={{ fontWeight: 600, fontSize: 13 }}>{p.title || 'Untitled'}</Typography>
+                            <Typography sx={{ fontSize: 11, color: '#94A3B8' }}>{p.status}</Typography>
+                          </td>
+                          <td>
+                            <Box sx={{ display: 'flex', gap: 0.75 }}>
+                              <Button
+                                size="small"
+                                variant="contained"
+                                disabled={approvingProperty || rejectingProperty}
+                                onClick={() => onApproveProperty(propId(p))}
+                                sx={{
+                                  textTransform: 'none',
+                                  fontWeight: 600,
+                                  fontSize: 12,
+                                  bgcolor: '#00796B',
+                                  '&:hover': { bgcolor: '#00695C' },
+                                }}
+                              >
+                                Approve
+                              </Button>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                color="error"
+                                disabled={approvingProperty || rejectingProperty}
+                                onClick={() => onRejectProperty(propId(p))}
+                                sx={{ textTransform: 'none', fontWeight: 600, fontSize: 12 }}
+                              >
+                                Reject
+                              </Button>
+                            </Box>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </Box>
+                {pendingProperties.length === 0 && (
+                  <Typography sx={{ p: 3, textAlign: 'center', color: '#64748B', fontSize: 13 }}>
+                    No pending property suggestions.
+                  </Typography>
+                )}
+              </Box>
+            </Box>
+
+            <Box sx={{ ...whiteCardSx, p: 2.5 }}>
+              <Typography sx={{ fontWeight: 700, fontSize: 15, color: '#0F172A', mb: 2, fontFamily: FONT }}>
+                Inventory snapshot
+              </Typography>
+              <MetricRow label="Users in DB" value={stats.totalUsers} />
+              <MetricRow label="Active accounts" value={stats.activeUsers} />
+              <MetricRow label="Live online" value={stats.liveUsers} />
+              <MetricRow label="Posts listed" value={stats.totalPosts} />
+              <MetricRow label="Properties listed" value={stats.totalProperties} />
+              <MetricRow label="Pending reports" value={stats.reportedPosts} />
+              <Divider sx={{ my: 1.5 }} />
+              <Typography sx={{ fontWeight: 700, fontSize: 13, color: '#0F172A', mb: 1, fontFamily: FONT }}>
+                Users by role
+              </Typography>
+              {Object.entries(stats.byRole)
+                .sort((a, b) => b[1] - a[1])
+                .map(([role, count]) => (
+                  <MetricRow key={role} label={role.replace(/_/g, ' ')} value={count} />
+                ))}
+            </Box>
+          </Box>
+        </>
+      )}
     </Box>
   );
 
