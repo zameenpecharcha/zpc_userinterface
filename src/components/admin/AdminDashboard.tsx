@@ -955,7 +955,7 @@ const AdminDashboard: React.FC = () => {
         </Box>
       </Box>
 
-      <Box sx={{ flex: 1, overflowY: 'auto', px: 1.5 }}>
+      <Box className="zpc-page-scroll-region" sx={{ flex: 1, overflowY: 'auto', px: 1.5 }}>
         <Box
           component="button"
           onClick={() => {
